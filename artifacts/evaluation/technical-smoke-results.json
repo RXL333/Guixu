@@ -1,0 +1,858 @@
+{
+  "scope": "deterministic synthetic technical smoke test; not real-world semantic quality",
+  "license": "CC0-1.0; generated entirely by this project script without third-party or user content",
+  "cases": 120,
+  "manifest_hashes_verified": true,
+  "accuracy": 0.8333333333333334,
+  "macro_f1": 0.8333333333333334,
+  "automatic_coverage": 0.8333333333333334,
+  "abstain_rate": 0.16666666666666663,
+  "parse_statuses": {
+    "ready": 80,
+    "partial": 40
+  },
+  "elapsed_seconds": 8.39394410001114,
+  "model_calls": 0,
+  "results": [
+    {
+      "id": "text-01",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-02",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-03",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-04",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-05",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-06",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-07",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-08",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-09",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-10",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-11",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-12",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-13",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-14",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-15",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-16",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-17",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-18",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-19",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "text-20",
+      "status": "ready",
+      "category_id": "universal.types.text",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-01",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-02",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-03",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-04",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-05",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-06",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-07",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-08",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-09",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-10",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-11",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-12",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-13",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-14",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-15",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-16",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-17",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-18",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-19",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "image-20",
+      "status": "ready",
+      "category_id": "universal.types.image",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-01",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-02",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-03",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-04",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-05",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-06",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-07",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-08",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-09",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-10",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-11",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-12",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-13",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-14",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-15",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-16",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-17",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-18",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-19",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "pdf-20",
+      "status": "ready",
+      "category_id": "universal.types.pdf",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-01",
+      "status": "ready",
+      "category_id": "universal.types.word",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-02",
+      "status": "ready",
+      "category_id": "universal.types.slides",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-03",
+      "status": "ready",
+      "category_id": "universal.types.sheet",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-04",
+      "status": "ready",
+      "category_id": "universal.types.word",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-05",
+      "status": "ready",
+      "category_id": "universal.types.slides",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-06",
+      "status": "ready",
+      "category_id": "universal.types.sheet",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-07",
+      "status": "ready",
+      "category_id": "universal.types.word",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-08",
+      "status": "ready",
+      "category_id": "universal.types.slides",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-09",
+      "status": "ready",
+      "category_id": "universal.types.sheet",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-10",
+      "status": "ready",
+      "category_id": "universal.types.word",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-11",
+      "status": "ready",
+      "category_id": "universal.types.slides",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-12",
+      "status": "ready",
+      "category_id": "universal.types.sheet",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-13",
+      "status": "ready",
+      "category_id": "universal.types.word",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-14",
+      "status": "ready",
+      "category_id": "universal.types.slides",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-15",
+      "status": "ready",
+      "category_id": "universal.types.sheet",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-16",
+      "status": "ready",
+      "category_id": "universal.types.word",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-17",
+      "status": "ready",
+      "category_id": "universal.types.slides",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-18",
+      "status": "ready",
+      "category_id": "universal.types.sheet",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-19",
+      "status": "ready",
+      "category_id": "universal.types.word",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "office-20",
+      "status": "ready",
+      "category_id": "universal.types.slides",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-01",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-02",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-03",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-04",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-05",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-06",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-07",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-08",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-09",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-10",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-11",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-12",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-13",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-14",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-15",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-16",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-17",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-18",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-19",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "audio-20",
+      "status": "partial",
+      "category_id": "universal.types.audio",
+      "abstain": false,
+      "hit": true
+    },
+    {
+      "id": "video-01",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-02",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-03",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-04",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-05",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-06",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-07",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-08",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-09",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-10",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-11",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-12",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-13",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-14",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-15",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-16",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-17",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-18",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-19",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    },
+    {
+      "id": "video-20",
+      "status": "partial",
+      "category_id": null,
+      "abstain": true,
+      "hit": false
+    }
+  ]
+}

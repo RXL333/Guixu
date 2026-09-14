@@ -1,0 +1,2 @@
+"""Authenticated local REST API."""
+

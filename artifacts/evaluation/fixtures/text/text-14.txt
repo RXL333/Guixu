@@ -1,0 +1,2 @@
+Guixu synthetic acceptance sample text 14
+Purpose: deterministic technical classification smoke test.

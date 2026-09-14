@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from guixu.api.app import create_app
+
+
+TOKEN = "preview-session"
+
+
+def headers(mutate: bool = False) -> dict[str, str]:
+    result = {"X-Guixu-Session": TOKEN}
+    if mutate:
+        result["Idempotency-Key"] = "preview-ticket-request"
+    return result
+
+
+def test_preview_ticket_is_short_lived_file_scoped_range_capability(project_root: Path, tmp_path: Path):
+    source = tmp_path / "source"; source.mkdir()
+    media = source / "pixel.png"; media.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(64)))
+    unsafe = source / "active.html"; unsafe.write_text("<script>alert(1)</script>", encoding="utf-8")
+    app = create_app(project_root=project_root, data_dir=tmp_path / "data", session_token=TOKEN, allow_typed_grants=True)
+    with TestClient(app) as client:
+        grant = client.post("/api/v1/dev/grants", headers=headers(), json={"path": str(source), "purpose": "source"}).json()["data"]["grant_id"]
+        settings = client.get("/api/v1/settings", headers=headers()).json()["data"]["values"]
+        settings.update({"operation_mode": "report_only", "scan_mode": "current_only"})
+        task = client.post("/api/v1/tasks", headers=headers(True), json={"name": "preview", "source_grant": grant, "settings": settings}).json()["data"]
+        task = client.post(f"/api/v1/tasks/{task['id']}/start", headers={**headers(), "Idempotency-Key": "preview-start"}, json={"expected_revision": task["revision"]}).json()["data"]
+        files = client.get(f"/api/v1/tasks/{task['id']}/files", headers=headers()).json()["data"]["items"]
+        image_id = next(item["id"] for item in files if item["basename"] == "pixel.png")
+        html_id = next(item["id"] for item in files if item["basename"] == "active.html")
+        assert client.post(f"/api/v1/tasks/{task['id']}/files/{image_id}/preview-ticket").status_code == 401
+        issued = client.post(f"/api/v1/tasks/{task['id']}/files/{image_id}/preview-ticket", headers=headers(True))
+        assert issued.status_code == 201
+        ticket = issued.json()["data"]["ticket"]
+        ranged = client.get(f"/api/v1/previews/{ticket}", headers={"Range": "bytes=8-15"})
+        assert ranged.status_code == 206 and ranged.content == bytes(range(8))
+        assert ranged.headers["content-range"] == f"bytes 8-15/{media.stat().st_size}"
+        assert ranged.headers["cache-control"] == "no-store" and ranged.headers["x-content-type-options"] == "nosniff"
+        assert client.get("/api/v1/previews/not-a-ticket").status_code == 404
+        blocked = client.post(f"/api/v1/tasks/{task['id']}/files/{html_id}/preview-ticket", headers={**headers(), "Idempotency-Key": "html-ticket"})
+        assert blocked.status_code == 422 and blocked.json()["error"]["code"] == "PREVIEW_UNSUPPORTED"
+        media.write_bytes(media.read_bytes() + b"changed")
+        assert client.get(f"/api/v1/previews/{ticket}").status_code == 409

@@ -1,0 +1,1337 @@
+{
+  "schema_version": 1,
+  "license": "CC0-1.0; generated entirely by this project script without third-party or user content",
+  "generator": "scripts/create_acceptance_samples.py",
+  "purpose": "technical parser/classifier smoke set; not a claim of real-world semantic quality",
+  "case_count": 120,
+  "modalities": {
+    "text": 20,
+    "image": 20,
+    "pdf": 20,
+    "office": 20,
+    "audio": 20,
+    "video": 20
+  },
+  "cases": [
+    {
+      "id": "text-01",
+      "relative_path": "text/text-01.txt",
+      "sha256": "8dc63e91ef0cb762dde7784c2b81a3934ffe5cb0bd6c149a2c7a11d951bf1f78",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-02",
+      "relative_path": "text/text-02.txt",
+      "sha256": "6c738feaf7ddaad8fe976a396660fc5c962f5177e785b1f5a5e01bd9467924a4",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-03",
+      "relative_path": "text/text-03.txt",
+      "sha256": "c9ef1f8ae2812221a179f25f98b2103cd1b3840544919c3755abdc9f3f1e17fa",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-04",
+      "relative_path": "text/text-04.txt",
+      "sha256": "a8f8e37a75f5e008ab332adab2d1d2a02531e3c68f717f5e68a8d9e6f80cee50",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-05",
+      "relative_path": "text/text-05.txt",
+      "sha256": "82f3aba7bf1e91c4a3ad0cb0b7980db3dce2688dedc9979957ba033293710345",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-06",
+      "relative_path": "text/text-06.txt",
+      "sha256": "b9b7006f4eedba2acd8f73b178a38e624bbe4b571d15936a457626db2e44123d",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-07",
+      "relative_path": "text/text-07.txt",
+      "sha256": "7d20311471979b82d2ff90c0518b0c0a349bd19a978596c8ecf1e7da393b9e0b",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-08",
+      "relative_path": "text/text-08.txt",
+      "sha256": "1ca6b1a9d44cff81ca5f868d578ecff4fcbc2371f018baee8a3b2a4a04ad7c21",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-09",
+      "relative_path": "text/text-09.txt",
+      "sha256": "05ef4c32cf03536be744fec250c9cdbd16a69a4e24aa9e8078d6d325d7ef7b58",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-10",
+      "relative_path": "text/text-10.txt",
+      "sha256": "a3dc69cea00d4ba4f2ea4e74fddea4f9e0cd6d3b451f8b02a6b5e6a0e25fa673",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-11",
+      "relative_path": "text/text-11.txt",
+      "sha256": "114751d3458680808cfe7d507314182feb91c094e3007fc957df52d1de8b132f",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-12",
+      "relative_path": "text/text-12.txt",
+      "sha256": "0ebd4482020eee16a5936c73c66ddb212e1c53c619f0fdbfe658b4b35611d971",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-13",
+      "relative_path": "text/text-13.txt",
+      "sha256": "f10495bddd8e924b17b57bfc49aaddf3319ff04a460d76d5fe02a5355c0556e1",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-14",
+      "relative_path": "text/text-14.txt",
+      "sha256": "7e59551d2b2abe114a464d9d827f16e0b65c70dcea2d24856ff8dd15ff2dd36d",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-15",
+      "relative_path": "text/text-15.txt",
+      "sha256": "6fc34cdfcce6ffe66acfdc2727e07b2a2365cb860a8165bb8782806341046aae",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-16",
+      "relative_path": "text/text-16.txt",
+      "sha256": "26b983265025a9ea2c1ecacc60d954fa999772d259f20ec8ff42c3fc2fb8a919",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-17",
+      "relative_path": "text/text-17.txt",
+      "sha256": "cecc7ebed39a0ba3636f7a15775595fc4a21fb086d5362fa777e805321c6a11a",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-18",
+      "relative_path": "text/text-18.txt",
+      "sha256": "32b487ae2a0020f9565662425850536bba0b50a4070ce087239f032e646b4501",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-19",
+      "relative_path": "text/text-19.txt",
+      "sha256": "48ebb5d5e0abe60d163c63b59004fbe3ced2f912a2162ca223a1ef71e1347132",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "text-20",
+      "relative_path": "text/text-20.txt",
+      "sha256": "338bb16b735908252df1a1d41c50d6dfaddc8248ea2e0a85398e37a7e9c8739c",
+      "size_bytes": 104,
+      "acceptable_category_ids": [
+        "universal.types.text"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-01",
+      "relative_path": "image/image-01.png",
+      "sha256": "7530c5bb591149ad53add170ad3122bf5a19cd5a3842bd11f1aa042c0e7eec26",
+      "size_bytes": 2703,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-02",
+      "relative_path": "image/image-02.png",
+      "sha256": "14093cfff5a44add190b567aee12f90729385d6669d704d6e078c14d834aa979",
+      "size_bytes": 2810,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-03",
+      "relative_path": "image/image-03.png",
+      "sha256": "46295eece62787fde692fc8f9c669575f4606c9592e9a59ace284cae20227e71",
+      "size_bytes": 2808,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-04",
+      "relative_path": "image/image-04.png",
+      "sha256": "f2f7f1b3f79a417caf1cbaa6fba37edc692769191f24c810843ff84f86ef0192",
+      "size_bytes": 2723,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-05",
+      "relative_path": "image/image-05.png",
+      "sha256": "f973af0ae917f16c90a783ce2d5846d27849bac24084e3c14b9894cfbd8052a9",
+      "size_bytes": 2804,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-06",
+      "relative_path": "image/image-06.png",
+      "sha256": "26d4c3cbabe56fef1a711d6899c45322afed653608af3dc840241d100be4be20",
+      "size_bytes": 2800,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-07",
+      "relative_path": "image/image-07.png",
+      "sha256": "12ae4d9acc0f35be250eb8a81f7a29d127155bd17dc6978c38bd350322daf595",
+      "size_bytes": 2735,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-08",
+      "relative_path": "image/image-08.png",
+      "sha256": "36b1c78c9a5b443c01882bd73394890e93e70a5d838d0acefc2fa79054dcfc52",
+      "size_bytes": 2707,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-09",
+      "relative_path": "image/image-09.png",
+      "sha256": "643a8bbc0914e009960fc358b23edf4cfcdd8799d497fccdfe91df1523538d2c",
+      "size_bytes": 2774,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-10",
+      "relative_path": "image/image-10.png",
+      "sha256": "9783fd443b62b7b34c9dbc1cb26c3533728e3719edae69d894bfa0052fe33550",
+      "size_bytes": 2724,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-11",
+      "relative_path": "image/image-11.png",
+      "sha256": "cf95d16a82855ec22391c5dcd854f66ab55aae0b76eb9e81fb4df93a7654972e",
+      "size_bytes": 2586,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-12",
+      "relative_path": "image/image-12.png",
+      "sha256": "f9de921bc7a3645867e24d876daa0626d6d56e1727808e6093b1e00c1f7b9325",
+      "size_bytes": 2723,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-13",
+      "relative_path": "image/image-13.png",
+      "sha256": "9c6c7a0abcbaa91492c42b90a50ce05b420d6699fa6410c1eff3fc9b3707aab9",
+      "size_bytes": 2714,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-14",
+      "relative_path": "image/image-14.png",
+      "sha256": "e4d442f0eff4a4894839e8a360224a17a650fd42efd80a592a96ed750d4e1cc7",
+      "size_bytes": 2623,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-15",
+      "relative_path": "image/image-15.png",
+      "sha256": "a5b8026217c28b0fe3e868c710314b35d94685020234cc3e6a73ef20f27046a8",
+      "size_bytes": 2710,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-16",
+      "relative_path": "image/image-16.png",
+      "sha256": "8932bd2b248093b8ebcd780d65a3cbe0cc73bacda9f51924ff99812d59fad8e2",
+      "size_bytes": 2696,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-17",
+      "relative_path": "image/image-17.png",
+      "sha256": "a9e905413f57e8f0111262b1955e485d5423909b8fbcb8926804d4be6e143b32",
+      "size_bytes": 2585,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-18",
+      "relative_path": "image/image-18.png",
+      "sha256": "51a5bef6d192995c25cd367f71d57f65a6cd005b110f1098424f2697b926efd9",
+      "size_bytes": 2727,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-19",
+      "relative_path": "image/image-19.png",
+      "sha256": "ecaddadc7fee6014242b1183b39fc4e0c9903eb1824d78c3742c8321b953adc4",
+      "size_bytes": 2748,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "image-20",
+      "relative_path": "image/image-20.png",
+      "sha256": "922482b166bdc39eb2a5fa53ffb3f4dbea5f96968dd31d9e7bc6b65522abc126",
+      "size_bytes": 2811,
+      "acceptable_category_ids": [
+        "universal.types.image"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-01",
+      "relative_path": "pdf/pdf-01.pdf",
+      "sha256": "deff58418c25cb9e67b0c4164df58a6a605f3f7e29cb3dfbd94a0f57e38cd1d5",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-02",
+      "relative_path": "pdf/pdf-02.pdf",
+      "sha256": "28843842d1799b6bcc35d2ebe70fee5e1dc2ef12e2f5964d61ba6682d387da43",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-03",
+      "relative_path": "pdf/pdf-03.pdf",
+      "sha256": "0637b909a7bb870c3a39b533e3294fe7eef7a62a2310dce0a58bf223d8495df4",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-04",
+      "relative_path": "pdf/pdf-04.pdf",
+      "sha256": "b3c7aa1f94bf8fc950a7425c4862abf708b77005ff94f6eeeb31c2eb65cae0d2",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-05",
+      "relative_path": "pdf/pdf-05.pdf",
+      "sha256": "d943129a4777a91e3f734252d1bf04276bab620aea97586fa5df831d96c22577",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-06",
+      "relative_path": "pdf/pdf-06.pdf",
+      "sha256": "7adaf3458fb65b18965a2d780d983db6f030a2d7bf26f4ea571019a930a5fc87",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-07",
+      "relative_path": "pdf/pdf-07.pdf",
+      "sha256": "4fb0c1bfbcee132242a6e95806f758c9cbfa47329db7df38e9d279048d2fae19",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-08",
+      "relative_path": "pdf/pdf-08.pdf",
+      "sha256": "4e59a3d380ddef35433898e693af85574b0bc721b4901eedb4709d4e12813959",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-09",
+      "relative_path": "pdf/pdf-09.pdf",
+      "sha256": "26c90b48c5249653716f3f9cfabbde44c062acca2328ac3fdde4a750d79d02a9",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-10",
+      "relative_path": "pdf/pdf-10.pdf",
+      "sha256": "730805087298bbf120bd2c3f37bb0ea6ff2d44c70da2243aca07529050401c78",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-11",
+      "relative_path": "pdf/pdf-11.pdf",
+      "sha256": "6b0d7d2435e007ae0a881d3d5deb95a5574758e85d5cbbcd88eba25e4a0e5ce6",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-12",
+      "relative_path": "pdf/pdf-12.pdf",
+      "sha256": "641f5152e22a77b95ec7263fe8a141663ba5705fb23a5bf0712a2ad55999972c",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-13",
+      "relative_path": "pdf/pdf-13.pdf",
+      "sha256": "891ec709f13855db46abe02865267d1ae90a471dba72a8e53576073895bb7156",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-14",
+      "relative_path": "pdf/pdf-14.pdf",
+      "sha256": "924a9cd9fe9643f8c26a9c3330537759ef144f318a06ace072fea801ddae95ac",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-15",
+      "relative_path": "pdf/pdf-15.pdf",
+      "sha256": "59d114d159e6203bab6d57a6081980ebb3c7163358f4c54625ba48dfb7a31660",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-16",
+      "relative_path": "pdf/pdf-16.pdf",
+      "sha256": "ecc649c97ac4d636cc83016a8f38e89b75e017e6ba9c36ceb8d982974bc97fb0",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-17",
+      "relative_path": "pdf/pdf-17.pdf",
+      "sha256": "20e9773c3f903ec2afde3d8e39fbc9ab8ac56935bb38b8c5b92ebeb7ca98a85e",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-18",
+      "relative_path": "pdf/pdf-18.pdf",
+      "sha256": "7338597145c17ad848c8042c338b2a1dbedcc5e10e672dac3017ecd0d8b5216f",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-19",
+      "relative_path": "pdf/pdf-19.pdf",
+      "sha256": "6932423518ee1d9494e36e6927f6cc9a573f302208d0ad6fb689726190b54139",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "pdf-20",
+      "relative_path": "pdf/pdf-20.pdf",
+      "sha256": "5753bc4ac9e029012137356341a15fc2a31890f47dd9f40423976e3362875b5b",
+      "size_bytes": 1428,
+      "acceptable_category_ids": [
+        "universal.types.pdf"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-01",
+      "relative_path": "office/office-01.docx",
+      "sha256": "e16719f2654c3cd840a7e2d99f465578f5b7061f8952440b426935f2b7231070",
+      "size_bytes": 36653,
+      "acceptable_category_ids": [
+        "universal.types.word"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-02",
+      "relative_path": "office/office-02.pptx",
+      "sha256": "08fd86da253742cb1fa00fa6e16b56382f9c4c60044af54137dfee0e922c6215",
+      "size_bytes": 28280,
+      "acceptable_category_ids": [
+        "universal.types.slides"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-03",
+      "relative_path": "office/office-03.xlsx",
+      "sha256": "d4a22cca8a4864a5ada0523f1db60cbc8f9a3c22a4656637c65d180dcd83b514",
+      "size_bytes": 4893,
+      "acceptable_category_ids": [
+        "universal.types.sheet"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-04",
+      "relative_path": "office/office-04.docx",
+      "sha256": "8ec8f7a73954de50eb917ac369c3ba760ef585f2d93f97967da5fdd83e6df2f7",
+      "size_bytes": 36653,
+      "acceptable_category_ids": [
+        "universal.types.word"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-05",
+      "relative_path": "office/office-05.pptx",
+      "sha256": "310150efa7059ef0a25a01438f90a7bb5ecf65909ed9795e3beba51758316c07",
+      "size_bytes": 28280,
+      "acceptable_category_ids": [
+        "universal.types.slides"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-06",
+      "relative_path": "office/office-06.xlsx",
+      "sha256": "ed959f2829f597343ba73aa9b5ebf4013e917266787748b27a09bbb7c666926e",
+      "size_bytes": 4892,
+      "acceptable_category_ids": [
+        "universal.types.sheet"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-07",
+      "relative_path": "office/office-07.docx",
+      "sha256": "78305c5be1f60fbe5101bc53c80c8548f55370125a2f586bc581e44380f588c9",
+      "size_bytes": 36654,
+      "acceptable_category_ids": [
+        "universal.types.word"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-08",
+      "relative_path": "office/office-08.pptx",
+      "sha256": "ded5d36a815f667bc9bc953609fa80cb4395d093370612589c5d7e399758ea4e",
+      "size_bytes": 28280,
+      "acceptable_category_ids": [
+        "universal.types.slides"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-09",
+      "relative_path": "office/office-09.xlsx",
+      "sha256": "e05788e37ee93899dcbf6a276410c7c7abaa7f50312c019fe138e3bb6476337a",
+      "size_bytes": 4893,
+      "acceptable_category_ids": [
+        "universal.types.sheet"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-10",
+      "relative_path": "office/office-10.docx",
+      "sha256": "312e1d406201a54938f2c47a72faf2301da4fb77608fa73de148334c456d21e9",
+      "size_bytes": 36653,
+      "acceptable_category_ids": [
+        "universal.types.word"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-11",
+      "relative_path": "office/office-11.pptx",
+      "sha256": "82ffd298d5e1a73a1d07eb41824b4007a8a2810b46687a317916605ec2a5c0ef",
+      "size_bytes": 28280,
+      "acceptable_category_ids": [
+        "universal.types.slides"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-12",
+      "relative_path": "office/office-12.xlsx",
+      "sha256": "c248658c49438c988b5d22c1c9b86e2354450ff4ee3293ed381245561ed0b881",
+      "size_bytes": 4890,
+      "acceptable_category_ids": [
+        "universal.types.sheet"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-13",
+      "relative_path": "office/office-13.docx",
+      "sha256": "3157acb5336a9a03c032e5f9aebc2022c6c198e34d6fd633e51bc22903977e86",
+      "size_bytes": 36653,
+      "acceptable_category_ids": [
+        "universal.types.word"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-14",
+      "relative_path": "office/office-14.pptx",
+      "sha256": "28b9f0cd5bfdc98860a38e833ba327bd26846ca1ddee0b263d56c09b62186871",
+      "size_bytes": 28280,
+      "acceptable_category_ids": [
+        "universal.types.slides"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-15",
+      "relative_path": "office/office-15.xlsx",
+      "sha256": "423c95be18a1a7a6b1cb9dce179c77688f122d00985fccaa4519631854415bf9",
+      "size_bytes": 4890,
+      "acceptable_category_ids": [
+        "universal.types.sheet"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-16",
+      "relative_path": "office/office-16.docx",
+      "sha256": "089b93369a9c94fc06551325ec753d2c25d21c9bec8152f43656d5bc80d6f233",
+      "size_bytes": 36653,
+      "acceptable_category_ids": [
+        "universal.types.word"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-17",
+      "relative_path": "office/office-17.pptx",
+      "sha256": "20ea843c19f0ba82c4ab63e21fa6eb310dfe805aef7a99f16d5c26e586d1c3e1",
+      "size_bytes": 28280,
+      "acceptable_category_ids": [
+        "universal.types.slides"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-18",
+      "relative_path": "office/office-18.xlsx",
+      "sha256": "8597bb46e654e75837fd5972b8fc335ff31f4cbe2b0b8b2d67ceea371cef90a5",
+      "size_bytes": 4890,
+      "acceptable_category_ids": [
+        "universal.types.sheet"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-19",
+      "relative_path": "office/office-19.docx",
+      "sha256": "330cd014fe5d2b7c3eb4552ae3ca8b80e4d057e5d1307d97bc748e8544537620",
+      "size_bytes": 36654,
+      "acceptable_category_ids": [
+        "universal.types.word"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "office-20",
+      "relative_path": "office/office-20.pptx",
+      "sha256": "ffa35bf95092f9958ff13aa27990d63624e72143cd825d6cc706c7f27d8e1902",
+      "size_bytes": 28280,
+      "acceptable_category_ids": [
+        "universal.types.slides"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-01",
+      "relative_path": "audio/audio-01.wav",
+      "sha256": "ffc52dbf1922fdf03bfc907d6dc554d8b6c43c9fa39aa715d94c3f9f23dca03c",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-02",
+      "relative_path": "audio/audio-02.wav",
+      "sha256": "c9db26d824821a82b3d1de0c4878697fbe3c98a20528d7133272aca0782a3951",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-03",
+      "relative_path": "audio/audio-03.wav",
+      "sha256": "db0a4c563ac7671895e0a0ceb1da14af0039dac865d13f322ce823ca2da06827",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-04",
+      "relative_path": "audio/audio-04.wav",
+      "sha256": "17b824834c027c291e345ef9ae3865d02530678b629dbd84e4795f9aa65fa88c",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-05",
+      "relative_path": "audio/audio-05.wav",
+      "sha256": "89ac0339bc93c40355546dbab680ca8d4baa03eb8c379901de3f041985e1d0c0",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-06",
+      "relative_path": "audio/audio-06.wav",
+      "sha256": "102c5d703cd7ec1c78ab72b0c949bcfb8fc34a6bb14ee342d784fdf080684abe",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-07",
+      "relative_path": "audio/audio-07.wav",
+      "sha256": "30f41db47654cd940367c9c793c98cb9e488a6d12ba8b9f548633232abfc9b9c",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-08",
+      "relative_path": "audio/audio-08.wav",
+      "sha256": "46dcf8cf675b2c14fa24995d98dffc2a1a62d44c7439c61c9f7a0e54a9c0af4e",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-09",
+      "relative_path": "audio/audio-09.wav",
+      "sha256": "18924bc747bde7b5e89c141f3e7d6a7216a3e635e225a93f756185581913f217",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-10",
+      "relative_path": "audio/audio-10.wav",
+      "sha256": "3722664b0f816e972948c3544bc68884ed4e5645cb81eaa235ac8c5e7260ba7d",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-11",
+      "relative_path": "audio/audio-11.wav",
+      "sha256": "f2027eb78802c97b5a7b11abb947d01e5bf26d859874d23722f6cd289620c044",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-12",
+      "relative_path": "audio/audio-12.wav",
+      "sha256": "fa7430440b64d3e6f86cc8f924f8d92f510e3fb4d3ccc51ae6f1a39b81e8579d",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-13",
+      "relative_path": "audio/audio-13.wav",
+      "sha256": "bbdd3160c4f45854b9a1aa5ff953ca6c91cb050d61f0bf709cd7e1334c780304",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-14",
+      "relative_path": "audio/audio-14.wav",
+      "sha256": "2afabc592aff4817e40af2a6c256b19847ccb25becf8f39cc0370d6fbb801baa",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-15",
+      "relative_path": "audio/audio-15.wav",
+      "sha256": "54012fa956f5079dec2cda640dd971f4e9b05cb1b43cb47546be36c4b39c68f8",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-16",
+      "relative_path": "audio/audio-16.wav",
+      "sha256": "b78a91ef211e5d3e7e3235a2b3c71180315efa8af7dc96b3bba4ef62750775ce",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-17",
+      "relative_path": "audio/audio-17.wav",
+      "sha256": "4b51b809d150d08dca4e82899192597e888f4874440e2ad38fc1ebb326350b2f",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-18",
+      "relative_path": "audio/audio-18.wav",
+      "sha256": "c1abf17dce58fc241f122333a2e5d5bc40ec7e496f8774f7312e0b0738f2de00",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-19",
+      "relative_path": "audio/audio-19.wav",
+      "sha256": "3f5eff20341b01038b370fe9d32d0c0d88332a713ba7b085ae0abb87ffd48e5a",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "audio-20",
+      "relative_path": "audio/audio-20.wav",
+      "sha256": "36478fc85e1f1cea0404582110e7221fbf777a2254bdb934488eb28f5e85636d",
+      "size_bytes": 8044,
+      "acceptable_category_ids": [
+        "universal.types.audio"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-01",
+      "relative_path": "video/video-01.mp4",
+      "sha256": "61e97dcf16053691939c273b89cca342de06dd746d5da16dfd18e0de61e91614",
+      "size_bytes": 9289,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-02",
+      "relative_path": "video/video-02.mp4",
+      "sha256": "1b68de70fb8a18229cfd198909889f49f1b2968dda6761ae88ae9cea06f24760",
+      "size_bytes": 9265,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-03",
+      "relative_path": "video/video-03.mp4",
+      "sha256": "427cf5b4c94d93fe1b8a70ee3b6be1376ff80a18f09e68b3daafbd1ab5dcf31f",
+      "size_bytes": 9167,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-04",
+      "relative_path": "video/video-04.mp4",
+      "sha256": "4f25a7506e2a0aea917856cf6bd8aa27d29ff061894b9f8992b191983d9801f1",
+      "size_bytes": 9069,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-05",
+      "relative_path": "video/video-05.mp4",
+      "sha256": "4be9753507dc1158a7a916349a63cf268c9e78479895a61ef70104fcc2ac5df3",
+      "size_bytes": 8974,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-06",
+      "relative_path": "video/video-06.mp4",
+      "sha256": "059379e8da1d09e6bdbcee19135c92d5c5294a104ca90f86cbc39c8172dfb39c",
+      "size_bytes": 8990,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-07",
+      "relative_path": "video/video-07.mp4",
+      "sha256": "57f6a5fac3d6f423396d910693d7b1521bff42f94a38d57f141886e192f5bd7e",
+      "size_bytes": 8705,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-08",
+      "relative_path": "video/video-08.mp4",
+      "sha256": "b03bde43977f40c28cd757963785e83fabebee750d75daf45d011328a2ed68c9",
+      "size_bytes": 8953,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-09",
+      "relative_path": "video/video-09.mp4",
+      "sha256": "5f247f0939c8e545d37926f7501ed63f00a00baf069960d9fb1bdd007bf94329",
+      "size_bytes": 8686,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-10",
+      "relative_path": "video/video-10.mp4",
+      "sha256": "fa22c39fdab41e0e422ed5727b7af0f3b0f67e45aadc92b6ffad1433b1d3dc2b",
+      "size_bytes": 8765,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-11",
+      "relative_path": "video/video-11.mp4",
+      "sha256": "ecb7fd5fd90b0f215399e9f5771fbf07445c0168d3f9558bb3466f4e9c3b1fde",
+      "size_bytes": 8756,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-12",
+      "relative_path": "video/video-12.mp4",
+      "sha256": "4815108867889ad9878c083fc8c19c23686fb6029b862923de9a93d6d4d3eccf",
+      "size_bytes": 8831,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-13",
+      "relative_path": "video/video-13.mp4",
+      "sha256": "a87b8194252d6f0c6407c5d06a60eb90a90413b8c0d34a8fc1cda5fd8b632d8b",
+      "size_bytes": 8795,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-14",
+      "relative_path": "video/video-14.mp4",
+      "sha256": "1f533aaac5bda3437a570532aff1953603d609f0e0911913e30ce7114a0bf5d9",
+      "size_bytes": 8808,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-15",
+      "relative_path": "video/video-15.mp4",
+      "sha256": "6a6ad47af28d77448d8ba2ac06a3155a6c9e199d363f6c65181a741c92f086cb",
+      "size_bytes": 8803,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-16",
+      "relative_path": "video/video-16.mp4",
+      "sha256": "2c85d3950c8ff98861f225087e2ee4c7a5fbbec6aeed581ff1747af10035e48d",
+      "size_bytes": 8860,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-17",
+      "relative_path": "video/video-17.mp4",
+      "sha256": "18a9f2f9fcaba6d31f94d9c56b4c9b0497c54a098b647d0260812c21e9e2db78",
+      "size_bytes": 8648,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-18",
+      "relative_path": "video/video-18.mp4",
+      "sha256": "a1327e1cef3e59ae042d39d341a38d30c1666bd7247dce9d82a95de1278a1fe1",
+      "size_bytes": 8954,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-19",
+      "relative_path": "video/video-19.mp4",
+      "sha256": "d3b9b7ba4ef92de2c4e8b649c569b0dd7d487a1a08a0a01b211ec545ea92cc96",
+      "size_bytes": 8769,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    },
+    {
+      "id": "video-20",
+      "relative_path": "video/video-20.mp4",
+      "sha256": "9d13c73aa9ed058af53290317035ed38cdf554f388da2bf3091fe0b1c5c34c88",
+      "size_bytes": 9053,
+      "acceptable_category_ids": [
+        "universal.types.video"
+      ],
+      "should_abstain": false,
+      "evidence_expectation": "locally parsed type or container evidence"
+    }
+  ]
+}

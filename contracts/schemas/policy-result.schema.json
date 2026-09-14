@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "goal": {
+      "type": "string",
+      "maxLength": 1500
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "modality",
+          "purpose",
+          "topic",
+          "scene",
+          "event",
+          "language"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 6,
+      "uniqueItems": true
+    },
+    "allowed_labels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 60
+      },
+      "maxItems": 200
+    },
+    "exclusion_hints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "maxItems": 20
+    },
+    "priorities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "when": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "prefer_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 60
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "when",
+          "prefer_label"
+        ]
+      },
+      "maxItems": 20
+    },
+    "evidence_requirements": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 300
+      },
+      "maxItems": 20
+    },
+    "forbidden_inferences": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "maxItems": 20
+    },
+    "unknown_policy": {
+      "const": "abstain"
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 300
+      },
+      "maxItems": 20
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "field",
+          "message"
+        ]
+      },
+      "maxItems": 20
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "goal",
+    "dimensions",
+    "allowed_labels",
+    "exclusion_hints",
+    "priorities",
+    "evidence_requirements",
+    "forbidden_inferences",
+    "unknown_policy",
+    "assumptions",
+    "conflicts"
+  ]
+}

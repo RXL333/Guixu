@@ -1,0 +1,256 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "file_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "modality": {
+      "type": "string",
+      "enum": [
+        "image",
+        "text",
+        "document",
+        "audio",
+        "video",
+        "other"
+      ]
+    },
+    "document_kind": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "pdf",
+        "docx",
+        "pptx",
+        "xlsx",
+        null
+      ]
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "content_summary": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "summary_origin": {
+      "type": "string",
+      "enum": [
+        "deterministic",
+        "model",
+        "none"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "metadata",
+              "extracted_text",
+              "ocr",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 12000
+          },
+          "locator": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "slide": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sheet": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "maxItems": 2
+              },
+              "paragraph": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "start_sec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end_sec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "frame_id": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "field": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "additionalProperties": false
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "origin": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "text",
+          "locator",
+          "quality",
+          "origin"
+        ]
+      },
+      "maxItems": 300
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "metadata_only",
+            "sampled",
+            "full"
+          ]
+        },
+        "total_pages": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "sampled_pages": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uniqueItems": true
+        },
+        "total_duration_sec": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "sampled_intervals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "start_sec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end_sec": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "start_sec",
+              "end_sec"
+            ]
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "total_pages",
+        "sampled_pages",
+        "total_duration_sec",
+        "sampled_intervals",
+        "truncated"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 300
+      },
+      "maxItems": 40
+    },
+    "capabilities_used": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "uniqueItems": true
+    },
+    "parser_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "file_id",
+    "modality",
+    "document_kind",
+    "metadata",
+    "content_summary",
+    "summary_origin",
+    "evidence",
+    "coverage",
+    "warnings",
+    "capabilities_used",
+    "parser_version"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:guixu:file-profile:v1",
+  "title": "FileProfile"
+}

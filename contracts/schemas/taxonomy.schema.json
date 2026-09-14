@@ -1,0 +1,142 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "taxonomy_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "scope_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "template",
+        "fixed",
+        "auto"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "approved",
+        "superseded"
+      ]
+    },
+    "tree_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$"
+          },
+          "parent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "selectable": {
+            "type": "boolean"
+          },
+          "definition": {
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "exclude": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "evidence_required_any": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "metadata",
+                    "extracted_text",
+                    "ocr",
+                    "visual_caption",
+                    "transcript",
+                    "subtitle",
+                    "user_context"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "tie_breaker": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "include",
+              "exclude",
+              "evidence_required_any",
+              "tie_breaker"
+            ]
+          },
+          "is_fallback": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "category_id",
+          "parent_id",
+          "name",
+          "selectable",
+          "definition",
+          "is_fallback"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 200
+    },
+    "policy": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "taxonomy_id",
+    "scope_id",
+    "version",
+    "source",
+    "status",
+    "tree_hash",
+    "nodes",
+    "policy"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:guixu:taxonomy:v1",
+  "title": "Taxonomy"
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "license": "Deterministically generated test fixtures; no third-party user content",
+  "generated_at_test_runtime": true,
+  "cases": [
+    {"id": "PA01", "formats": ["txt", "md", "json", "csv"], "expected": "ready with positioned text evidence"},
+    {"id": "PA02", "formats": ["text-pdf", "image-pdf", "encrypted-pdf"], "expected": "text extraction, verified local OCR, explicit encrypted partial"},
+    {"id": "PA03", "formats": ["docx", "pptx"], "expected": "table, paragraph, slide title evidence"},
+    {"id": "PA04", "formats": ["xlsx"], "expected": "read-only values and formulas never executed"},
+    {"id": "PA05", "formats": ["jpeg"], "expected": "OCR, orientation-safe thumbnail, EXIF stripped and GPS omitted"},
+    {"id": "PA06", "formats": ["gif"], "expected": "first, middle and final frame sample"},
+    {"id": "PA07", "formats": ["wav-silence"], "expected": "real metadata and explicit ASR unavailable; no invented transcript"},
+    {"id": "PA08", "formats": ["generated-mp4"], "expected": "real playable container; explicit ffprobe/ffmpeg unavailable on this host"},
+    {"id": "PA09", "formats": ["20-page-pdf"], "expected": "deterministic stratified page coverage"},
+    {"id": "PA10", "formats": ["oversized-png", "corrupt-pdf", "encrypted-pdf", "compressed-docx"], "expected": "bounded failure or partial result"},
+    {"id": "PA11", "formats": ["component-manifest"], "expected": "missing state and validated import without executing scripts"},
+    {"id": "PA12", "formats": ["sleeping-worker"], "expected": "timeout and kill only owned process tree"}
+  ]
+}

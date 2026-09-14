@@ -1,0 +1,32 @@
+{
+  "name": "guixu-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "typecheck": "vue-tsc -b",
+    "test": "vitest",
+    "test:run": "vitest --run"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "6.0.2",
+    "lucide-vue-next": "0.544.0",
+    "naive-ui": "2.42.0",
+    "pinia": "3.0.3",
+    "vite": "7.1.5",
+    "vue": "3.5.21",
+    "vue-router": "4.5.1"
+  },
+  "devDependencies": {
+    "@testing-library/vue": "8.1.0",
+    "@types/node": "24.3.1",
+    "@vitest/coverage-v8": "3.2.4",
+    "jsdom": "26.1.0",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4",
+    "vue-tsc": "3.0.6"
+  }
+}
+

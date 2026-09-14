@@ -1,0 +1,4904 @@
+{
+  "schema_version": 1,
+  "templates": [
+    {
+      "template_id": "image.content",
+      "version": 1,
+      "name": "图片内容通用",
+      "description": "回答图片主要呈现什么，而不是拍摄于哪里。",
+      "modalities": [
+        "image"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "image.content.people",
+          "parent_id": null,
+          "name": "人物",
+          "selectable": true,
+          "definition": {
+            "include": "人物为主要主体的摄影；不含证件扫描、聊天截图或插画。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.landscape",
+          "parent_id": null,
+          "name": "自然风景",
+          "selectable": true,
+          "definition": {
+            "include": "山川、森林、天空等自然环境为主体，人物仅为背景。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.animals",
+          "parent_id": null,
+          "name": "动物",
+          "selectable": true,
+          "definition": {
+            "include": "动物为主要视觉主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.food",
+          "parent_id": null,
+          "name": "食物",
+          "selectable": true,
+          "definition": {
+            "include": "食材、菜品或餐食为主要主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.architecture",
+          "parent_id": null,
+          "name": "建筑",
+          "selectable": true,
+          "definition": {
+            "include": "建筑外观或空间结构为主要主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.transport",
+          "parent_id": null,
+          "name": "交通工具",
+          "selectable": true,
+          "definition": {
+            "include": "汽车、火车、飞机、船等为主要主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.objects",
+          "parent_id": null,
+          "name": "商品物品",
+          "selectable": true,
+          "definition": {
+            "include": "具体商品、器材或静物为主体，不满足更专门类别。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.screenshots",
+          "parent_id": null,
+          "name": "截图",
+          "selectable": true,
+          "definition": {
+            "include": "有可见界面、系统元素或可靠截图证据的图像。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.documents",
+          "parent_id": null,
+          "name": "文档照片",
+          "selectable": true,
+          "definition": {
+            "include": "拍摄或扫描的纸张、票据、证件、书页。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.illustration",
+          "parent_id": null,
+          "name": "表情插画",
+          "selectable": true,
+          "definition": {
+            "include": "以绘制内容、表情、漫画或梗图为主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.content.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已充分理解，但不属于以上主体类型。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "人物居中的普通合影→人物",
+          "带明显手机UI的截图→截图"
+        ],
+        "negative": [
+          "无法辨认的严重模糊照片不能归其他。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "image.usage",
+      "version": 1,
+      "name": "图片用途",
+      "description": "根据可见用途或明确用户上下文归档。",
+      "modalities": [
+        "image"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "image.usage.life",
+          "parent_id": null,
+          "name": "生活记录",
+          "selectable": true,
+          "definition": {
+            "include": "有明确日常生活记录证据。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.usage.study",
+          "parent_id": null,
+          "name": "学习资料",
+          "selectable": true,
+          "definition": {
+            "include": "课程、笔记、习题或教学信息。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.usage.work",
+          "parent_id": null,
+          "name": "工作资料",
+          "selectable": true,
+          "definition": {
+            "include": "项目协作、工作进展或业务材料。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.usage.receipt",
+          "parent_id": null,
+          "name": "票据凭证",
+          "selectable": true,
+          "definition": {
+            "include": "发票、收据、订单等凭证性内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.usage.chat",
+          "parent_id": null,
+          "name": "聊天素材",
+          "selectable": true,
+          "definition": {
+            "include": "用于聊天的表情、截图或交流素材。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.usage.design",
+          "parent_id": null,
+          "name": "设计素材",
+          "selectable": true,
+          "definition": {
+            "include": "海报、插画、界面草稿等设计素材。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.usage.product",
+          "parent_id": null,
+          "name": "商品展示",
+          "selectable": true,
+          "definition": {
+            "include": "商品主体与展示用途明确。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.usage.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "用途已知，但未落入上述类别。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "拍摄的课程笔记→学习资料",
+          "清晰发票照片→票据凭证"
+        ],
+        "negative": [
+          "没有用途线索的通用风景不能强行归工作。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "image.scene",
+      "version": 1,
+      "name": "图片场景",
+      "description": "按主要可见空间场景分类，不识别具体城市。",
+      "modalities": [
+        "image"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "image.scene.nature",
+          "parent_id": null,
+          "name": "自然山野",
+          "selectable": true,
+          "definition": {
+            "include": "山林、草地、荒野等自然陆地。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.scene.water",
+          "parent_id": null,
+          "name": "海滨水域",
+          "selectable": true,
+          "definition": {
+            "include": "海岸、湖泊、河流等水域为主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.scene.urban",
+          "parent_id": null,
+          "name": "城市街景",
+          "selectable": true,
+          "definition": {
+            "include": "城市道路、街区、公共街景。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.scene.indoor",
+          "parent_id": null,
+          "name": "室内空间",
+          "selectable": true,
+          "definition": {
+            "include": "室内居住、办公或公共空间。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.scene.campus",
+          "parent_id": null,
+          "name": "校园场景",
+          "selectable": true,
+          "definition": {
+            "include": "明确校园标识、教学环境或用户指定校园背景。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.scene.sport",
+          "parent_id": null,
+          "name": "运动场地",
+          "selectable": true,
+          "definition": {
+            "include": "球场、赛道、运动馆等。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.scene.stage",
+          "parent_id": null,
+          "name": "舞台活动",
+          "selectable": true,
+          "definition": {
+            "include": "舞台、演出或明显活动布置。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.scene.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解而未匹配的空间场景。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "清晰海岸全景→海滨水域",
+          "清晰室内客厅→室内空间"
+        ],
+        "negative": [
+          "仅凭海边外观不能命名为青岛。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "image.event",
+      "version": 1,
+      "name": "图片活动",
+      "description": "按活动和用途证据分类。",
+      "modalities": [
+        "image"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "image.event.daily",
+          "parent_id": null,
+          "name": "日常记录",
+          "selectable": true,
+          "definition": {
+            "include": "无专门活动特征的日常摄影。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.event.travel",
+          "parent_id": null,
+          "name": "旅行游览",
+          "selectable": true,
+          "definition": {
+            "include": "景点游览、出行或明确旅行上下文。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.event.party",
+          "parent_id": null,
+          "name": "聚会庆祝",
+          "selectable": true,
+          "definition": {
+            "include": "生日、庆祝、聚餐或聚会明确。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.event.campus",
+          "parent_id": null,
+          "name": "校园活动",
+          "selectable": true,
+          "definition": {
+            "include": "社团、校园演出等明确活动。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.event.work",
+          "parent_id": null,
+          "name": "工作活动",
+          "selectable": true,
+          "definition": {
+            "include": "工作会议、展会或团队工作活动。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.event.sports",
+          "parent_id": null,
+          "name": "体育运动",
+          "selectable": true,
+          "definition": {
+            "include": "人物参与体育运动。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.event.food",
+          "parent_id": null,
+          "name": "美食探店",
+          "selectable": true,
+          "definition": {
+            "include": "餐饮探索、店铺餐食记录有明确上下文。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.event.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "活动已理解但未匹配。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "生日蛋糕与庆祝横幅→聚会庆祝",
+          "比赛中的羽毛球场景→体育运动"
+        ],
+        "negative": [
+          "没有背景线索的模糊合影不得猜活动。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "image.document",
+      "version": 1,
+      "name": "文档型图片",
+      "description": "把可阅读的文档与截图按材料性质分类。",
+      "modalities": [
+        "image"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "image.document.receipt",
+          "parent_id": null,
+          "name": "票据发票",
+          "selectable": true,
+          "definition": {
+            "include": "明确票据、收据、发票、订单。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "ocr",
+              "visual_caption",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.document.identity",
+          "parent_id": null,
+          "name": "证件材料",
+          "selectable": true,
+          "definition": {
+            "include": "可见证件版式或证件申请材料，不作身份识别。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "ocr",
+              "visual_caption",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.document.notes",
+          "parent_id": null,
+          "name": "书页笔记",
+          "selectable": true,
+          "definition": {
+            "include": "教材书页、手写笔记或知识内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "ocr",
+              "visual_caption",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.document.tables",
+          "parent_id": null,
+          "name": "表格清单",
+          "selectable": true,
+          "definition": {
+            "include": "表格、列表、库存或任务清单为主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "ocr",
+              "visual_caption",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.document.poster",
+          "parent_id": null,
+          "name": "海报通知",
+          "selectable": true,
+          "definition": {
+            "include": "面向公告的通知、招贴、活动海报。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "ocr",
+              "visual_caption",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.document.charts",
+          "parent_id": null,
+          "name": "图表截图",
+          "selectable": true,
+          "definition": {
+            "include": "统计图表、数据可视化或工程图为主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "ocr",
+              "visual_caption",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.document.chat",
+          "parent_id": null,
+          "name": "聊天截图",
+          "selectable": true,
+          "definition": {
+            "include": "明确聊天界面与消息布局。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "ocr",
+              "visual_caption",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.document.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "可读材料已理解但不属于以上类。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "ocr",
+              "visual_caption",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "拍摄的教材页→书页笔记",
+          "聊天气泡和联系人界面→聊天截图"
+        ],
+        "negative": [
+          "自拍没有证件版式时不得归证件材料。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "image.assets",
+      "version": 1,
+      "name": "图片素材库",
+      "description": "按创作素材类型整理，不判断版权授权。",
+      "modalities": [
+        "image"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "image.assets.photo",
+          "parent_id": null,
+          "name": "摄影素材",
+          "selectable": true,
+          "definition": {
+            "include": "适合作为摄影内容的实拍图片。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.assets.product",
+          "parent_id": null,
+          "name": "商品主图",
+          "selectable": true,
+          "definition": {
+            "include": "商品展示图、白底或明确电商主图。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.assets.poster",
+          "parent_id": null,
+          "name": "海报广告",
+          "selectable": true,
+          "definition": {
+            "include": "完整广告、宣传海报或招贴。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.assets.icon",
+          "parent_id": null,
+          "name": "图标标识",
+          "selectable": true,
+          "definition": {
+            "include": "图标、标志、符号或品牌视觉元素。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.assets.illustration",
+          "parent_id": null,
+          "name": "插画",
+          "selectable": true,
+          "definition": {
+            "include": "手绘、数字插画、绘制场景。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.assets.ui",
+          "parent_id": null,
+          "name": "界面截图",
+          "selectable": true,
+          "definition": {
+            "include": "网站、软件、APP界面截图。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.assets.texture",
+          "parent_id": null,
+          "name": "纹理背景",
+          "selectable": true,
+          "definition": {
+            "include": "重复纹理或低语义背景素材。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.assets.meme",
+          "parent_id": null,
+          "name": "表情素材",
+          "selectable": true,
+          "definition": {
+            "include": "表情包、贴纸、聊天梗图。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "image.assets.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他素材。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "ocr",
+              "user_context"
+            ],
+            "tie_breaker": "明确文档／截图属性优先于内部图案；同等证据冲突时弃判，不凭文件名强推。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "纯纹理底图→纹理背景",
+          "完整活动宣传页→海报广告"
+        ],
+        "negative": [
+          "类别归档不代表获得商用许可。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "text.purpose",
+      "version": 1,
+      "name": "文本用途",
+      "description": "按文本结构与主要用途整理。",
+      "modalities": [
+        "text"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "text.purpose.notes",
+          "parent_id": null,
+          "name": "笔记",
+          "selectable": true,
+          "definition": {
+            "include": "个人学习或阅读记录。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.purpose.guide",
+          "parent_id": null,
+          "name": "说明文档",
+          "selectable": true,
+          "definition": {
+            "include": "操作指南、README或解释文档。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.purpose.meeting",
+          "parent_id": null,
+          "name": "会议记录",
+          "selectable": true,
+          "definition": {
+            "include": "议题、讨论与会议行动项。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.purpose.checklist",
+          "parent_id": null,
+          "name": "清单计划",
+          "selectable": true,
+          "definition": {
+            "include": "待办、计划、列表。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.purpose.article",
+          "parent_id": null,
+          "name": "文章稿件",
+          "selectable": true,
+          "definition": {
+            "include": "连续论述、文章、稿件。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.purpose.log",
+          "parent_id": null,
+          "name": "日志",
+          "selectable": true,
+          "definition": {
+            "include": "时间序列事件或系统日志。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.purpose.data",
+          "parent_id": null,
+          "name": "结构化数据",
+          "selectable": true,
+          "definition": {
+            "include": "JSON、CSV等记录／配置数据内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.purpose.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他文本用途。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "包含议题与行动项→会议记录",
+          "逐时间记录程序错误→日志"
+        ],
+        "negative": [
+          "MD含一段代码不代表整个文件是源代码。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "text.topic",
+      "version": 1,
+      "name": "文本主题",
+      "description": "以主要主旨归类，不依靠零散关键词。",
+      "modalities": [
+        "text"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "text.topic.cs",
+          "parent_id": null,
+          "name": "计算机技术",
+          "selectable": true,
+          "definition": {
+            "include": "编程、网络、AI、系统等技术内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.topic.science",
+          "parent_id": null,
+          "name": "自然科学",
+          "selectable": true,
+          "definition": {
+            "include": "数学、物理、生物等自然科学。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.topic.humanities",
+          "parent_id": null,
+          "name": "语言人文",
+          "selectable": true,
+          "definition": {
+            "include": "语言、历史、文学、人文讨论。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.topic.business",
+          "parent_id": null,
+          "name": "经济管理",
+          "selectable": true,
+          "definition": {
+            "include": "经济、管理、商业知识。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.topic.design",
+          "parent_id": null,
+          "name": "设计艺术",
+          "selectable": true,
+          "definition": {
+            "include": "摄影、艺术、设计方法。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.topic.life",
+          "parent_id": null,
+          "name": "生活实用",
+          "selectable": true,
+          "definition": {
+            "include": "生活方法、日常实用内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.topic.project",
+          "parent_id": null,
+          "name": "项目事务",
+          "selectable": true,
+          "definition": {
+            "include": "具体项目安排、协调与执行记录。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "text.topic.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他主题。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "TCP路由知识笔记→计算机技术",
+          "摄影构图文章→设计艺术"
+        ],
+        "negative": [
+          "多主题同权而无主旨时应复核。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "document.purpose",
+      "version": 1,
+      "name": "文档通用",
+      "description": "按PDF或Word等材料性质归档。",
+      "modalities": [
+        "document"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "document.purpose.research",
+          "parent_id": null,
+          "name": "论文研究",
+          "selectable": true,
+          "definition": {
+            "include": "摘要、方法、研究结果等论文结构。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.teaching",
+          "parent_id": null,
+          "name": "教材讲义",
+          "selectable": true,
+          "definition": {
+            "include": "教材、教学知识或讲义。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.report",
+          "parent_id": null,
+          "name": "报告总结",
+          "selectable": true,
+          "definition": {
+            "include": "调研、工作、实验之外的综合报告。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.agreement",
+          "parent_id": null,
+          "name": "合同协议",
+          "selectable": true,
+          "definition": {
+            "include": "明确约定双方条款的协议材料。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.resume",
+          "parent_id": null,
+          "name": "简历申请",
+          "selectable": true,
+          "definition": {
+            "include": "简历、求职与申请材料。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.receipt",
+          "parent_id": null,
+          "name": "票据凭证",
+          "selectable": true,
+          "definition": {
+            "include": "票据、发票、收据、订单凭证。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.manual",
+          "parent_id": null,
+          "name": "产品说明",
+          "selectable": true,
+          "definition": {
+            "include": "产品使用、功能和说明。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.proposal",
+          "parent_id": null,
+          "name": "项目方案",
+          "selectable": true,
+          "definition": {
+            "include": "项目目标、范围、实施方案。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.list",
+          "parent_id": null,
+          "name": "名单表格",
+          "selectable": true,
+          "definition": {
+            "include": "以名单或清单表格为主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.purpose.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他材料。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "有摘要与方法的研究文章→论文研究",
+          "明确产品安装步骤→产品说明"
+        ],
+        "negative": [
+          "材料分类不能判断合同有效性或票据真伪。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "document.academic",
+      "version": 1,
+      "name": "学术学习文档",
+      "description": "按学习与研究材料角色区分。",
+      "modalities": [
+        "document"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "document.academic.paper",
+          "parent_id": null,
+          "name": "论文",
+          "selectable": true,
+          "definition": {
+            "include": "研究论文与学术文章。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.academic.book",
+          "parent_id": null,
+          "name": "教材",
+          "selectable": true,
+          "definition": {
+            "include": "系统组织的教材或书籍。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.academic.lecture",
+          "parent_id": null,
+          "name": "课程讲义",
+          "selectable": true,
+          "definition": {
+            "include": "围绕课程的讲义和知识说明。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.academic.lab",
+          "parent_id": null,
+          "name": "实验报告",
+          "selectable": true,
+          "definition": {
+            "include": "实验目的、方法、结果、分析结构。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.academic.exam",
+          "parent_id": null,
+          "name": "题目试卷",
+          "selectable": true,
+          "definition": {
+            "include": "习题、试卷、练习题。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.academic.answers",
+          "parent_id": null,
+          "name": "参考答案",
+          "selectable": true,
+          "definition": {
+            "include": "以题目答案或解析为主。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.academic.notes",
+          "parent_id": null,
+          "name": "读书笔记",
+          "selectable": true,
+          "definition": {
+            "include": "阅读整理、摘录和理解记录。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "document.academic.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他学习材料。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "实验目的与抓包分析→实验报告",
+          "题目编号与作答区域→题目试卷"
+        ],
+        "negative": [
+          "仅叫论文.pdf但内容无法提取应待确认。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "presentation.purpose",
+      "version": 1,
+      "name": "演示文稿",
+      "description": "依据PPT的跨页标题和内容判断用途。",
+      "modalities": [
+        "document"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "presentation.purpose.lecture",
+          "parent_id": null,
+          "name": "课程课件",
+          "selectable": true,
+          "definition": {
+            "include": "课堂教学材料。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "presentation.purpose.report",
+          "parent_id": null,
+          "name": "工作汇报",
+          "selectable": true,
+          "definition": {
+            "include": "工作进展、成果与总结。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "presentation.purpose.proposal",
+          "parent_id": null,
+          "name": "项目方案",
+          "selectable": true,
+          "definition": {
+            "include": "项目目标、架构或执行方案。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "presentation.purpose.product",
+          "parent_id": null,
+          "name": "产品介绍",
+          "selectable": true,
+          "definition": {
+            "include": "介绍产品特性与用途。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "presentation.purpose.training",
+          "parent_id": null,
+          "name": "培训材料",
+          "selectable": true,
+          "definition": {
+            "include": "技能培训或操作培训。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "presentation.purpose.defense",
+          "parent_id": null,
+          "name": "研究答辩",
+          "selectable": true,
+          "definition": {
+            "include": "研究成果、论文或项目答辩。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "presentation.purpose.event",
+          "parent_id": null,
+          "name": "活动展示",
+          "selectable": true,
+          "definition": {
+            "include": "活动介绍、活动成果展示。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "presentation.purpose.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他演示目的。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "跨页网络原理讲解→课程课件",
+          "研究问题与方法结果→研究答辩"
+        ],
+        "negative": [
+          "只有封面而其他页不可读时不得声称全稿已理解。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "spreadsheet.purpose",
+      "version": 1,
+      "name": "电子表格",
+      "description": "使用表头、工作表名和样例行判断表格用途。",
+      "modalities": [
+        "document",
+        "text"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "spreadsheet.purpose.stats",
+          "parent_id": null,
+          "name": "统计数据",
+          "selectable": true,
+          "definition": {
+            "include": "统计指标、分组汇总或数据观测。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "spreadsheet.purpose.finance",
+          "parent_id": null,
+          "name": "财务记录",
+          "selectable": true,
+          "definition": {
+            "include": "收支、费用、账目等记录。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "spreadsheet.purpose.people",
+          "parent_id": null,
+          "name": "人员名单",
+          "selectable": true,
+          "definition": {
+            "include": "联系人、人员、学生等名单。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "spreadsheet.purpose.inventory",
+          "parent_id": null,
+          "name": "库存清单",
+          "selectable": true,
+          "definition": {
+            "include": "商品、设备、物品库存。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "spreadsheet.purpose.progress",
+          "parent_id": null,
+          "name": "项目进度",
+          "selectable": true,
+          "definition": {
+            "include": "任务、负责人和进展。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "spreadsheet.purpose.experiment",
+          "parent_id": null,
+          "name": "实验数据",
+          "selectable": true,
+          "definition": {
+            "include": "实验样本和测量结果。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "spreadsheet.purpose.survey",
+          "parent_id": null,
+          "name": "调查问卷",
+          "selectable": true,
+          "definition": {
+            "include": "问题、选项和回答数据。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "spreadsheet.purpose.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他表格。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "extracted_text",
+              "transcript",
+              "visual_caption",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "列为物品、数量、库位→库存清单",
+          "样本编号与测量值→实验数据"
+        ],
+        "negative": [
+          "不能运行公式／宏来补齐不存在的缓存值。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "audio.purpose",
+      "version": 1,
+      "name": "音频用途",
+      "description": "以有效语音／元数据证据判断用途，不是声音识别万能器。",
+      "modalities": [
+        "audio"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "audio.purpose.lecture",
+          "parent_id": null,
+          "name": "课堂录音",
+          "selectable": true,
+          "definition": {
+            "include": "讲授课程与教学语境明确。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.purpose.meeting",
+          "parent_id": null,
+          "name": "会议录音",
+          "selectable": true,
+          "definition": {
+            "include": "多人讨论会议议题与行动项。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.purpose.interview",
+          "parent_id": null,
+          "name": "采访访谈",
+          "selectable": true,
+          "definition": {
+            "include": "提问回答式采访访谈。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.purpose.memo",
+          "parent_id": null,
+          "name": "语音备忘",
+          "selectable": true,
+          "definition": {
+            "include": "个人提醒、备忘录音。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.purpose.music",
+          "parent_id": null,
+          "name": "音乐歌曲",
+          "selectable": true,
+          "definition": {
+            "include": "有可靠歌曲标签或明确音乐证据；无转写本身不足。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.purpose.book",
+          "parent_id": null,
+          "name": "有声读物",
+          "selectable": true,
+          "definition": {
+            "include": "有声朗读、故事或读物内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.purpose.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他音频用途。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "教师讲授路由协议转写→课堂录音",
+          "个人口述明日待办→语音备忘"
+        ],
+        "negative": [
+          "静音或噪声不能自动归音乐。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "audio.topic",
+      "version": 1,
+      "name": "语音主题",
+      "description": "仅对有可靠转写的语音按主题分类。",
+      "modalities": [
+        "audio"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "audio.topic.tech",
+          "parent_id": null,
+          "name": "技术学习",
+          "selectable": true,
+          "definition": {
+            "include": "技术知识讲解与讨论。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.topic.language",
+          "parent_id": null,
+          "name": "语言学习",
+          "selectable": true,
+          "definition": {
+            "include": "语言讲解、跟读与学习。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.topic.work",
+          "parent_id": null,
+          "name": "工作项目",
+          "selectable": true,
+          "definition": {
+            "include": "具体工作和项目讨论。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.topic.event",
+          "parent_id": null,
+          "name": "活动讨论",
+          "selectable": true,
+          "definition": {
+            "include": "活动筹备、策划或复盘。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.topic.life",
+          "parent_id": null,
+          "name": "生活事务",
+          "selectable": true,
+          "definition": {
+            "include": "日常安排和事务。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.topic.literature",
+          "parent_id": null,
+          "name": "文学讲述",
+          "selectable": true,
+          "definition": {
+            "include": "故事、诗歌、文学朗读。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.topic.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "语义已理解但主题未匹配。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "程序设计课转写→技术学习",
+          "活动筹备对话→活动讨论"
+        ],
+        "negative": [
+          "纯音乐没有语音主题证据时弃判。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "audio.language",
+      "version": 1,
+      "name": "语音主要语言",
+      "description": "转写与语言探测一致时按语言归类。",
+      "modalities": [
+        "audio"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "audio.language.mandarin",
+          "parent_id": null,
+          "name": "普通话",
+          "selectable": true,
+          "definition": {
+            "include": "主要为可靠识别的普通话语音。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.language.english",
+          "parent_id": null,
+          "name": "英语",
+          "selectable": true,
+          "definition": {
+            "include": "主要为可靠识别的英语语音。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.language.mixed",
+          "parent_id": null,
+          "name": "中英混合",
+          "selectable": true,
+          "definition": {
+            "include": "有明显而持续的中文与英文交替。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "audio.language.other",
+          "parent_id": null,
+          "name": "其他语言",
+          "selectable": true,
+          "definition": {
+            "include": "明确识别为其他语言，不是检测失败。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "transcript",
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "清晰连续普通话转写→普通话",
+          "中英交替讲解→中英混合"
+        ],
+        "negative": [
+          "不足一秒或探测置信低不能推断语言和国籍。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "video.purpose",
+      "version": 1,
+      "name": "视频用途",
+      "description": "结合跨时间帧与字幕／ASR判断视频用途。",
+      "modalities": [
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "video.purpose.life",
+          "parent_id": null,
+          "name": "生活记录",
+          "selectable": true,
+          "definition": {
+            "include": "日常生活影像。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.purpose.travel",
+          "parent_id": null,
+          "name": "旅行记录",
+          "selectable": true,
+          "definition": {
+            "include": "游览、旅行过程或旅行主题。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.purpose.teaching",
+          "parent_id": null,
+          "name": "教学课程",
+          "selectable": true,
+          "definition": {
+            "include": "系统知识讲解和教学。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.purpose.meeting",
+          "parent_id": null,
+          "name": "会议访谈",
+          "selectable": true,
+          "definition": {
+            "include": "会议、采访、访谈。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.purpose.game",
+          "parent_id": null,
+          "name": "游戏录屏",
+          "selectable": true,
+          "definition": {
+            "include": "游戏界面与持续游戏活动。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.purpose.product",
+          "parent_id": null,
+          "name": "产品演示",
+          "selectable": true,
+          "definition": {
+            "include": "产品功能或操作演示。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.purpose.film",
+          "parent_id": null,
+          "name": "影视片段",
+          "selectable": true,
+          "definition": {
+            "include": "可识别为影视叙事片段的内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.purpose.assets",
+          "parent_id": null,
+          "name": "创作素材",
+          "selectable": true,
+          "definition": {
+            "include": "素材片段或创作原料有明确上下文。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.purpose.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他用途。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "多帧展示软件操作与讲解→产品演示",
+          "持续课堂画面与教学转写→教学课程"
+        ],
+        "negative": [
+          "仅封面一帧不代表整段视频。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "video.topic",
+      "version": 1,
+      "name": "视频主题",
+      "description": "按跨时间证据一致的主要主题分类。",
+      "modalities": [
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "video.topic.tech",
+          "parent_id": null,
+          "name": "科技数码",
+          "selectable": true,
+          "definition": {
+            "include": "技术、数码设备与科技内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.topic.education",
+          "parent_id": null,
+          "name": "知识教育",
+          "selectable": true,
+          "definition": {
+            "include": "知识教学或教育主题。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.topic.sports",
+          "parent_id": null,
+          "name": "体育运动",
+          "selectable": true,
+          "definition": {
+            "include": "体育活动与运动知识。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.topic.food",
+          "parent_id": null,
+          "name": "美食烹饪",
+          "selectable": true,
+          "definition": {
+            "include": "餐食与烹饪主题。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.topic.travel",
+          "parent_id": null,
+          "name": "旅行风光",
+          "selectable": true,
+          "definition": {
+            "include": "旅行、风景与游览。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.topic.arts",
+          "parent_id": null,
+          "name": "文艺娱乐",
+          "selectable": true,
+          "definition": {
+            "include": "表演、文艺与娱乐。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.topic.work",
+          "parent_id": null,
+          "name": "工作项目",
+          "selectable": true,
+          "definition": {
+            "include": "项目与工作内容。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.topic.life",
+          "parent_id": null,
+          "name": "生活日常",
+          "selectable": true,
+          "definition": {
+            "include": "日常生活主题。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.topic.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他主题。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "跨帧烹饪步骤→美食烹饪",
+          "明确羽毛球比赛→体育运动"
+        ],
+        "negative": [
+          "混杂主题无主线时待确认。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "video.scene",
+      "version": 1,
+      "name": "视频主要场景",
+      "description": "按跨帧一致的视觉制作场景分类。",
+      "modalities": [
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "video.scene.screen",
+          "parent_id": null,
+          "name": "屏幕录制",
+          "selectable": true,
+          "definition": {
+            "include": "持续可辨识的系统或软件界面。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.scene.talk",
+          "parent_id": null,
+          "name": "室内讲述",
+          "selectable": true,
+          "definition": {
+            "include": "室内人物讲述为主要场景。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.scene.outdoor",
+          "parent_id": null,
+          "name": "户外实拍",
+          "selectable": true,
+          "definition": {
+            "include": "户外真实摄影持续占主体。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.scene.stage",
+          "parent_id": null,
+          "name": "舞台活动",
+          "selectable": true,
+          "definition": {
+            "include": "舞台表演或活动。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.scene.animation",
+          "parent_id": null,
+          "name": "动画内容",
+          "selectable": true,
+          "definition": {
+            "include": "以动画绘制或合成内容为主。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.scene.montage",
+          "parent_id": null,
+          "name": "混合剪辑",
+          "selectable": true,
+          "definition": {
+            "include": "明显混合不同来源／场景的剪辑。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "video.scene.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": true,
+          "definition": {
+            "include": "已理解的其他制作场景。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "visual_caption",
+              "subtitle",
+              "user_context"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "持续软件窗口操作→屏幕录制",
+          "多帧动画场景→动画内容"
+        ],
+        "negative": [
+          "只有单帧时不可靠判断混合剪辑。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    },
+    {
+      "template_id": "mixed.daily",
+      "version": 1,
+      "name": "通用日常归档",
+      "description": "日常混合文件按主题和用途两级归档。",
+      "modalities": [
+        "image",
+        "text",
+        "document",
+        "audio",
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 2,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "mixed.daily.study",
+          "parent_id": null,
+          "name": "学习",
+          "selectable": false,
+          "definition": {
+            "include": "学习相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.study.course",
+          "parent_id": "mixed.daily.study",
+          "name": "课程资料",
+          "selectable": true,
+          "definition": {
+            "include": "用于学习的课程内容。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.study.notes",
+          "parent_id": "mixed.daily.study",
+          "name": "笔记作业",
+          "selectable": true,
+          "definition": {
+            "include": "学习笔记、作业与练习。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.work",
+          "parent_id": null,
+          "name": "工作",
+          "selectable": false,
+          "definition": {
+            "include": "工作相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.work.project",
+          "parent_id": "mixed.daily.work",
+          "name": "项目资料",
+          "selectable": true,
+          "definition": {
+            "include": "项目工作相关资料。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.work.meeting",
+          "parent_id": "mixed.daily.work",
+          "name": "会议汇报",
+          "selectable": true,
+          "definition": {
+            "include": "会议记录与工作汇报。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.life",
+          "parent_id": null,
+          "name": "生活",
+          "selectable": false,
+          "definition": {
+            "include": "生活相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.life.media",
+          "parent_id": "mixed.daily.life",
+          "name": "照片视频",
+          "selectable": true,
+          "definition": {
+            "include": "生活摄影与视频。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.life.personal",
+          "parent_id": "mixed.daily.life",
+          "name": "个人材料",
+          "selectable": true,
+          "definition": {
+            "include": "个人事务文档与材料。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.affairs",
+          "parent_id": null,
+          "name": "事务",
+          "selectable": false,
+          "definition": {
+            "include": "事务相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.affairs.receipts",
+          "parent_id": "mixed.daily.affairs",
+          "name": "票据清单",
+          "selectable": true,
+          "definition": {
+            "include": "日常票据、凭证与清单。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": false,
+          "definition": {
+            "include": "其他相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.daily.other.known",
+          "parent_id": "mixed.daily.other",
+          "name": "已理解未匹配",
+          "selectable": true,
+          "definition": {
+            "include": "已理解但不匹配前述主题的内容。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "课程讲义→学习/课程资料",
+          "家庭相册→生活/照片视频"
+        ],
+        "negative": [
+          "身份或用途不明的材料不自动塞进个人材料。"
+        ]
+      },
+      "safety_notes": [
+        "保护原一级目录；不跨整理区域移动。",
+        "未匹配但已理解可以选其他；不理解必须abstain。"
+      ]
+    },
+    {
+      "template_id": "mixed.campus",
+      "version": 1,
+      "name": "校园资料",
+      "description": "课程、研究、活动与个人事务两级组织。",
+      "modalities": [
+        "image",
+        "text",
+        "document",
+        "audio",
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 2,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "mixed.campus.course",
+          "parent_id": null,
+          "name": "课程学习",
+          "selectable": false,
+          "definition": {
+            "include": "课程学习相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.course.slides",
+          "parent_id": "mixed.campus.course",
+          "name": "课件",
+          "selectable": true,
+          "definition": {
+            "include": "用于授课的课件和讲义。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.course.homework",
+          "parent_id": "mixed.campus.course",
+          "name": "作业",
+          "selectable": true,
+          "definition": {
+            "include": "课后作业与习题。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.course.lab",
+          "parent_id": "mixed.campus.course",
+          "name": "实验",
+          "selectable": true,
+          "definition": {
+            "include": "实验指导、报告与结果。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.course.audio",
+          "parent_id": "mixed.campus.course",
+          "name": "课堂录音",
+          "selectable": true,
+          "definition": {
+            "include": "有教学转写的课堂录音。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.research",
+          "parent_id": null,
+          "name": "研究竞赛",
+          "selectable": false,
+          "definition": {
+            "include": "研究竞赛相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.research.paper",
+          "parent_id": "mixed.campus.research",
+          "name": "论文资料",
+          "selectable": true,
+          "definition": {
+            "include": "研究论文与参考材料。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.research.proposal",
+          "parent_id": "mixed.campus.research",
+          "name": "方案报告",
+          "selectable": true,
+          "definition": {
+            "include": "科研竞赛方案与成果报告。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.events",
+          "parent_id": null,
+          "name": "校园活动",
+          "selectable": false,
+          "definition": {
+            "include": "校园活动相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.events.media",
+          "parent_id": "mixed.campus.events",
+          "name": "照片视频",
+          "selectable": true,
+          "definition": {
+            "include": "有校园活动证据的照片视频。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.events.notice",
+          "parent_id": "mixed.campus.events",
+          "name": "通知策划",
+          "selectable": true,
+          "definition": {
+            "include": "校园活动通知与策划。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.personal",
+          "parent_id": null,
+          "name": "个人事务",
+          "selectable": false,
+          "definition": {
+            "include": "个人事务相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.personal.application",
+          "parent_id": "mixed.campus.personal",
+          "name": "申请材料",
+          "selectable": true,
+          "definition": {
+            "include": "学生个人申请事务材料。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.personal.receipts",
+          "parent_id": "mixed.campus.personal",
+          "name": "清单凭证",
+          "selectable": true,
+          "definition": {
+            "include": "与个人校园事务相关的清单凭证。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": false,
+          "definition": {
+            "include": "其他相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.campus.other.known",
+          "parent_id": "mixed.campus.other",
+          "name": "已理解未匹配",
+          "selectable": true,
+          "definition": {
+            "include": "可理解而未落入既定校园类的内容。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "TCP实验报告→课程学习/实验",
+          "社团活动视频→校园活动/照片视频"
+        ],
+        "negative": [
+          "不能仅凭年龄外观判断是校园活动。"
+        ]
+      },
+      "safety_notes": [
+        "保护原一级目录；不跨整理区域移动。",
+        "未匹配但已理解可以选其他；不理解必须abstain。"
+      ]
+    },
+    {
+      "template_id": "mixed.project",
+      "version": 1,
+      "name": "项目资料",
+      "description": "仅整理项目外围材料，默认不拆源代码工程。",
+      "modalities": [
+        "image",
+        "text",
+        "document",
+        "audio",
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 2,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "mixed.project.planning",
+          "parent_id": null,
+          "name": "需求规划",
+          "selectable": false,
+          "definition": {
+            "include": "需求规划相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.planning.requirements",
+          "parent_id": "mixed.project.planning",
+          "name": "需求说明",
+          "selectable": true,
+          "definition": {
+            "include": "需求范围、业务流程与需求说明。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.planning.prototype",
+          "parent_id": "mixed.project.planning",
+          "name": "原型方案",
+          "selectable": true,
+          "definition": {
+            "include": "界面原型与初步方案。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.development",
+          "parent_id": null,
+          "name": "研发资料",
+          "selectable": false,
+          "definition": {
+            "include": "研发资料相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.development.technical",
+          "parent_id": "mixed.project.development",
+          "name": "技术说明",
+          "selectable": true,
+          "definition": {
+            "include": "技术设计与架构材料。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.development.api",
+          "parent_id": "mixed.project.development",
+          "name": "接口资料",
+          "selectable": true,
+          "definition": {
+            "include": "接口契约、字段与调用说明。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.collaboration",
+          "parent_id": null,
+          "name": "沟通协作",
+          "selectable": false,
+          "definition": {
+            "include": "沟通协作相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.collaboration.meeting",
+          "parent_id": "mixed.project.collaboration",
+          "name": "会议记录",
+          "selectable": true,
+          "definition": {
+            "include": "项目会议与讨论纪要。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.collaboration.report",
+          "parent_id": "mixed.project.collaboration",
+          "name": "汇报材料",
+          "selectable": true,
+          "definition": {
+            "include": "项目进度与成果汇报。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.delivery",
+          "parent_id": null,
+          "name": "测试交付",
+          "selectable": false,
+          "definition": {
+            "include": "测试交付相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.delivery.testing",
+          "parent_id": "mixed.project.delivery",
+          "name": "测试资料",
+          "selectable": true,
+          "definition": {
+            "include": "测试计划、用例和结果。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.delivery.manual",
+          "parent_id": "mixed.project.delivery",
+          "name": "交付说明",
+          "selectable": true,
+          "definition": {
+            "include": "交付、安装与操作说明。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.assets",
+          "parent_id": null,
+          "name": "素材附件",
+          "selectable": false,
+          "definition": {
+            "include": "素材附件相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.assets.images",
+          "parent_id": "mixed.project.assets",
+          "name": "图片",
+          "selectable": true,
+          "definition": {
+            "include": "有项目关联的图片素材。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.assets.media",
+          "parent_id": "mixed.project.assets",
+          "name": "音视频",
+          "selectable": true,
+          "definition": {
+            "include": "有项目关联的音频视频。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": false,
+          "definition": {
+            "include": "其他相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.project.other.known",
+          "parent_id": "mixed.project.other",
+          "name": "已理解未匹配",
+          "selectable": true,
+          "definition": {
+            "include": "已理解而未匹配的项目外围材料。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "API说明→研发资料/接口资料",
+          "项目测试报告→测试交付/测试资料"
+        ],
+        "negative": [
+          "包含package.json的工程目录不得拆开整理。"
+        ]
+      },
+      "safety_notes": [
+        "保护原一级目录；不跨整理区域移动。",
+        "未匹配但已理解可以选其他；不理解必须abstain。"
+      ]
+    },
+    {
+      "template_id": "mixed.trip",
+      "version": 1,
+      "name": "旅行资料",
+      "description": "行前、旅途、行后材料按用途归档，不猜目的地。",
+      "modalities": [
+        "image",
+        "text",
+        "document",
+        "audio",
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 2,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "mixed.trip.before",
+          "parent_id": null,
+          "name": "行前准备",
+          "selectable": false,
+          "definition": {
+            "include": "行前准备相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.before.itinerary",
+          "parent_id": "mixed.trip.before",
+          "name": "行程攻略",
+          "selectable": true,
+          "definition": {
+            "include": "路线、行程与攻略。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.before.booking",
+          "parent_id": "mixed.trip.before",
+          "name": "预订凭证",
+          "selectable": true,
+          "definition": {
+            "include": "住宿、交通和活动预订凭证。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.during",
+          "parent_id": null,
+          "name": "旅途记录",
+          "selectable": false,
+          "definition": {
+            "include": "旅途记录相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.during.photos",
+          "parent_id": "mixed.trip.during",
+          "name": "照片",
+          "selectable": true,
+          "definition": {
+            "include": "有旅行上下文的照片。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.during.videos",
+          "parent_id": "mixed.trip.during",
+          "name": "视频",
+          "selectable": true,
+          "definition": {
+            "include": "有旅行上下文的视频。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.during.audio",
+          "parent_id": "mixed.trip.during",
+          "name": "语音",
+          "selectable": true,
+          "definition": {
+            "include": "有旅行上下文的语音。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.after",
+          "parent_id": null,
+          "name": "行后整理",
+          "selectable": false,
+          "definition": {
+            "include": "行后整理相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.after.journal",
+          "parent_id": "mixed.trip.after",
+          "name": "游记",
+          "selectable": true,
+          "definition": {
+            "include": "行程后的游记与记录。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.after.receipt",
+          "parent_id": "mixed.trip.after",
+          "name": "票据",
+          "selectable": true,
+          "definition": {
+            "include": "旅行相关票据。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": false,
+          "definition": {
+            "include": "其他相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.trip.other.known",
+          "parent_id": "mixed.trip.other",
+          "name": "已理解未匹配",
+          "selectable": true,
+          "definition": {
+            "include": "有旅行关联但不匹配以上子类的内容。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "明确行程PDF→行前准备/行程攻略",
+          "用户确认本次旅行视频→旅途记录/视频"
+        ],
+        "negative": [
+          "风景相似不能推断具体景区。"
+        ]
+      },
+      "safety_notes": [
+        "保护原一级目录；不跨整理区域移动。",
+        "未匹配但已理解可以选其他；不理解必须abstain。"
+      ]
+    },
+    {
+      "template_id": "mixed.media",
+      "version": 1,
+      "name": "创作素材",
+      "description": "创作材料按视觉、声音、文字和项目文档归档。",
+      "modalities": [
+        "image",
+        "text",
+        "document",
+        "audio",
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 2,
+      "requires_ai": true,
+      "nodes": [
+        {
+          "category_id": "mixed.media.visual",
+          "parent_id": null,
+          "name": "视觉素材",
+          "selectable": false,
+          "definition": {
+            "include": "视觉素材相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.visual.photo",
+          "parent_id": "mixed.media.visual",
+          "name": "照片",
+          "selectable": true,
+          "definition": {
+            "include": "实拍素材。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.visual.illustration",
+          "parent_id": "mixed.media.visual",
+          "name": "插画图标",
+          "selectable": true,
+          "definition": {
+            "include": "绘制图像、插画与图标。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.visual.video",
+          "parent_id": "mixed.media.visual",
+          "name": "视频",
+          "selectable": true,
+          "definition": {
+            "include": "动态视觉素材。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.sound",
+          "parent_id": null,
+          "name": "声音素材",
+          "selectable": false,
+          "definition": {
+            "include": "声音素材相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.sound.voice",
+          "parent_id": "mixed.media.sound",
+          "name": "配音",
+          "selectable": true,
+          "definition": {
+            "include": "明确用于配音的语音素材。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.sound.music",
+          "parent_id": "mixed.media.sound",
+          "name": "音乐",
+          "selectable": true,
+          "definition": {
+            "include": "有可靠音乐证据的声音素材。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.text",
+          "parent_id": null,
+          "name": "文字资料",
+          "selectable": false,
+          "definition": {
+            "include": "文字资料相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.text.script",
+          "parent_id": "mixed.media.text",
+          "name": "脚本",
+          "selectable": true,
+          "definition": {
+            "include": "视频、演出或内容创作脚本；不含可执行代码工程。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.text.copy",
+          "parent_id": "mixed.media.text",
+          "name": "文案",
+          "selectable": true,
+          "definition": {
+            "include": "广告、文章或配套文案。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.docs",
+          "parent_id": null,
+          "name": "项目文档",
+          "selectable": false,
+          "definition": {
+            "include": "项目文档相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.docs.proposal",
+          "parent_id": "mixed.media.docs",
+          "name": "方案",
+          "selectable": true,
+          "definition": {
+            "include": "创作项目方案。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.docs.list",
+          "parent_id": "mixed.media.docs",
+          "name": "清单",
+          "selectable": true,
+          "definition": {
+            "include": "素材、任务或拍摄清单。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.other",
+          "parent_id": null,
+          "name": "其他",
+          "selectable": false,
+          "definition": {
+            "include": "其他相关材料的组织节点。",
+            "exclude": "不直接将文件放入非选择性组织节点。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "选择有具体定义的子类别；没有证据则弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "mixed.media.other.known",
+          "parent_id": "mixed.media.other",
+          "name": "已理解未匹配",
+          "selectable": true,
+          "definition": {
+            "include": "可理解但未匹配的创作资料。",
+            "exclude": "不含无法理解或仅凭弱文件名推断的材料。",
+            "evidence_required_any": [
+              "extracted_text",
+              "visual_caption",
+              "transcript",
+              "subtitle",
+              "metadata",
+              "user_context"
+            ],
+            "tie_breaker": "以主要用途及用户确认上下文为准；多个同等候选时弃判。"
+          },
+          "is_fallback": true
+        }
+      ],
+      "examples": {
+        "positive": [
+          "配音转写与明确用途→声音素材/配音",
+          "拍摄镜头脚本→文字资料/脚本"
+        ],
+        "negative": [
+          "不得因归入素材库就宣称有商用版权。"
+        ]
+      },
+      "safety_notes": [
+        "保护原一级目录；不跨整理区域移动。",
+        "未匹配但已理解可以选其他；不理解必须abstain。"
+      ]
+    },
+    {
+      "template_id": "universal.types",
+      "version": 1,
+      "name": "纯类型整理",
+      "description": "基于安全格式识别，无需模型。",
+      "modalities": [
+        "image",
+        "text",
+        "document",
+        "audio",
+        "video"
+      ],
+      "compatible_strategies": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ],
+      "recommended_strategy": "hybrid",
+      "minimum_depth": 1,
+      "requires_ai": false,
+      "nodes": [
+        {
+          "category_id": "universal.types.image",
+          "parent_id": null,
+          "name": "图片",
+          "selectable": true,
+          "definition": {
+            "include": "真实格式为受支持图片。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "universal.types.text",
+          "parent_id": null,
+          "name": "文本",
+          "selectable": true,
+          "definition": {
+            "include": "真实格式为TXT、MD、JSON、CSV或TSV文本。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "universal.types.pdf",
+          "parent_id": null,
+          "name": "PDF文档",
+          "selectable": true,
+          "definition": {
+            "include": "真实格式为PDF。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "universal.types.word",
+          "parent_id": null,
+          "name": "Word文档",
+          "selectable": true,
+          "definition": {
+            "include": "真实格式为DOCX。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "universal.types.slides",
+          "parent_id": null,
+          "name": "演示文稿",
+          "selectable": true,
+          "definition": {
+            "include": "真实格式为PPTX。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "universal.types.sheet",
+          "parent_id": null,
+          "name": "电子表格",
+          "selectable": true,
+          "definition": {
+            "include": "真实格式为XLSX。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "universal.types.audio",
+          "parent_id": null,
+          "name": "音频",
+          "selectable": true,
+          "definition": {
+            "include": "真实格式为受支持音频容器。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        },
+        {
+          "category_id": "universal.types.video",
+          "parent_id": null,
+          "name": "视频",
+          "selectable": true,
+          "definition": {
+            "include": "真实格式为受支持视频容器。",
+            "exclude": "不含证据不足、损坏或无法理解的文件；与其他类别重叠时按本模板的主要目的判断。",
+            "evidence_required_any": [
+              "metadata"
+            ],
+            "tie_breaker": "以主体内容及可核对证据为准；候选同样可信时弃判。"
+          },
+          "is_fallback": false
+        }
+      ],
+      "examples": {
+        "positive": [
+          "受支持PNG→图片",
+          "真实DOCX→Word文档"
+        ],
+        "negative": [
+          "伪装后缀或不支持格式保持原处。"
+        ]
+      },
+      "safety_notes": [
+        "未知与其他分开；证据不足返回abstain。",
+        "每文件一个主目录；额外信息仅作标签。"
+      ]
+    }
+  ]
+}

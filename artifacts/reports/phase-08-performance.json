@@ -1,0 +1,42 @@
+{
+  "environment": {
+    "platform": "Windows",
+    "python": "3.12",
+    "logical_cpu_count": 32,
+    "memory_total_bytes": 34024747008,
+    "storage": "project workspace volume"
+  },
+  "metadata_scan": {
+    "files": 10000,
+    "bytes": 138890,
+    "cold_seconds": 2.4041174000594765,
+    "warm_seconds": 2.452268799999729,
+    "persisted_scan_seconds": 3.4395873000612482
+  },
+  "list_pagination": {
+    "rows_read": 5000,
+    "page_size": 100,
+    "requests": 50,
+    "median_ms": 2.71140004042536,
+    "p95_ms": 3.790399990975857,
+    "max_ms": 3.817599965259433
+  },
+  "multimodal_batch": {
+    "fixtures": 120,
+    "elapsed_seconds": 8.39394410001114,
+    "parse_statuses": {
+      "ready": 80,
+      "partial": 40
+    }
+  },
+  "process_rss_bytes": {
+    "before": 87908352,
+    "after_scan": 109600768,
+    "after_database": 116170752
+  },
+  "model_service_memory": null,
+  "notes": [
+    "OS cache state is approximated by first and immediate second scan.",
+    "Model service memory is unavailable because no authorized real service was configured."
+  ]
+}

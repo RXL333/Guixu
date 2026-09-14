@@ -1,0 +1,204 @@
+{
+  "type": "object",
+  "properties": {
+    "template_id": {
+      "type": "string",
+      "pattern": "^[a-z]+\\.[a-z_]+$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "modalities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "image",
+          "text",
+          "document",
+          "audio",
+          "video",
+          "other"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "compatible_strategies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "hybrid",
+          "topic_first",
+          "modality_first"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "recommended_strategy": {
+      "type": "string",
+      "enum": [
+        "hybrid",
+        "topic_first",
+        "modality_first"
+      ]
+    },
+    "minimum_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "requires_ai": {
+      "type": "boolean"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$"
+          },
+          "parent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "selectable": {
+            "type": "boolean"
+          },
+          "definition": {
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "exclude": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "evidence_required_any": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "metadata",
+                    "extracted_text",
+                    "ocr",
+                    "visual_caption",
+                    "transcript",
+                    "subtitle",
+                    "user_context"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "tie_breaker": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "include",
+              "exclude",
+              "evidence_required_any",
+              "tie_breaker"
+            ]
+          },
+          "is_fallback": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "category_id",
+          "parent_id",
+          "name",
+          "selectable",
+          "definition",
+          "is_fallback"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 200
+    },
+    "examples": {
+      "type": "object",
+      "properties": {
+        "positive": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 2
+        },
+        "negative": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "positive",
+        "negative"
+      ]
+    },
+    "safety_notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "template_id",
+    "version",
+    "name",
+    "description",
+    "modalities",
+    "compatible_strategies",
+    "recommended_strategy",
+    "minimum_depth",
+    "requires_ai",
+    "nodes",
+    "examples",
+    "safety_notes"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:guixu:template:v1",
+  "title": "ClassificationTemplate"
+}

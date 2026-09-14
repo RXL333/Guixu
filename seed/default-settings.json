@@ -1,0 +1,43 @@
+{
+  "scan_mode": "preserve_top_level",
+  "operation_mode": "preview_move",
+  "organization_strategy": "hybrid",
+  "classification_source": "auto_plan",
+  "classification_mode": "rules_first",
+  "max_depth": 2,
+  "max_siblings": 12,
+  "max_nodes_per_scope": 80,
+  "max_new_directories": 200,
+  "analysis_preset": "standard",
+  "uncertain_action": "keep_in_place",
+  "collision_policy": "keep_both",
+  "include_hidden": false,
+  "allow_file_rename": false,
+  "skip_project_directories": true,
+  "allowed_modalities": [
+    "image",
+    "text",
+    "document",
+    "audio",
+    "video"
+  ],
+  "extension_allowlist": [],
+  "exclusions": [],
+  "large_file_warning_bytes": 2147483648,
+  "privacy": {
+    "allow_extracted_text": true,
+    "allow_derivative_images": true,
+    "allow_video_frames": true,
+    "allow_asr_text": true,
+    "allow_basename": false,
+    "allow_precise_location": false,
+    "allow_original_images": false
+  },
+  "task_budget": {
+    "max_calls": 500,
+    "max_input_tokens": 1000000,
+    "max_output_tokens": 200000,
+    "max_cost_micros": null,
+    "currency": null
+  }
+}

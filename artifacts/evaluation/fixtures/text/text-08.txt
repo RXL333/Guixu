@@ -1,0 +1,2 @@
+Guixu synthetic acceptance sample text 08
+Purpose: deterministic technical classification smoke test.

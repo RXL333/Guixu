@@ -1,0 +1,288 @@
+{
+  "type": "object",
+  "properties": {
+    "scan_mode": {
+      "type": "string",
+      "enum": [
+        "current_only",
+        "recursive",
+        "preserve_top_level"
+      ],
+      "default": "preserve_top_level"
+    },
+    "operation_mode": {
+      "type": "string",
+      "enum": [
+        "preview_move",
+        "direct_move",
+        "copy",
+        "report_only"
+      ],
+      "default": "preview_move"
+    },
+    "organization_strategy": {
+      "type": "string",
+      "enum": [
+        "modality_first",
+        "topic_first",
+        "hybrid"
+      ],
+      "default": "hybrid"
+    },
+    "classification_source": {
+      "type": "string",
+      "enum": [
+        "template",
+        "fixed_categories",
+        "auto_plan"
+      ],
+      "default": "auto_plan"
+    },
+    "classification_mode": {
+      "type": "string",
+      "enum": [
+        "rules_first",
+        "ai_first",
+        "rules_only"
+      ],
+      "default": "rules_first"
+    },
+    "max_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "default": 2
+    },
+    "max_siblings": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 20,
+      "default": 12
+    },
+    "max_nodes_per_scope": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 200,
+      "default": 80
+    },
+    "max_new_directories": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 1000,
+      "default": 200
+    },
+    "analysis_preset": {
+      "type": "string",
+      "enum": [
+        "fast",
+        "standard",
+        "deep"
+      ],
+      "default": "standard"
+    },
+    "uncertain_action": {
+      "type": "string",
+      "enum": [
+        "keep_in_place",
+        "quarantine_after_review"
+      ],
+      "default": "keep_in_place"
+    },
+    "collision_policy": {
+      "type": "string",
+      "enum": [
+        "keep_both",
+        "skip"
+      ],
+      "default": "keep_both"
+    },
+    "include_hidden": {
+      "type": "boolean",
+      "default": false
+    },
+    "allow_file_rename": {
+      "type": "boolean",
+      "const": false,
+      "default": false,
+      "description": "v1仅允许冲突后缀，不开放语义重命名"
+    },
+    "skip_project_directories": {
+      "type": "boolean",
+      "const": true,
+      "default": true
+    },
+    "allowed_modalities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "image",
+          "text",
+          "document",
+          "audio",
+          "video"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "default": [
+        "image",
+        "text",
+        "document",
+        "audio",
+        "video"
+      ]
+    },
+    "extension_allowlist": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^\\.[A-Za-z0-9]{1,12}$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      },
+      "maxItems": 100,
+      "default": []
+    },
+    "large_file_warning_bytes": {
+      "type": "integer",
+      "minimum": 1048576,
+      "default": 2147483648
+    },
+    "privacy": {
+      "type": "object",
+      "properties": {
+        "allow_extracted_text": {
+          "type": "boolean",
+          "default": true
+        },
+        "allow_derivative_images": {
+          "type": "boolean",
+          "default": true
+        },
+        "allow_video_frames": {
+          "type": "boolean",
+          "default": true
+        },
+        "allow_asr_text": {
+          "type": "boolean",
+          "default": true
+        },
+        "allow_basename": {
+          "type": "boolean",
+          "default": false
+        },
+        "allow_precise_location": {
+          "type": "boolean",
+          "default": false
+        },
+        "allow_original_images": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "task_budget": {
+      "type": "object",
+      "properties": {
+        "max_calls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "default": 500
+        },
+        "max_input_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1000000
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 200000
+        },
+        "max_cost_micros": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "default": null
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "CNY",
+            "USD",
+            null
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "scan_mode",
+    "operation_mode",
+    "organization_strategy",
+    "classification_source",
+    "classification_mode",
+    "max_depth",
+    "max_siblings",
+    "max_nodes_per_scope",
+    "max_new_directories",
+    "analysis_preset",
+    "uncertain_action",
+    "collision_policy",
+    "include_hidden",
+    "allow_file_rename",
+    "skip_project_directories",
+    "allowed_modalities",
+    "extension_allowlist",
+    "exclusions",
+    "large_file_warning_bytes",
+    "privacy",
+    "task_budget"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:guixu:task-settings:v1",
+  "title": "TaskSettings",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "classification_mode": {
+            "const": "rules_only"
+          }
+        },
+        "required": [
+          "classification_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "classification_source": {
+            "enum": [
+              "template",
+              "fixed_categories"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

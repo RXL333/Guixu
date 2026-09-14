@@ -1,0 +1,53 @@
+{
+  "theme": "digital-archive",
+  "colors": {
+    "canvas": "#F3F1EA",
+    "surface": "#FFFEFA",
+    "surface_muted": "#EBE8DF",
+    "sidebar": "#18352D",
+    "text": "#20372F",
+    "text_secondary": "#69766D",
+    "accent": "#226D59",
+    "accent_soft": "#E2EEE7",
+    "border": "#D9DDD3",
+    "warning": "#965D23",
+    "warning_soft": "#FFF1DB",
+    "danger": "#A33832",
+    "focus": "#1965A5"
+  },
+  "fonts": {
+    "ui": "Segoe UI Variable, Microsoft YaHei UI, Microsoft YaHei, sans-serif",
+    "mono": "Cascadia Code, Consolas, monospace"
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32,
+    40
+  ],
+  "radius": {
+    "small": 8,
+    "panel": 12,
+    "large": 14
+  },
+  "sizes": {
+    "sidebar": 208,
+    "sidebar_collapsed": 72,
+    "evidence_panel": 320,
+    "row_height": 60,
+    "button": 40,
+    "button_compact": 32
+  },
+  "breakpoints": {
+    "minimum": 1024,
+    "wide": 1280,
+    "design": 1440
+  },
+  "motion_ms": {
+    "fast": 100,
+    "normal": 180
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "type": "object",
+  "properties": {
+    "file_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "taxonomy_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "category_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 96
+    },
+    "abstain": {
+      "type": "boolean"
+    },
+    "model_score": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "uniqueItems": true,
+      "maxItems": 12
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 24
+      },
+      "maxItems": 5,
+      "uniqueItems": true
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "insufficient_evidence",
+          "sampled_content",
+          "parser_partial",
+          "conflicting_signals",
+          "sensitive_content",
+          "no_speech",
+          "unknown_location",
+          "ambiguous_type"
+        ]
+      },
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "file_id",
+    "taxonomy_id",
+    "category_id",
+    "abstain",
+    "model_score",
+    "evidence_ids",
+    "reason",
+    "tags",
+    "warnings"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "abstain": {
+            "const": true
+          }
+        },
+        "required": [
+          "abstain"
+        ]
+      },
+      "then": {
+        "properties": {
+          "category_id": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "minItems": 1,
+            "maxItems": 12,
+            "uniqueItems": true
+          }
+        }
+      }
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:guixu:classification-result:v1",
+  "title": "ClassificationResult"
+}
