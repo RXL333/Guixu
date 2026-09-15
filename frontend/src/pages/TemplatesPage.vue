@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { Bot, Filter, ShieldCheck } from 'lucide-vue-next'
 import { api, type ClassificationTemplate } from '../services/api'
 
 const templates = ref<ClassificationTemplate[]>([])
+const router = useRouter()
 const filter = ref('all')
 const error = ref('')
 const visible = computed(() => filter.value === 'all' ? templates.value : templates.value.filter(item => item.modalities.includes(filter.value)))
 onMounted(async () => { try { templates.value = (await api.templates()).items } catch (cause) { error.value = String(cause) } })
+function useTemplate(item: ClassificationTemplate) { router.push(`/tasks/new?template=${encodeURIComponent(item.template_id)}`) }
 </script>
 
 <template>
@@ -16,7 +19,7 @@ onMounted(async () => { try { templates.value = (await api.templates()).items } 
     <div class="template-toolbar"><Filter :size="16" /><button v-for="item in ['all','image','text','document','audio','video']" :key="item" :class="{active: filter === item}" @click="filter = item">{{ item === 'all' ? '全部' : item }}</button></div>
     <div v-if="error" class="state-card error-state">{{ error }}</div>
     <div v-else class="template-grid">
-      <article v-for="item in visible" :key="item.template_id" class="template-card"><div class="template-card-top"><code>{{ item.template_id }} · v{{ item.version }}</code><Bot v-if="item.requires_ai" :size="16" /></div><h2>{{ item.name }}</h2><p>{{ item.description }}</p><footer><span>{{ item.nodes.filter(node => node.selectable).length }} 个可选类别</span><span>{{ item.requires_ai ? '需要模型' : '纯规则可用' }}</span></footer></article>
+      <article v-for="item in visible" :key="item.template_id" class="template-card" role="button" tabindex="0" @click="useTemplate(item)" @keydown.enter="useTemplate(item)" @keydown.space.prevent="useTemplate(item)"><div class="template-card-top"><code>{{ item.template_id }} · v{{ item.version }}</code><Bot v-if="item.requires_ai" :size="16" /></div><h2>{{ item.name }}</h2><p>{{ item.description }}</p><footer><span>{{ item.nodes.filter(node => node.selectable).length }} 个可选类别</span><span>{{ item.requires_ai ? '需要模型' : '纯规则可用' }}</span></footer><small class="template-action">点击用于新建任务</small></article>
     </div>
   </section>
 </template>

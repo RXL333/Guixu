@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { FolderOpen, LockKeyhole } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
-import { api, chooseDirectory, type ModelProfile, type ScanMode, type TaskSettings } from '../services/api'
+import { useRoute, useRouter } from 'vue-router'
+import { api, chooseDirectory, type ClassificationTemplate, type ModelProfile, type ScanMode, type TaskSettings } from '../services/api'
 
 const router = useRouter()
+const route = useRoute()
 const settings = ref<TaskSettings | null>(null)
 const name = ref('只读整理报告')
 const typedPath = ref('')
 const grant = reactive<{ id: string; path: string }>({ id: '', path: '' })
 const output = reactive<{ id: string; path: string; typed: string }>({ id: '', path: '', typed: '' })
 const models = ref<ModelProfile[]>([])
+const templates = ref<ClassificationTemplate[]>([])
+const templateKey = ref(String(route.query.template || 'universal.types'))
 const modelId = ref('')
 const busy = ref(false)
 const error = ref('')
@@ -26,7 +29,7 @@ onMounted(async () => {
   try {
     settings.value = (await api.settings()).values
     settings.value.classification_source = 'template'
-    models.value = await api.models()
+    ;[models.value, templates.value] = await Promise.all([api.models(), api.templates().then(result => result.items)])
   } catch (cause) { error.value = String(cause) }
 })
 
@@ -51,7 +54,7 @@ async function submit() {
   busy.value = true
   error.value = ''
   try {
-    const task = await api.createTask({ name: name.value.trim(), source_grant: grant.id, output_grant: output.id||null, settings: settings.value, model_profile_id:modelId.value||null, template_key:'universal.types' })
+    const task = await api.createTask({ name: name.value.trim(), source_grant: grant.id, output_grant: output.id||null, settings: settings.value, model_profile_id:modelId.value||null, template_key: templateKey.value })
     await api.startTask(task.id, task.revision)
     await router.push(`/tasks/${task.id}/analyze`)
   } catch (cause) { error.value = String(cause) } finally { busy.value = false }
@@ -80,7 +83,7 @@ async function submit() {
       </div><label>组织策略<select v-model="settings.organization_strategy"><option value="hybrid">智能混合</option><option value="topic_first">主题优先</option><option value="modality_first">模态优先</option></select></label><label>最多层级<select v-model.number="settings.max_depth"><option :value="1">1 级</option><option :value="2">2 级</option><option :value="3">3 级</option></select></label></div>
     </section>
     <section v-if="settings" class="form-section"><span class="section-index">03</span><div class="form-content"><h2>怎么处理</h2><div class="choice-grid"><label v-for="item in [{v:'preview_move',t:'预览后移动',d:'最终再批准计划'},{v:'copy',t:'复制',d:'源文件始终保留'},{v:'report_only',t:'仅报告',d:'不改变磁盘'}]" :key="item.v" class="choice-card" :class="{selected:settings.operation_mode===item.v}"><input v-model="settings.operation_mode" type="radio" :value="item.v"/><strong>{{item.t}}</strong><small>{{item.d}}</small></label></div><label v-if="settings.operation_mode==='copy'">输出目录<div class="path-picker"><input v-model="output.typed"/><button class="secondary-button" @click="selectOutput(true)">授权输出目录</button></div></label></div></section>
-    <section v-if="settings" class="form-section muted-section"><span class="section-index">04</span><div class="form-content"><h2>模型与隐私</h2><label>模型连接<select v-model="modelId"><option value="">不使用模型（纯类型模板）</option><option v-for="model in models" :key="model.id" :value="model.id">{{model.name}} · {{model.trust_scope}}</option></select></label><p>默认不发送文件名、绝对路径、精确 GPS、原音频或原视频。选择云模型后仍需为具体任务另行确认出站范围与预算。</p></div></section>
+    <section v-if="settings" class="form-section muted-section"><span class="section-index">04</span><div class="form-content"><h2>分类模板与模型</h2><label>分类模板<select v-model="templateKey"><option v-for="template in templates" :key="template.template_id" :value="template.template_id">{{template.name}} · {{template.requires_ai ? '需要模型' : '纯规则'}}</option></select></label><label>模型连接<select v-model="modelId"><option value="">不使用模型（仅 universal.types 可纯规则运行）</option><option v-for="model in models" :key="model.id" :value="model.id">{{model.name}} · {{model.trust_scope}}</option></select></label><p>选择“需要模型”的模板后，后端会基于已授权的文件证据进行内容理解分类；没有可用模型时会明确停止，不会伪装成成功。</p></div></section>
     <footer class="action-bar"><span>{{ grant.path || '尚未选择目录' }} · {{ settings?.scan_mode ?? '读取设置中' }} · 最多 {{settings?.max_depth}} 级</span><button class="primary-button" :disabled="!canSubmit" @click="submit">{{ busy ? '正在扫描…' : '扫描并生成方案' }}</button></footer>
   </section>
 </template>

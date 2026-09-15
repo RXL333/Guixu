@@ -74,4 +74,13 @@ describe('phase 06 UI safety contract', () => {
     expect(page.default).toContain('if(busy.value||')
     expect(page.default).toContain('const current=await api.task')
   })
+
+  it('template cards select a template for a new task', async () => {
+    const [templates, task] = await Promise.all([import('../src/pages/TemplatesPage.vue?raw'), import('../src/pages/NewTaskPage.vue?raw')])
+    expect(templates.default).toContain('用于新建任务')
+    expect(templates.default).toContain('useTemplate(item)')
+    expect(task.default).toContain('route.query.template')
+    expect(task.default).toContain('template_key: templateKey.value')
+    expect(task.default).toContain('需要模型')
+  })
 })
