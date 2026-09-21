@@ -4,6 +4,7 @@ from pathlib import Path
 
 from guixu.application.parser_runner import ParserRunner
 from guixu.infrastructure.db.repository import TaskRepository
+from guixu.domain.profiles import with_file_context
 from guixu.infrastructure.filesystem.identity import sha256_file
 from guixu.infrastructure.parsers.common import PARSER_VERSION, options_hash
 
@@ -25,6 +26,7 @@ class ParsingService:
         cache_key = f"{content_hash}-{PARSER_VERSION}-{option_digest}"
         cached = self.repository.load_profile(file_id, cache_key)
         if cached is not None:
+            cached = with_file_context(cached, path)
             self.repository.store_profile(cached, cache_key, option_digest)
             return cached
         outcome = self.runner.parse(path, file_id, preset)

@@ -36,7 +36,6 @@ class TaskSettings(BaseModel):
     operation_mode: Literal["preview_move", "direct_move", "copy", "report_only"] = "preview_move"
     organization_strategy: Literal["modality_first", "topic_first", "hybrid"] = "hybrid"
     classification_source: Literal["template", "fixed_categories", "auto_plan"] = "auto_plan"
-    classification_mode: Literal["rules_first", "ai_first", "rules_only"] = "rules_first"
     max_depth: int = Field(default=2, ge=1, le=3)
     max_siblings: int = Field(default=12, ge=2, le=20)
     max_nodes_per_scope: int = Field(default=80, ge=2, le=200)
@@ -58,8 +57,6 @@ class TaskSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_modes(self) -> "TaskSettings":
-        if self.classification_mode == "rules_only" and self.classification_source == "auto_plan":
-            raise ValueError("rules_only requires template or fixed_categories")
         normalized = []
         for suffix in self.extension_allowlist:
             if not suffix.startswith(".") or not suffix[1:].isalnum() or len(suffix) > 13:
@@ -74,4 +71,3 @@ class TaskSettings(BaseModel):
 def load_default_settings(project_root: Path) -> TaskSettings:
     payload = json.loads((project_root / "seed" / "default-settings.json").read_text("utf-8"))
     return TaskSettings.model_validate(payload)
-

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import psutil
 
-from guixu.domain.profiles import ParseOutcome
+from guixu.domain.profiles import ParseOutcome, with_file_context
 from guixu.infrastructure.filesystem.identity import sha256_file
 from guixu.infrastructure.parsers.common import PARSER_VERSION, options_hash
 
@@ -38,7 +38,8 @@ class ParserRunner:
             cached = ParseOutcome.model_validate_json(cache_file.read_text("utf-8"))
             # The payload is content-addressed, but file_id is task/file context and
             # must never leak from the first file that populated the cache.
-            return cached.model_copy(update={"profile": cached.profile.model_copy(update={"file_id": file_id})})
+            rebound = cached.model_copy(update={"profile": cached.profile.model_copy(update={"file_id": file_id})})
+            return with_file_context(rebound, path)
         with tempfile.TemporaryDirectory(prefix="guixu-parser-") as temporary:
             temporary_path = Path(temporary)
             job_file = temporary_path / "job.json"; output_file = temporary_path / "result.json"
@@ -54,7 +55,7 @@ class ParserRunner:
             temporary_cache = cache_file.with_suffix(".tmp")
             temporary_cache.write_text(outcome.model_dump_json(), "utf-8")
             os.replace(temporary_cache, cache_file)
-            return outcome
+            return with_file_context(outcome, path)
 
     def _monitor(self, process: subprocess.Popen, cancel_event: threading.Event | None) -> str | None:
         deadline = time.monotonic() + self.timeout_seconds
@@ -94,4 +95,4 @@ class ParserRunner:
         from guixu.domain.files import detect_modality
         from guixu.domain.profiles import Coverage, FileProfile
         profile = FileProfile(file_id=file_id, modality=detect_modality(path), metadata={}, coverage=Coverage(mode="metadata_only"), warnings=[warning], capabilities_used=[], parser_version=PARSER_VERSION)
-        return ParseOutcome(status="failed", profile=profile)
+        return with_file_context(ParseOutcome(status="failed", profile=profile), path)

@@ -35,3 +35,19 @@
 - 方案：增加单行 `schema_metadata`；高于应用版本立即阻止启动，低于版本必须由显式迁移处理；未来任何迁移先调用 SQLite backup，不支持破坏性自动降级。
 - 放弃：启动时盲目执行最新 DDL、失败后仍允许文件操作、用普通文件复制代替在线 SQLite backup。
 - 影响：`contracts/database.sql`、Database、迁移/桌面安全测试；无需用户文件授权。
+
+## 2026-09-19｜AI-only 重构阶段 02～07｜取消本地语义分类 fallback
+
+- 问题：旧默认模板、RuleEngine 与按模态目录映射会让产品看似完成分类，实际没有理解文件内容。
+- 证据：用户的全 JPG 场景只能进入“图片”；模板交互不可用；运行时代码仍存在 `universal.types` 与 `TYPE_CATEGORIES` 绕过路径。
+- 方案：新任务必须选择启用的 AI 模型；auto/template/fixed 三种入口统一走内容解析、AI taxonomy planner 和 AI file classifier。模板只提供 guidance，固定分类只限制候选类别。模型失败或能力不足时明确停止，不做本地分类 fallback。
+- 放弃：规则优先、扩展名/模态硬分类、模型失败后自动进入“图片/文档/其他”。
+- 影响：任务/设置契约、模板、模型能力与隐私授权、分类 UI、回归测试；保留 AI 只能返回类别 ID/证据的安全边界。
+
+## 2026-09-19｜AI-only 重构阶段 08｜计划 basis revision 与批准状态
+
+- 问题：只使用 task revision 无法说明计划基于哪个业务状态编译，也无法可靠区分 hash 错误、未批准和真正过期。
+- 证据：用户执行页出现泛化的“计划未批准、已失效或执行条件发生变化”；旧计划表没有 basis/approval revision。
+- 方案：schema v2 为 plan 保存 `plan_basis_revision` 与 `approved_task_revision`；批准原子核对 revision/ID/hash，批准后重新读取同一计划再执行。批准状态转换不改变 plan hash；taxonomy/classification/review/授权或源事实变化才阻止执行。
+- 放弃：只在前端刷新一次 revision、把全部前置失败合并为同一错误、批准后自动重编计划。
+- 影响：数据库迁移 0002、plan API、执行页、操作日志与完整临时目录回归；v1→v2 前先做 SQLite 一致性备份。

@@ -87,9 +87,28 @@ def test_wrong_approval_hash_is_rejected(project_root: Path, tmp_path: Path):
     database = make_database(project_root, tmp_path); task_id, file_id = seed_task_and_file(database, source)
     plan = compile_for(database, source, destination, task_id, file_id)
     journal = SqliteOperationJournal(database); journal.persist_plan(plan)
-    with pytest.raises(ValueError, match="PLAN_STALE"):
+    with pytest.raises(ValueError, match="PLAN_HASH_MISMATCH"):
         journal.approve(plan.plan_id, "0" * 64)
     assert not (destination / "文档" / "a.txt").exists()
+    database.close()
+
+
+def test_plan_basis_revision_and_approval_state_are_independent(project_root: Path, tmp_path: Path):
+    source_dir, destination = tmp_path / "source", tmp_path / "destination"
+    source_dir.mkdir(); destination.mkdir(); source = source_dir / "a.txt"; source.write_text("data")
+    database = make_database(project_root, tmp_path); task_id, file_id = seed_task_and_file(database, source)
+    plan = compile_for(database, source, destination, task_id, file_id)
+    journal = SqliteOperationJournal(database); journal.persist_plan(plan, 1)
+    before = journal.plan_metadata(plan.plan_id)
+    journal.approve(plan.plan_id, plan.plan_hash, 1)
+    approved = journal.plan_metadata(plan.plan_id)
+    assert before["plan_basis_revision"] == 1 and before["approved"] is False
+    assert approved["plan_basis_revision"] == 1 and approved["approved_task_revision"] == 1 and approved["approved"] is True
+    journal.assert_execution_ready(task_id, plan.plan_id, plan.plan_hash, 1)
+    with database.begin() as connection:
+        connection.execute(text("UPDATE tasks SET revision=revision+1 WHERE id=:id"), {"id": task_id})
+    with pytest.raises(ValueError, match="REVISION_CONFLICT"):
+        journal.assert_execution_ready(task_id, plan.plan_id, plan.plan_hash, 1)
     database.close()
 
 

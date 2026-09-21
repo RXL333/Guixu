@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from guixu.application.plan_compiler import PlanCompiler, canonical_hash
+from guixu.application.plan_compiler import PlanCompiler
 from guixu.application.undo import UndoCompiler
 from guixu.domain.plans import ExecutionPlan, PlanCandidate
 from guixu.infrastructure.db.operation_journal import SqliteOperationJournal
 from guixu.infrastructure.db.repository import TaskRepository
 from guixu.infrastructure.filesystem.executor import FileOperationExecutor
-
-
-TYPE_CATEGORIES = {"image": "图片", "text": "文本", "document": "文档", "audio": "音频", "video": "视频"}
 
 
 class OperationService:
@@ -36,13 +33,9 @@ class OperationService:
         for row in inputs:
             effective_modality = group_modalities.get(row["companion_group_id"], row["modality"])
             approved_category = group_categories.get(row["companion_group_id"], (row.get("category_id"), row.get("category_segments")))
-            if row.get("taxonomy_id"):
-                category_id, segments = approved_category
-            else:
-                category = TYPE_CATEGORIES.get(effective_modality)
-                if row["kind"] == "root_loose" and category and category.casefold() in protected:
-                    category = f"{category}文件"
-                category_id, segments = (f"type:{effective_modality}", [category]) if category else (None, [])
+            if row["scan_status"] == "eligible" and not row.get("taxonomy_id"):
+                raise ValueError("TAXONOMY_NOT_APPROVED")
+            category_id, segments = approved_category
             candidates.append(PlanCandidate(
                 file_id=row["file_id"], source_path=Path(row["original_path"]),
                 source_root=Path(row["source_root"]), destination_root=Path(row["destination_root"]),
@@ -51,7 +44,9 @@ class OperationService:
                 eligible=row["scan_status"] == "eligible",
                 companion_group_id=row["companion_group_id"],
             ))
-        taxonomy_hashes = tuple(sorted({row["taxonomy_hash"] for row in inputs if row.get("taxonomy_hash")})) or (canonical_hash(TYPE_CATEGORIES),)
+        taxonomy_hashes = tuple(sorted({row["taxonomy_hash"] for row in inputs if row.get("taxonomy_hash")}))
+        if not taxonomy_hashes:
+            raise ValueError("TAXONOMY_NOT_APPROVED")
         plan = PlanCompiler().compile(
             task_id=task_id, version=self.repository.next_plan_version(task_id),
             operation_mode=task["settings"]["operation_mode"], settings_hash=task["settings_hash"],
@@ -59,14 +54,13 @@ class OperationService:
             max_depth=task["settings"]["max_depth"], collision_policy=task["settings"]["collision_policy"],
             protected_root_names=protected,
         )
-        self.journal.persist_plan(plan)
+        self.journal.persist_plan(plan, task["revision"])
         return plan
 
     def approve(self, task_id: str, plan_id: str, plan_hash: str, expected_revision: int) -> None:
-        self.repository.assert_revision(task_id, expected_revision)
         if self.journal.load_plan(plan_id).task_id != task_id:
             raise ValueError("SCOPE_CONFLICT")
-        self.journal.approve(plan_id, plan_hash)
+        self.journal.approve(plan_id, plan_hash, expected_revision)
 
     def execute(self, task_id: str, plan_id: str, plan_hash: str, expected_revision: int) -> ExecutionPlan:
         self.repository.assert_revision(task_id, expected_revision)
@@ -84,5 +78,5 @@ class OperationService:
         undo = UndoCompiler().compile(
             forward, self.journal.completed_operation_ids(forward_plan_id), self.repository.next_plan_version(forward.task_id)
         )
-        self.journal.persist_plan(undo)
+        self.journal.persist_plan(undo, expected_revision)
         return undo

@@ -1,5 +1,7 @@
 # 领域模型与 SQLite 数据设计
 
+> **兼容性提示：** 模板与规则字段只为旧任务历史读取暂留；2026-09-20 后的新任务不再写入模板或规则模式。当前迁移策略见 `docs/LEGACY_PRODUCT_CLEANUP.md`。
+
 ## 1. 公共约定
 
 参考建表文件为 contracts/database.sql。SQLite数据库使用本机UTF-8文本，ID为UUID字符串，时间为UTC ISO-8601字符串，文件大小为64位整数，文件系统mtime_ns使用整数，金额估算使用整数微单位与currency，避免浮点累计误差。JSON列以TEXT保存并加 json_valid校验；Pydantic负责结构层校验。

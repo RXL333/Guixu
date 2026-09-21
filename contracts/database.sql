@@ -8,7 +8,7 @@ CREATE TABLE schema_metadata (
  version INTEGER NOT NULL CHECK(version>=1),
  updated_at TEXT NOT NULL
 );
-INSERT INTO schema_metadata(singleton,version,updated_at) VALUES(1,1,datetime('now'));
+INSERT INTO schema_metadata(singleton,version,updated_at) VALUES(1,6,datetime('now'));
 CREATE TABLE settings (
  key TEXT PRIMARY KEY,
  value_json TEXT NOT NULL CHECK(json_valid(value_json)),
@@ -61,8 +61,12 @@ CREATE TABLE tasks (
  counters_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(counters_json)),
  checkpoint_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(checkpoint_json)),
  last_error_code TEXT,
- created_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT,
+ deleted_at TEXT, deletion_source TEXT, delete_reason TEXT,
+ conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+ conversation_plan_version_id TEXT REFERENCES conversation_plan_versions(id) ON DELETE SET NULL
 );
+CREATE INDEX idx_tasks_deleted_updated ON tasks(deleted_at,updated_at DESC);
 CREATE TABLE task_scopes (
  id TEXT PRIMARY KEY,
  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -181,6 +185,8 @@ CREATE TABLE plans (
  settings_hash TEXT NOT NULL CHECK(length(settings_hash)=64),
  taxonomy_hashes_json TEXT NOT NULL CHECK(json_valid(taxonomy_hashes_json)),
  source_snapshot_hash TEXT NOT NULL CHECK(length(source_snapshot_hash)=64),
+ plan_basis_revision INTEGER NOT NULL DEFAULT 1 CHECK(plan_basis_revision >= 1),
+ approved_task_revision INTEGER CHECK(approved_task_revision IS NULL OR approved_task_revision >= plan_basis_revision),
  summary_json TEXT NOT NULL CHECK(json_valid(summary_json)),
  authorization_kind TEXT CHECK(authorization_kind IS NULL OR authorization_kind IN ('interactive','preauthorized')),
  authorization_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(authorization_json)),
@@ -251,6 +257,145 @@ CREATE TABLE idempotency_keys (
  created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
  PRIMARY KEY(endpoint,key)
 );
+
+-- PHASE D conversation state. These records are a durable state layer above
+-- Task; they never replace the existing plan, operation journal, or file rows.
+CREATE TABLE conversations (
+ id TEXT PRIMARY KEY,
+ title TEXT NOT NULL CHECK(length(title)>0 AND length(title)<=160),
+ status TEXT NOT NULL CHECK(status IN ('ACTIVE','ARCHIVED','DELETED','ERROR')),
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1),
+ model_profile_id TEXT REFERENCES model_profiles(id) ON DELETE SET NULL,
+ metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json)),
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ deleted_at TEXT, last_message_at TEXT
+);
+CREATE INDEX idx_conversations_status_updated ON conversations(status,updated_at DESC);
+
+CREATE TABLE conversation_scopes (
+ id TEXT PRIMARY KEY,
+ conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+ scope_kind TEXT NOT NULL CHECK(scope_kind IN ('folder','task_scope','selection')),
+ source_root TEXT NOT NULL,
+ display_name TEXT NOT NULL,
+ authorization_ref TEXT,
+ authorization_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(authorization_json)),
+ scope_hash TEXT NOT NULL CHECK(length(scope_hash)=64),
+ created_at TEXT NOT NULL, revoked_at TEXT,
+ UNIQUE(conversation_id,source_root)
+);
+CREATE INDEX idx_conversation_scopes_conversation ON conversation_scopes(conversation_id,created_at);
+
+CREATE TABLE conversation_plan_versions (
+ id TEXT PRIMARY KEY,
+ conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+ version_number INTEGER NOT NULL CHECK(version_number >= 1),
+ parent_plan_version_id TEXT REFERENCES conversation_plan_versions(id) ON DELETE RESTRICT,
+ baseline_execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE RESTRICT,
+ basis_context_revision INTEGER NOT NULL CHECK(basis_context_revision >= 1),
+ source TEXT NOT NULL CHECK(source IN ('USER_REQUEST','SYSTEM','LEGACY')),
+ plan_kind TEXT NOT NULL DEFAULT 'FULL' CHECK(plan_kind IN ('FULL','DELTA')),
+ status TEXT NOT NULL CHECK(status IN ('DRAFT','PROPOSED','APPROVED','EXECUTED','SUPERSEDED','CANCELLED')),
+ taxonomy_id TEXT REFERENCES taxonomies(id) ON DELETE RESTRICT,
+ taxonomy_snapshot_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(taxonomy_snapshot_json)),
+ plan_id TEXT REFERENCES plans(id) ON DELETE RESTRICT,
+ plan_hash TEXT CHECK(plan_hash IS NULL OR length(plan_hash)=64),
+ summary TEXT NOT NULL DEFAULT '',
+ change_summary_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(change_summary_json)),
+ affected_file_count INTEGER NOT NULL DEFAULT 0 CHECK(affected_file_count >= 0),
+ kept_file_count INTEGER NOT NULL DEFAULT 0 CHECK(kept_file_count >= 0),
+ conflict_count INTEGER NOT NULL DEFAULT 0 CHECK(conflict_count >= 0),
+ created_by_message_id TEXT REFERENCES conversation_messages(id) ON DELETE SET NULL,
+ restored_from_version_id TEXT REFERENCES conversation_plan_versions(id) ON DELETE RESTRICT,
+ created_at TEXT NOT NULL, approved_at TEXT, executed_at TEXT, superseded_at TEXT,
+ UNIQUE(conversation_id,version_number)
+);
+CREATE INDEX idx_conversation_plan_versions_conversation ON conversation_plan_versions(conversation_id,version_number);
+
+CREATE TABLE conversation_plan_approvals (
+ id TEXT PRIMARY KEY,
+ conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+ plan_version_id TEXT NOT NULL REFERENCES conversation_plan_versions(id) ON DELETE RESTRICT,
+ plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE RESTRICT,
+ plan_hash TEXT NOT NULL CHECK(length(plan_hash)=64),
+ context_revision INTEGER NOT NULL CHECK(context_revision >= 1),
+ status TEXT NOT NULL CHECK(status IN ('ACTIVE','STALE','REVOKED')),
+ authorization_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(authorization_json)),
+ approved_at TEXT NOT NULL,
+ superseded_at TEXT,
+ UNIQUE(plan_version_id)
+);
+CREATE INDEX idx_conversation_plan_approvals_conversation ON conversation_plan_approvals(conversation_id,status,approved_at DESC);
+
+CREATE TABLE conversation_execution_rounds (
+ id TEXT PRIMARY KEY,
+ conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+ round_number INTEGER NOT NULL CHECK(round_number >= 1),
+ plan_version_id TEXT NOT NULL REFERENCES conversation_plan_versions(id) ON DELETE RESTRICT,
+ execution_plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE RESTRICT,
+ undo_plan_id TEXT REFERENCES plans(id) ON DELETE RESTRICT,
+ status TEXT NOT NULL CHECK(status IN ('PENDING','RUNNING','COMPLETED','FAILED','CANCELLED','RECOVERY_REQUIRED')),
+ undo_status TEXT NOT NULL DEFAULT 'NOT_REQUESTED' CHECK(undo_status IN ('NOT_REQUESTED','AVAILABLE','PREPARED','EXECUTED','BLOCKED')),
+ started_at TEXT, completed_at TEXT,
+ summary_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(summary_json)),
+ affected_file_count INTEGER NOT NULL DEFAULT 0 CHECK(affected_file_count >= 0),
+ created_at TEXT NOT NULL,
+ UNIQUE(conversation_id,round_number)
+);
+CREATE INDEX idx_conversation_execution_rounds_conversation ON conversation_execution_rounds(conversation_id,round_number);
+
+CREATE TABLE conversation_contexts (
+ id TEXT PRIMARY KEY,
+ conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id) ON DELETE RESTRICT,
+ context_revision INTEGER NOT NULL DEFAULT 1 CHECK(context_revision >= 1),
+ current_taxonomy_id TEXT REFERENCES taxonomies(id) ON DELETE SET NULL,
+ current_plan_version_id TEXT REFERENCES conversation_plan_versions(id) ON DELETE SET NULL,
+ current_execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE SET NULL,
+ model_profile_id TEXT REFERENCES model_profiles(id) ON DELETE SET NULL,
+ max_directory_depth INTEGER NOT NULL DEFAULT 2 CHECK(max_directory_depth BETWEEN 1 AND 3),
+ organization_intent_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(organization_intent_json)),
+ confirmed_requirements_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(confirmed_requirements_json)),
+ privacy_scope_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(privacy_scope_json)),
+ selection_state_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(selection_state_json)),
+ file_state_revision INTEGER NOT NULL DEFAULT 1 CHECK(file_state_revision >= 1),
+ strategy_state_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(strategy_state_json)),
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+
+CREATE TABLE conversation_files (
+ id TEXT PRIMARY KEY,
+ conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+ file_id TEXT NOT NULL REFERENCES files(id) ON DELETE RESTRICT,
+ first_seen_path TEXT NOT NULL,
+ current_known_path TEXT NOT NULL,
+ first_seen_fingerprint TEXT,
+ current_fingerprint TEXT,
+ first_seen_size_bytes INTEGER CHECK(first_seen_size_bytes IS NULL OR first_seen_size_bytes >= 0),
+ current_size_bytes INTEGER CHECK(current_size_bytes IS NULL OR current_size_bytes >= 0),
+ first_seen_mtime_ns INTEGER,
+ current_mtime_ns INTEGER,
+ current_category_id TEXT,
+ added_at TEXT NOT NULL, removed_from_scope_at TEXT, last_verified_at TEXT,
+ state TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(state IN ('ACTIVE','FILE_CHANGED','MISSING','REMOVED')),
+ UNIQUE(conversation_id,file_id)
+);
+CREATE INDEX idx_conversation_files_conversation_state ON conversation_files(conversation_id,state);
+
+CREATE TABLE conversation_messages (
+ id TEXT PRIMARY KEY,
+ conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+ role TEXT NOT NULL CHECK(role IN ('USER','ASSISTANT','SYSTEM_EVENT')),
+ content TEXT NOT NULL CHECK(length(content)>0),
+ sequence_number INTEGER NOT NULL CHECK(sequence_number >= 1),
+ message_type TEXT NOT NULL CHECK(message_type IN ('TEXT','STATUS','PLAN_PROPOSAL','EXECUTION_RESULT','ERROR','SYSTEM_EVENT')),
+ status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','REDACTED')),
+ referenced_plan_version_id TEXT REFERENCES conversation_plan_versions(id) ON DELETE SET NULL,
+ referenced_execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE SET NULL,
+ metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json)),
+ created_at TEXT NOT NULL,
+ UNIQUE(conversation_id,sequence_number)
+);
+CREATE INDEX idx_conversation_messages_order ON conversation_messages(conversation_id,sequence_number);
 CREATE INDEX idx_tasks_status_updated ON tasks(status,updated_at);
 CREATE INDEX idx_files_task_modality ON files(task_id,modality);
 CREATE INDEX idx_files_task_status ON files(task_id,scan_status);

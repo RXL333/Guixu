@@ -38,15 +38,6 @@
       ],
       "default": "auto_plan"
     },
-    "classification_mode": {
-      "type": "string",
-      "enum": [
-        "rules_first",
-        "ai_first",
-        "rules_only"
-      ],
-      "default": "rules_first"
-    },
     "max_depth": {
       "type": "integer",
       "minimum": 1,
@@ -240,7 +231,6 @@
     "operation_mode",
     "organization_strategy",
     "classification_source",
-    "classification_mode",
     "max_depth",
     "max_siblings",
     "max_nodes_per_scope",
@@ -260,29 +250,5 @@
   ],
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:guixu:task-settings:v1",
-  "title": "TaskSettings",
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "classification_mode": {
-            "const": "rules_only"
-          }
-        },
-        "required": [
-          "classification_mode"
-        ]
-      },
-      "then": {
-        "properties": {
-          "classification_source": {
-            "enum": [
-              "template",
-              "fixed_categories"
-            ]
-          }
-        }
-      }
-    }
-  ]
+  "title": "TaskSettings"
 }

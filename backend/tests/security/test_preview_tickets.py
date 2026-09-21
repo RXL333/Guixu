@@ -25,9 +25,13 @@ def test_preview_ticket_is_short_lived_file_scoped_range_capability(project_root
     with TestClient(app) as client:
         grant = client.post("/api/v1/dev/grants", headers=headers(), json={"path": str(source), "purpose": "source"}).json()["data"]["grant_id"]
         settings = client.get("/api/v1/settings", headers=headers()).json()["data"]["values"]
-        settings.update({"operation_mode": "report_only", "scan_mode": "current_only"})
-        task = client.post("/api/v1/tasks", headers=headers(True), json={"name": "preview", "source_grant": grant, "settings": settings}).json()["data"]
-        task = client.post(f"/api/v1/tasks/{task['id']}/start", headers={**headers(), "Idempotency-Key": "preview-start"}, json={"expected_revision": task["revision"]}).json()["data"]
+        settings.update({"operation_mode": "report_only", "scan_mode": "current_only", "classification_source":"auto_plan"})
+        model = app.state.models.create({"name":"Preview AI","provider":"qwen_local","runtime":"openai_compatible",
+            "base_url":"http://127.0.0.1:8000/v1","model_id":"fixture","trust_scope":"loopback",
+            "options":{"thinking_mode":"disabled","timeout_seconds":5,"max_concurrency":1,"batch_size":20},"enabled":True})
+        task = client.post("/api/v1/tasks", headers=headers(True), json={"name":"preview","source_grant":grant,
+            "settings":settings,"model_profile_id":model["id"],"user_instructions":"按内容整理"}).json()["data"]
+        app.state.tasks.start(task["id"], task["revision"])
         files = client.get(f"/api/v1/tasks/{task['id']}/files", headers=headers()).json()["data"]["items"]
         image_id = next(item["id"] for item in files if item["basename"] == "pixel.png")
         html_id = next(item["id"] for item in files if item["basename"] == "active.html")

@@ -6,13 +6,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from guixu.domain.files import ScannedFile
 from guixu.domain.settings import TaskSettings
 from guixu.infrastructure.db.database import Database, utc_now
 from guixu.infrastructure.filesystem.scanner import ScanScope
-from guixu.domain.profiles import ParseOutcome
+from guixu.domain.profiles import Evidence, ParseOutcome
 
 
 def canonical_json(value: object) -> str:
@@ -31,26 +31,6 @@ class TaskRepository:
         task_id = str(uuid.uuid4())
         now = utc_now()
         settings_data = settings.model_dump(mode="json")
-        rule_ids = classification_request.get("rule_ids", [])
-        with self.database.engine.connect() as connection:
-            rule_rows = connection.execute(text("SELECT * FROM rules ORDER BY priority,id")).mappings().all() if rule_ids else []
-            rules_snapshot = [
-                {"id": row["id"], "name": row["name"], "priority": row["priority"], "enabled": bool(row["enabled"]),
-                 "scope": json.loads(row["scope_json"]), "condition": json.loads(row["condition_json"]),
-                 "action": json.loads(row["action_json"]), "revision": row["revision"]}
-                for row in rule_rows if row["id"] in rule_ids
-            ]
-            template_key = classification_request.get("template_key")
-            template_version = classification_request.get("template_version")
-            template_row = None
-            if template_key:
-                query = "SELECT definition_json FROM template_versions WHERE template_key=:key"
-                params: dict[str, Any] = {"key": template_key}
-                if template_version:
-                    query += " AND version=:version"; params["version"] = template_version
-                query += " ORDER BY version DESC LIMIT 1"
-                template_row = connection.execute(text(query), params).first()
-            template_snapshot = json.loads(template_row[0]) if template_row else {}
         with self.database.begin() as connection:
             connection.execute(
                 text("""
@@ -67,8 +47,8 @@ class TaskRepository:
                     "request": canonical_json(classification_request),
                     "model_profile_id": model_profile_id,
                     "model_snapshot": canonical_json(model_snapshot or {}),
-                    "rules_snapshot": canonical_json(rules_snapshot),
-                    "template_snapshot": canonical_json(template_snapshot),
+                    "rules_snapshot": "[]",
+                    "template_snapshot": "{}",
                     "now": now,
                 },
             )
@@ -84,16 +64,136 @@ class TaskRepository:
             result[key[:-5] if key.endswith("_json") else key] = json.loads(result.pop(key))
         return result
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self, view: str = "active") -> list[dict[str, Any]]:
+        if view not in {"active", "deleted", "all"}:
+            raise ValueError("TASK_VIEW_INVALID")
+        where = {"active": "WHERE t.deleted_at IS NULL", "deleted": "WHERE t.deleted_at IS NOT NULL", "all": ""}[view]
         with self.database.engine.connect() as connection:
-            rows = connection.execute(text("SELECT id,name,status,phase,revision,settings_json,counters_json,created_at,updated_at FROM tasks ORDER BY updated_at DESC")).mappings()
+            rows = connection.execute(text(f"""
+                SELECT t.id,t.name,t.status,t.phase,t.revision,t.settings_json,t.counters_json,
+                       t.model_snapshot_json,t.created_at,t.updated_at,t.deleted_at,t.deletion_source,t.delete_reason,
+                       (SELECT source_root FROM task_scopes WHERE task_id=t.id ORDER BY rowid LIMIT 1) AS source_root,
+                       (SELECT event_type FROM task_events WHERE task_id=t.id ORDER BY seq DESC LIMIT 1) AS recent_operation
+                FROM tasks t {where}
+                ORDER BY COALESCE(t.deleted_at,t.updated_at) DESC
+            """)).mappings()
             results = []
             for row in rows:
                 item = dict(row)
                 item["settings"] = json.loads(item.pop("settings_json"))
                 item["counters"] = json.loads(item.pop("counters_json"))
+                model = json.loads(item.pop("model_snapshot_json"))
+                item["model_name"] = model.get("name") or model.get("model_id")
                 results.append(item)
             return results
+
+    def rename(self, task_id: str, expected_revision: int, name: str) -> dict[str, Any]:
+        clean = name.strip()
+        if not clean or len(clean) > 80:
+            raise ValueError("TASK_NAME_INVALID")
+        with self.database.begin() as connection:
+            result = connection.execute(text("""
+                UPDATE tasks SET name=:name,revision=revision+1,updated_at=:now
+                WHERE id=:id AND revision=:revision
+            """), {"id": task_id, "revision": expected_revision, "name": clean, "now": utc_now()})
+            if result.rowcount != 1:
+                if connection.execute(text("SELECT 1 FROM tasks WHERE id=:id"), {"id": task_id}).first() is None:
+                    raise KeyError(task_id)
+                raise ValueError("REVISION_CONFLICT")
+        return self.get(task_id)
+
+    def soft_delete(self, task_ids: list[str], deletion_source: str = "user", reason: str | None = None) -> list[dict[str, Any]]:
+        unique_ids = list(dict.fromkeys(task_ids))
+        if not unique_ids:
+            raise ValueError("TASK_IDS_REQUIRED")
+        blocked_statuses = {"RUNNING", "PAUSE_REQUESTED", "RECOVERY_REQUIRED"}
+        now = utc_now()
+        with self.database.begin() as connection:
+            rows = connection.execute(
+                text("SELECT id,status,deleted_at FROM tasks WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                {"ids": unique_ids},
+            ).mappings().all()
+            found = {row["id"]: row for row in rows}
+            if len(found) != len(unique_ids):
+                raise KeyError(next(task_id for task_id in unique_ids if task_id not in found))
+            blocked = [row["id"] for row in rows if row["status"] in blocked_statuses]
+            if blocked:
+                raise ValueError(f"TASK_DELETE_BLOCKED:{','.join(blocked)}")
+            for task_id in unique_ids:
+                row = found[task_id]
+                if row["deleted_at"] is not None:
+                    continue
+                connection.execute(text("""
+                    UPDATE tasks SET deleted_at=:now,deletion_source=:source,delete_reason=:reason,
+                      revision=revision+1,updated_at=:now WHERE id=:id
+                """), {"id": task_id, "now": now, "source": deletion_source, "reason": reason})
+                seq = connection.execute(text("SELECT COALESCE(MAX(seq),0)+1 FROM task_events WHERE task_id=:id"), {"id": task_id}).scalar_one()
+                connection.execute(text("""
+                    INSERT INTO task_events(task_id,seq,event_type,payload_json,created_at)
+                    VALUES(:id,:seq,'task_record_deleted',:payload,:now)
+                """), {"id": task_id, "seq": seq, "payload": canonical_json({"source": deletion_source, "reason": reason}), "now": now})
+        return [self.get(task_id) for task_id in unique_ids]
+
+    def restore(self, task_ids: list[str]) -> list[dict[str, Any]]:
+        unique_ids = list(dict.fromkeys(task_ids))
+        if not unique_ids:
+            raise ValueError("TASK_IDS_REQUIRED")
+        now = utc_now()
+        with self.database.begin() as connection:
+            rows = connection.execute(
+                text("SELECT id,deleted_at FROM tasks WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                {"ids": unique_ids},
+            ).mappings().all()
+            found = {row["id"]: row for row in rows}
+            if len(found) != len(unique_ids):
+                raise KeyError(next(task_id for task_id in unique_ids if task_id not in found))
+            for task_id in unique_ids:
+                if found[task_id]["deleted_at"] is None:
+                    continue
+                connection.execute(text("""
+                    UPDATE tasks SET deleted_at=NULL,deletion_source=NULL,delete_reason=NULL,
+                      revision=revision+1,updated_at=:now WHERE id=:id
+                """), {"id": task_id, "now": now})
+                seq = connection.execute(text("SELECT COALESCE(MAX(seq),0)+1 FROM task_events WHERE task_id=:id"), {"id": task_id}).scalar_one()
+                connection.execute(text("INSERT INTO task_events(task_id,seq,event_type,payload_json,created_at) VALUES(:id,:seq,'task_record_restored','{}',:now)"),
+                                   {"id": task_id, "seq": seq, "now": now})
+        return [self.get(task_id) for task_id in unique_ids]
+
+    def permanently_delete(self, task_id: str) -> None:
+        self.permanently_delete_many([task_id])
+
+    def permanently_delete_many(self, task_ids: list[str]) -> None:
+        unique_ids = list(dict.fromkeys(task_ids))
+        if not unique_ids:
+            raise ValueError("TASK_IDS_REQUIRED")
+        with self.database.begin() as connection:
+            rows = connection.execute(
+                text("SELECT id,deleted_at FROM tasks WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                {"ids": unique_ids},
+            ).mappings().all()
+            found = {row["id"]: row for row in rows}
+            if len(found) != len(unique_ids):
+                raise KeyError(next(task_id for task_id in unique_ids if task_id not in found))
+            if any(row["deleted_at"] is None for row in rows):
+                raise ValueError("TASK_NOT_SOFT_DELETED")
+            if connection.execute(
+                text("SELECT 1 FROM plans WHERE task_id IN :ids LIMIT 1").bindparams(bindparam("ids", expanding=True)),
+                {"ids": unique_ids},
+            ).first():
+                raise ValueError("TASK_SAFETY_HISTORY_RETAINED")
+            if connection.execute(
+                text("""
+                    SELECT 1 FROM conversation_files cf
+                    JOIN files f ON f.id=cf.file_id
+                    WHERE f.task_id IN :ids LIMIT 1
+                """).bindparams(bindparam("ids", expanding=True)),
+                {"ids": unique_ids},
+            ).first():
+                raise ValueError("TASK_CONVERSATION_REFERENCE_RETAINED")
+            connection.execute(
+                text("DELETE FROM tasks WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                {"ids": unique_ids},
+            )
 
     def begin_scan(self, task_id: str, expected_revision: int) -> int:
         now = utc_now()
@@ -160,8 +260,10 @@ class TaskRepository:
                         text("UPDATE files SET companion_group_id=:group_id WHERE id=:id"),
                         {"id": file_id, "group_id": item.companion_group_id},
                     )
-            final_status = "COMPLETED" if operation_mode == "report_only" else "AWAITING_EXECUTION_APPROVAL"
-            final_phase = "REPORT" if operation_mode == "report_only" else "PREVIEW"
+            final_status = "RUNNING"
+            # Persist the existing v1 enum value for backward-compatible databases;
+            # the API/UI presents this phase as PARSING.
+            final_phase = "EXTRACT"
             connection.execute(
                 text("""
                 UPDATE tasks SET status=:status,phase=:phase,revision=revision+1,
@@ -170,7 +272,7 @@ class TaskRepository:
                 """),
                 {"id": task_id, "status": final_status, "phase": final_phase,
                  "counters": canonical_json(counters), "checkpoint": canonical_json({"warnings": warnings}),
-                 "now": now, "finished": now if operation_mode == "report_only" else None},
+                 "now": now, "finished": None},
             )
             connection.execute(
                 text("INSERT INTO task_events(task_id,seq,event_type,payload_json,created_at) VALUES(:id,2,'scan_completed',:payload,:now)"),
@@ -236,6 +338,29 @@ class TaskRepository:
                     "parser_version": profile.parser_version, "options_hash": options_hash,
                     "status": outcome.status, "profile": profile.model_dump_json(), "created_at": utc_now()})
 
+    def append_model_evidence(self, file_id: str, *, text_value: str, model_profile_id: str,
+                              prompt_version: str) -> tuple[object, str]:
+        with self.database.engine.connect() as connection:
+            row = connection.execute(text("""
+                SELECT status,profile_json,cache_key,options_hash FROM file_profiles
+                WHERE file_id=:file ORDER BY created_at DESC LIMIT 1
+            """), {"file": file_id}).mappings().first()
+        if row is None:
+            raise KeyError(file_id)
+        from guixu.domain.profiles import FileProfile
+        profile = FileProfile.model_validate_json(row["profile_json"])
+        digest = hashlib.sha256(f"{file_id}:{model_profile_id}:{prompt_version}:{text_value}".encode("utf-8")).hexdigest()
+        evidence_id = f"visual-{digest[:24]}"
+        if evidence_id not in {item.id for item in profile.evidence}:
+            profile = profile.model_copy(update={
+                "evidence": [*profile.evidence, Evidence(id=evidence_id, kind="visual_description",
+                    text=text_value[:12_000], quality="high", origin=f"AI:{model_profile_id[:60]}")],
+                "capabilities_used": sorted(set([*profile.capabilities_used, "AI-vision"])),
+            })
+        cache_key = f"{row['cache_key']}-vision-{digest[:16]}"
+        self.store_profile(ParseOutcome(status=row["status"], profile=profile), cache_key, row["options_hash"])
+        return profile, evidence_id
+
     def file_detail(self, task_id: str, file_id: str) -> dict[str, Any]:
         file = self.get_file(task_id, file_id)
         with self.database.engine.connect() as connection:
@@ -263,6 +388,12 @@ class TaskRepository:
     def eligible_file_ids(self, task_id: str, scope_id: str) -> list[str]:
         with self.database.engine.connect() as connection:
             return [row[0] for row in connection.execute(text("SELECT id FROM files WHERE task_id=:task AND scope_id=:scope AND scan_status='eligible' ORDER BY id"), {"task": task_id, "scope": scope_id})]
+
+    def eligible_modalities(self, task_id: str) -> set[str]:
+        with self.database.engine.connect() as connection:
+            return {str(row[0]) for row in connection.execute(text(
+                "SELECT DISTINCT modality FROM files WHERE task_id=:task AND scan_status='eligible'"
+            ), {"task": task_id})}
 
     def events(self, task_id: str, after_seq: int, limit: int) -> list[dict[str, Any]]:
         with self.database.engine.connect() as connection:
@@ -341,6 +472,44 @@ class TaskRepository:
                  "payload": canonical_json(payload or {}), "now": utc_now()},
             )
         return seq
+
+    def mark_taxonomy_review(self, task_id: str) -> dict[str, Any]:
+        with self.database.begin() as connection:
+            changed = connection.execute(text(
+                "UPDATE tasks SET status='AWAITING_TAXONOMY_APPROVAL',phase='PLAN',revision=revision+1,updated_at=:now WHERE id=:id"
+            ), {"id": task_id, "now": utc_now()})
+            if changed.rowcount != 1:
+                raise KeyError(task_id)
+        return self.get(task_id)
+
+    def advance_after_classification(self, task_id: str) -> dict[str, Any]:
+        """Enter review only when every eligible file has an AI result for an approved tree."""
+        with self.database.begin() as connection:
+            missing_taxonomy = int(connection.execute(text("""
+                SELECT count(*) FROM task_scopes s
+                WHERE s.task_id=:task AND EXISTS (
+                    SELECT 1 FROM files f WHERE f.scope_id=s.id AND f.scan_status='eligible'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM taxonomies t WHERE t.scope_id=s.id AND t.status='approved'
+                )
+            """), {"task": task_id}).scalar_one())
+            missing_results = int(connection.execute(text("""
+                SELECT count(*) FROM files f
+                JOIN taxonomies t ON t.task_id=f.task_id AND t.scope_id=f.scope_id AND t.status='approved'
+                WHERE f.task_id=:task AND f.scan_status='eligible' AND NOT EXISTS (
+                    SELECT 1 FROM classifications c
+                    WHERE c.task_id=f.task_id AND c.file_id=f.id AND c.taxonomy_id=t.id
+                )
+            """), {"task": task_id}).scalar_one())
+            ready = missing_taxonomy == 0 and missing_results == 0
+            status = "AWAITING_EXECUTION_APPROVAL" if ready else "AWAITING_TAXONOMY_APPROVAL"
+            phase = "PREVIEW" if ready else "PLAN"
+            changed = connection.execute(text("""
+                UPDATE tasks SET status=:status,phase=:phase,revision=revision+1,updated_at=:now WHERE id=:id
+            """), {"id": task_id, "status": status, "phase": phase, "now": utc_now()})
+            if changed.rowcount != 1:
+                raise KeyError(task_id)
+        return self.get(task_id)
 
     def transition_control(
         self,

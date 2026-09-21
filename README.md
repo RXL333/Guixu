@@ -1,6 +1,6 @@
 # 归序 Guixu
 
-归序是一个 local-first 的 Windows 智能文件整理器：只读扫描文件，使用确定性规则与可选 AI 生成“类别 ID + 证据”，经人工审阅和计划 hash 批准后，才由安全执行器复制或移动。目标冲突永不覆盖，操作持久记录并可在磁盘事实允许时撤销。
+归序是一个 local-first 的 Windows AI 文件整理器：只读扫描并提取内容证据，由 AI 生成受限的“类别 ID + 证据”，经人工审阅和计划 hash 批准后，才由安全执行器复制或移动。目标冲突永不覆盖，操作持久记录并可在磁盘事实允许时撤销。
 
 当前版本：`0.1.0 dev`。源码闭环和 Windows onedir 构建已实现；是否具备发布条件以 [release-readiness](artifacts/reports/release-readiness.md) 为准。请勿因生成了 EXE 就直接对唯一副本或个人根目录试用。
 

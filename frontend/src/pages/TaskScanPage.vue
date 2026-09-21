@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { CheckCircle2, FileQuestion, Microscope, ShieldCheck, X } from 'lucide-vue-next'
-import { api, type FileDetail, type FileItem, type Task, type Taxonomy } from '../services/api'
+import { api, type FileDetail, type FileItem, type Task, type TaskEvent, type Taxonomy } from '../services/api'
 
 const route = useRoute()
 const task = ref<Task | null>(null)
@@ -13,9 +13,8 @@ const analyzing = ref('')
 const detail = ref<FileDetail | null>(null)
 const taxonomies = ref<Taxonomy[]>([])
 const approving = ref('')
+const events = ref<TaskEvent[]>([])
 const reviewCategory = ref('')
-const rulePreviewCount = ref<number | null>(null)
-const confirmRuleScope = ref(false)
 const eligible = computed(() => files.value.filter((file) => file.scan_status === 'eligible').length)
 
 onMounted(async () => {
@@ -24,6 +23,7 @@ onMounted(async () => {
     task.value = await api.task(id)
     files.value = (await api.files(id)).items
     taxonomies.value = await api.taxonomies(id)
+    events.value = (await api.events(id)).items
   } catch (cause) { error.value = String(cause) } finally { loading.value = false }
 })
 
@@ -42,6 +42,16 @@ async function inspect(file: FileItem) {
     reviewCategory.value = detail.value.latest_review?.category_id ?? detail.value.suggestion?.category_id ?? ''
   } catch (cause) { error.value = String(cause) } finally { analyzing.value = '' }
 }
+
+const aiProgress = computed(() => {
+  const labels: Record<string,string> = {
+    scan_completed:'只读扫描完成', AI_PLANNER_STARTED:'AI 正在理解代表性文件并规划分类树',
+    AI_PLANNER_COMPLETED:'AI 分类树规划完成，等待确认', AI_PLANNER_FAILED:'AI 分类树规划失败',
+    AI_CLASSIFY_BATCH_STARTED:'AI 正在分析文件批次', AI_CLASSIFY_BATCH_COMPLETED:'AI 已完成一个文件批次',
+    AI_CLASSIFY_BATCH_FAILED:'AI 文件分类失败', AI_CLASSIFICATION_COMPLETED:'AI 文件分类完成，等待审阅',
+  }
+  return events.value.slice(-6).map(item => ({ ...item, label: labels[item.event_type] || item.event_type }))
+})
 
 async function approve(taxonomy: Taxonomy) {
   if (!task.value) return
@@ -65,16 +75,6 @@ async function saveReview() {
   } catch (cause) { error.value = String(cause) }
 }
 
-function feedbackRule() {
-  if (!detail.value || !reviewCategory.value) return null
-  return { name: `将 ${detail.value.file.extension || '无扩展名'} 归入 ${reviewCategory.value}`, priority: 100, enabled: true,
-    scope: { task_scope_ids: [detail.value.file.scope_id] },
-    condition: { field: 'extension', op: 'eq', value: detail.value.file.extension },
-    action: { type: 'force_category', category_id: reviewCategory.value, template_key: 'universal.types' } }
-}
-async function previewFeedbackRule() { if(!task.value)return;const draft=feedbackRule();if(!draft)return;try{rulePreviewCount.value=(await api.testRule(task.value.id,files.value.map(item=>item.id),draft)).matched_file_ids.length;confirmRuleScope.value=false}catch(cause){error.value=String(cause)} }
-async function saveFeedbackRule() { const draft=feedbackRule();if(!draft||!confirmRuleScope.value)return;try{await api.createRule(draft);rulePreviewCount.value=null;confirmRuleScope.value=false}catch(cause){error.value=String(cause)} }
-
 function locatorText(locator: Record<string, unknown>) {
   const entries = Object.entries(locator)
   return entries.length ? entries.map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join('–') : value}`).join(' · ') : '文件级'
@@ -88,8 +88,9 @@ function locatorText(locator: Record<string, unknown>) {
     <div v-if="loading" class="state-card">正在读取扫描结果…</div>
     <div v-else-if="error" class="state-card error-state">扫描失败：{{ error }}</div>
     <template v-else>
-      <div class="summary-strip"><span><strong>{{ files.length }}</strong> 已发现</span><span><strong>{{ eligible }}</strong> 可识别</span><span><strong>{{ files.length - eligible }}</strong> 已排除</span><span><strong>0</strong> 已执行</span></div>
-      <section v-for="taxonomy in taxonomies.filter(item => item.status === 'draft')" :key="taxonomy.taxonomy_id" class="taxonomy-approval"><div><strong>分类树 v{{ taxonomy.version }} 等待批准</strong><small>{{ taxonomy.nodes.length }} 个节点；批准后哈希冻结，模型只能选择现有类别。</small></div><button class="primary-button" :disabled="!!approving" @click="approve(taxonomy)">{{ approving === taxonomy.taxonomy_id ? '本地分类中…' : '核对并批准分类树' }}</button></section>
+      <div class="summary-strip"><span><strong>{{ files.length }}</strong> 已扫描</span><span><strong>{{ eligible }}</strong> 等待/完成 AI 理解</span><span><strong>{{ files.length - eligible }}</strong> 已排除</span><span><strong>{{ task?.phase }}</strong> 当前阶段</span></div>
+      <section v-if="aiProgress.length" class="state-card"><h2>AI 实际进度</h2><div v-for="item in aiProgress" :key="item.seq" class="operation-row"><b>#{{item.seq}}</b><span>{{item.label}}</span><small v-if="item.payload.batch_index">第 {{item.payload.batch_index}} / {{item.payload.batch_count}} 批 · {{item.payload.file_count}} 个文件</small></div></section>
+      <section v-for="taxonomy in taxonomies.filter(item => item.status === 'draft')" :key="taxonomy.taxonomy_id" class="taxonomy-approval"><div><strong>分类树 v{{ taxonomy.version }} 等待批准</strong><small>{{ taxonomy.nodes.length }} 个节点；批准后哈希冻结，AI 只能选择现有类别。</small></div><button class="primary-button" :disabled="!!approving" @click="approve(taxonomy)">{{ approving === taxonomy.taxonomy_id ? 'AI 正在理解并分类…' : '核对并批准分类树' }}</button></section>
       <div v-if="files.length === 0" class="state-card empty-state"><FileQuestion /><strong>这个范围内没有文件</strong><p>请返回并选择其他测试目录或扫描方式。</p></div>
       <div v-else class="file-table" role="table" aria-label="真实扫描文件">
         <div class="file-row table-head" role="row"><span>文件</span><span>整理区域</span><span>类型建议</span><span>大小</span><span>状态</span></div>
@@ -107,7 +108,7 @@ function locatorText(locator: Record<string, unknown>) {
           <p v-if="detail.profile.coverage.truncated || detail.profile.coverage.sampled_pages.length" class="sampling-note">采样提示：页 {{ detail.profile.coverage.sampled_pages.join('、') || '按策略分层' }}；{{ detail.profile.coverage.truncated ? '未覆盖全部内容' : '已覆盖全部页' }}。</p>
           <div v-if="detail.profile.warnings.length" class="warning-list"><span v-for="warning in detail.profile.warnings" :key="warning">{{ warning }}</span></div>
           <div v-if="detail.suggestion" class="suggestion-card"><span :class="`band-${detail.suggestion.review_band}`">{{ detail.suggestion.review_band }}</span><div><strong>{{ detail.suggestion.category_id ?? '待确认' }}</strong><p>{{ detail.suggestion.reason }}</p></div></div>
-          <div v-if="taxonomyForDetail()" class="review-controls"><label>人工审阅类别<select v-model="reviewCategory"><option disabled value="">请选择</option><option v-for="node in taxonomyForDetail()!.nodes.filter(item => item.selectable)" :key="node.category_id" :value="node.category_id">{{ node.name }} · {{ node.category_id }}</option></select></label><button class="primary-button" :disabled="!reviewCategory" @click="saveReview">{{ detail.latest_review ? '更新人工决定' : '保存人工决定' }}</button><small>本次决定只作用于此文件；不会自动保存为规则。</small><button class="secondary-button" :disabled="!reviewCategory" @click="previewFeedbackRule">预览另存为规则的命中范围</button><div v-if="rulePreviewCount!==null" class="notice"><p>当前任务、当前整理区域内共有 {{rulePreviewCount}} 个同扩展名文件会命中；规则只用于后续分类，不追溯执行。</p><label class="ack"><input v-model="confirmRuleScope" type="checkbox"/> 我确认此规则的整理区域和命中预览</label><button class="secondary-button" :disabled="!confirmRuleScope" @click="saveFeedbackRule">明确保存为规则</button></div></div>
+          <div v-if="taxonomyForDetail()" class="review-controls"><label>人工审阅类别<select v-model="reviewCategory"><option disabled value="">请选择</option><option v-for="node in taxonomyForDetail()!.nodes.filter(item => item.selectable)" :key="node.category_id" :value="node.category_id">{{ node.name }} · {{ node.category_id }}</option></select></label><button class="primary-button" :disabled="!reviewCategory" @click="saveReview">{{ detail.latest_review ? '更新人工决定' : '保存人工决定' }}</button><small>人工决定只作用于此文件，不会生成或训练本地分类规则。</small></div>
           <article v-for="evidence in detail.profile.evidence" :key="evidence.id" class="evidence-card"><div><strong>{{ evidence.kind }}</strong><small>{{ locatorText(evidence.locator) }} · {{ evidence.origin }} · {{ evidence.quality }}</small></div><p>{{ evidence.text }}</p></article>
         </template>
       </aside>

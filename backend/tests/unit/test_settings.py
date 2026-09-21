@@ -13,7 +13,6 @@ def test_defaults_are_loaded_from_seed(project_root):
     assert load_default_settings(project_root).model_dump(mode="json") == expected
 
 
-def test_rules_only_rejects_auto_plan():
-    with pytest.raises(ValidationError, match="rules_only requires"):
-        TaskSettings(classification_mode="rules_only", classification_source="auto_plan")
-
+def test_legacy_classification_mode_is_rejected():
+    with pytest.raises(ValidationError, match="classification_mode"):
+        TaskSettings(classification_mode="rules_only")

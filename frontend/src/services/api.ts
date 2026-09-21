@@ -5,7 +5,6 @@ export interface TaskSettings {
   operation_mode: 'preview_move' | 'direct_move' | 'copy' | 'report_only'
   organization_strategy: 'modality_first' | 'topic_first' | 'hybrid'
   classification_source: 'template' | 'fixed_categories' | 'auto_plan'
-  classification_mode: 'rules_first' | 'ai_first' | 'rules_only'
   max_depth: number
   max_siblings: number
   max_nodes_per_scope: number
@@ -34,6 +33,12 @@ export interface Task {
   counters: Record<string, number>
   created_at: string
   updated_at: string
+  deleted_at?: string | null
+  deletion_source?: string | null
+  delete_reason?: string | null
+  source_root?: string | null
+  model_name?: string | null
+  recent_operation?: string | null
 }
 
 export interface FileItem {
@@ -62,6 +67,10 @@ export interface EvidenceItem {
 
 export interface FileProfile {
   file_id: string
+  source_path: string
+  name: string
+  extension: string
+  mime_type: string | null
   modality: string
   document_kind: string | null
   metadata: Record<string, unknown>
@@ -71,6 +80,8 @@ export interface FileProfile {
   warnings: string[]
   capabilities_used: string[]
   parser_version: string
+  parser_status: 'ready' | 'partial' | 'failed' | 'unsupported'
+  parser_warnings: string[]
 }
 
 export interface FileDetail {
@@ -87,43 +98,216 @@ export interface Taxonomy {
   status: 'draft' | 'approved' | 'superseded'
   tree_hash: string
   policy: Record<string, unknown>
-  nodes: Array<{ category_id: string; parent_id: string | null; name: string; selectable: boolean }>
+  source?: 'template' | 'fixed' | 'auto'
+  nodes: Array<{ category_id: string; parent_id: string | null; name: string; selectable: boolean; definition?: Record<string, unknown>; is_fallback?: boolean }>
 }
 
-export interface ClassificationTemplate {
-  template_id: string
-  version: number
-  name: string
-  description: string
-  modalities: string[]
-  compatible_strategies: string[]
-  minimum_depth: number
-  requires_ai: boolean
-  nodes: Array<{ category_id: string; parent_id: string | null; name: string; selectable: boolean }>
+export interface CapabilityItem {
+  status: 'unknown' | 'supported' | 'unsupported' | 'error'; message: string; tested_at: string | null
+  verified?: boolean; last_probe_at?: string | null; probe_status?: 'not_run' | 'success' | 'failed'; probe_error?: string | null
+  vision?: boolean; vision_verified?: boolean
 }
-
-export interface RuleItem {
-  id: string
-  name: string
-  priority: number
-  enabled: boolean
-  scope: Record<string, unknown>
-  condition: Record<string, unknown>
-  action: Record<string, unknown>
-  revision: number
-}
-
-export interface CapabilityItem { status: 'unknown' | 'supported' | 'unsupported' | 'error'; message: string; tested_at: string | null }
 export interface ModelProfile {
   id: string; name: string; provider: 'deepseek' | 'qwen_local'; runtime: string; base_url: string; model_id: string
   trust_scope: 'cloud' | 'loopback' | 'trusted_lan'; options: Record<string, unknown>; enabled: boolean; revision: number
   has_secret: boolean; capabilities: Record<string, CapabilityItem>
 }
 export interface PlannedOperation { operation_id: string; file_id: string; ordinal: number; action: string; source_path: string; target_path: string | null; reason: string | null }
-export interface ExecutionPlan { plan_id: string; task_id: string; version: number; operation_mode: string; plan_hash: string; operations: PlannedOperation[] }
+export interface ExecutionPlan { plan_id: string; task_id: string; version: number; operation_mode: string; plan_hash: string; operations: PlannedOperation[]; status?: string; plan_basis_revision?: number; approved_task_revision?: number|null; approved?: boolean; results?: Array<{operation_id:string;file_id:string;state:string;error_code:string|null}> }
 export interface TaskEvent { seq: number; event_type: string; payload: Record<string, unknown>; created_at: string }
 
+export interface ConversationScope {
+  id: string
+  scope_kind: string
+  source_root: string
+  display_name: string
+  authorization_ref?: string | null
+  authorization_json?: Record<string, unknown>
+  scope_hash?: string | null
+  created_at: string
+  revoked_at?: string | null
+}
+
+export interface Conversation {
+  id: string
+  title: string
+  status: 'ACTIVE' | 'ARCHIVED' | 'DELETED' | 'ERROR'
+  revision: number
+  model_profile_id?: string | null
+  metadata?: Record<string, unknown>
+  created_at: string
+  updated_at: string
+  deleted_at?: string | null
+  last_message_at?: string | null
+  scopes?: ConversationScope[]
+  context?: ConversationContext | null
+  tasks?: Task[]
+}
+
+export type ConversationMessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM_EVENT'
+export type ConversationMessageType = 'TEXT' | 'STATUS' | 'PLAN_PROPOSAL' | 'EXECUTION_RESULT' | 'ERROR' | 'SYSTEM_EVENT'
+
+export interface ConversationMessage {
+  id: string
+  conversation_id: string
+  role: ConversationMessageRole
+  content: string
+  sequence_number: number
+  message_type: ConversationMessageType
+  status: 'ACTIVE' | 'REDACTED'
+  referenced_plan_version_id?: string | null
+  referenced_execution_round_id?: string | null
+  metadata?: Record<string, unknown>
+  created_at: string
+}
+
+export interface ConversationContext {
+  id: string
+  conversation_id: string
+  context_revision: number
+  current_taxonomy_id?: string | null
+  current_plan_version_id?: string | null
+  current_execution_round_id?: string | null
+  model_profile_id?: string | null
+  max_directory_depth: number
+  organization_intent?: Record<string, unknown>
+  confirmed_requirements?: Array<Record<string, unknown>>
+  privacy_scope?: Record<string, unknown>
+  selection_state?: { file_ids?: string[]; source?: string; updated_at?: string } & Record<string, unknown>
+  file_state_revision: number
+  strategy_state?: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationPlanVersion {
+  id: string
+  conversation_id: string
+  version_number: number
+  parent_plan_version_id?: string | null
+  baseline_execution_round_id?: string | null
+  plan_kind?: 'FULL'|'DELTA'
+  basis_context_revision: number
+  source: string
+  status: string
+  taxonomy_id?: string | null
+  taxonomy_snapshot?: Record<string, unknown>
+  plan_id?: string | null
+  plan_hash?: string | null
+  summary: string
+  change_summary?: Record<string, unknown>
+  affected_file_count: number
+  kept_file_count?: number
+  conflict_count?: number
+  created_by_message_id?: string | null
+  restored_from_version_id?: string | null
+  created_at: string
+  approved_at?: string | null
+  executed_at?: string | null
+  superseded_at?: string | null
+}
+
+export type PlanFileChangeType = 'UNCHANGED' | 'ADDED' | 'REMOVED' | 'TARGET_CHANGED' | 'KEEP_CHANGED' | 'CONFLICT_CHANGED'
+export interface ConversationPlanDiff {
+  old_plan_version_id: string | null
+  new_plan_version_id: string
+  old_version_number?: number
+  new_version_number?: number
+  categories_added: Array<Record<string, unknown>>
+  categories_removed: Array<Record<string, unknown>>
+  category_changes: Array<Record<string, unknown>>
+  file_changes: Array<{ file_id: string; change_type: PlanFileChangeType; old?: Record<string, unknown> | null; new?: Record<string, unknown> | null }>
+  affected_file_ids: string[]
+  summary_counts: Record<string, number>
+}
+
+export interface ConversationExecutionRound {
+  id: string
+  conversation_id: string
+  round_number: number
+  plan_version_id: string
+  execution_plan_id: string
+  undo_plan_id?: string | null
+  status: string
+  undo_status?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  summary?: Record<string, unknown>
+  affected_file_count: number
+  created_at: string
+}
+
+export interface ConversationFile {
+  id: string
+  conversation_id: string
+  file_id: string
+  first_seen_path: string
+  current_known_path: string
+  first_seen_fingerprint?: string | null
+  current_fingerprint?: string | null
+  first_seen_size_bytes?: number | null
+  current_size_bytes?: number | null
+  first_seen_mtime_ns?: number | null
+  current_mtime_ns?: number | null
+  added_at: string
+  removed_from_scope_at?: string | null
+  last_verified_at?: string | null
+  state: 'ACTIVE' | 'FILE_CHANGED' | 'MISSING' | 'REMOVED'
+  core_current_path?: string
+  core_size_bytes?: number | null
+  core_mtime_ns?: number | null
+  core_sha256?: string | null
+  current_category_id?: string | null
+}
+
+export interface AffectedScope {
+  scope_type: 'LOCAL'|'PARTIAL'|'GLOBAL'
+  affected_category_ids: string[]
+  candidate_file_ids: string[]
+  target_category_id?: string | null
+  requires_global_replan: boolean
+  preserve_unaffected: boolean
+  reason: string
+}
+
+export interface RefinementMetrics {
+  total_scope_files: number
+  affected_files: number
+  evidence_reused: number
+  evidence_refreshed: number
+  invalid_evidence: number
+  delta_plan_count: number
+  ai_calls: number
+}
+
+export interface ConversationWorkspaceState {
+  conversation_id: string
+  conversation_status: string
+  file_state_revision: number
+  context_revision: number
+  latest_execution_round_id?: string | null
+  latest_executed_plan_version_id?: string | null
+  current_plan_version_id?: string | null
+  current_taxonomy: Record<string, unknown>
+  current_requirements: Array<Record<string, unknown>>
+  current_files: ConversationFile[]
+  total_scope_files: number
+}
+
+export interface RefinementResult {
+  status: 'WAITING_FOR_APPROVAL'|'GLOBAL_REPLAN_CONFIRMATION_REQUIRED'
+  intent: 'POST_EXECUTION_REFINEMENT'
+  affected_scope: AffectedScope
+  metrics: RefinementMetrics
+  plan_version?: ConversationPlanVersion
+  assistant_message?: ConversationMessage
+}
+
 type Envelope<T> = { data: T; meta: { request_id: string } }
+
+export class ApiError extends Error {
+  constructor(public code: string, message: string, public details: unknown, public status: number) { super(message) }
+}
 
 function token(): string {
   return window.__GUIXU_SESSION__ ?? import.meta.env.VITE_GUIXU_SESSION ?? ''
@@ -148,14 +332,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { 'Content-Type': 'application/json', 'X-Guixu-Session': session, ...init.headers },
   })
   const body = await response.json()
-  if (!response.ok) throw new Error(body.error?.message ?? `HTTP ${response.status}`)
+  if (!response.ok) throw new ApiError(body.error?.code ?? `HTTP_${response.status}`, body.error?.message ?? `HTTP ${response.status}`, body.error?.details, response.status)
   return (body as Envelope<T>).data
 }
 
 export const api = {
   settings: () => request<{ revision: number; values: TaskSettings }>('/api/v1/settings'),
-  tasks: () => request<{ items: Task[] }>('/api/v1/tasks'),
-  createTask: (payload: { name: string; source_grant: string; output_grant?: string | null; settings: TaskSettings; model_profile_id?: string | null; template_key?: string | null }) =>
+  tasks: (view: 'active'|'deleted'|'all' = 'active') => request<{ items: Task[] }>(`/api/v1/tasks?view=${view}`),
+  createTask: (payload: { name: string; source_grant: string; output_grant?: string | null; settings: TaskSettings; model_profile_id: string; user_instructions?: string }) =>
     request<Task>('/api/v1/tasks', {
       method: 'POST',
       headers: { 'Idempotency-Key': crypto.randomUUID() },
@@ -176,13 +360,26 @@ export const api = {
       headers: { 'Idempotency-Key': crypto.randomUUID() },
       body: JSON.stringify({ expected_revision: revision, file_ids: [fileId] }),
     }),
-  templates: () => request<{ items: ClassificationTemplate[]; total: number }>('/api/v1/templates'),
-  rules: () => request<{ items: RuleItem[]; total: number }>('/api/v1/rules'),
-  createRule: (payload: Record<string, unknown>) => request<RuleItem>('/api/v1/rules', {
-    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+  renameTask: (id: string, revision: number, name: string) => request<Task>(`/api/v1/tasks/${id}`, {
+    method:'PATCH', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision,name}),
   }),
-  testRule: (taskId: string, fileIds: string[], draftRule: Record<string, unknown>) => request<{matched_file_ids:string[];conflicts:string[]}>('/api/v1/rules/test', {
-    method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({task_id:taskId,file_ids:fileIds,draft_rule:draftRule}),
+  deleteTask: (id: string, revision: number, deleteReason?: string) => request<Task>(`/api/v1/tasks/${id}`, {
+    method:'DELETE', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision,delete_reason:deleteReason||null}),
+  }),
+  batchDeleteTasks: (taskIds: string[]) => request<{items:Task[];deleted:number}>('/api/v1/tasks/batch-delete', {
+    method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({task_ids:taskIds}),
+  }),
+  restoreTask: (id: string, revision: number) => request<Task>(`/api/v1/tasks/${id}/restore`, {
+    method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision}),
+  }),
+  batchRestoreTasks: (taskIds: string[]) => request<{items:Task[];restored:number}>('/api/v1/tasks/batch-restore', {
+    method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({task_ids:taskIds}),
+  }),
+  permanentlyDeleteTask: (id: string, revision: number) => request<{permanently_deleted:boolean;disk_files_changed:false}>(`/api/v1/tasks/${id}/permanent`, {
+    method:'DELETE', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision}),
+  }),
+  batchPermanentlyDeleteTasks: (taskIds: string[]) => request<{permanently_deleted:number;disk_files_changed:false}>('/api/v1/tasks/batch-permanent-delete', {
+    method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({task_ids:taskIds}),
   }),
   models: () => request<ModelProfile[]>('/api/v1/models'),
   createModel: (payload: Record<string, unknown>) => request<ModelProfile>('/api/v1/models', {
@@ -201,12 +398,22 @@ export const api = {
   approveTaxonomy: (taskId: string, taxonomyId: string, revision: number, treeHash: string) => request<{ status: string }>(`/api/v1/tasks/${taskId}/taxonomies/${taxonomyId}/approve`, {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ expected_revision: revision, tree_hash: treeHash }),
   }),
+  updateTaxonomy: (taskId: string, taxonomy: Taxonomy, revision: number) => request<Taxonomy>(`/api/v1/tasks/${taskId}/taxonomies/${taxonomy.taxonomy_id}`, {
+    method: 'PUT', headers: { 'Idempotency-Key': crypto.randomUUID() },
+    body: JSON.stringify({ expected_revision: revision, tree_hash: taxonomy.tree_hash, nodes: taxonomy.nodes }),
+  }),
+  retryClassification: (taskId: string, taxonomyId: string) => request<{ status: string }>(`/api/v1/tasks/${taskId}/taxonomies/${taxonomyId}/classify`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
+  }),
+  grantConsent: (taskId: string, payload: Record<string, unknown>) => request<Record<string, unknown>>(`/api/v1/tasks/${taskId}/consents`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+  }),
   review: (taskId: string, revision: number, item: Record<string, unknown>) => request<{ applied: number; new_revision: number }>(`/api/v1/tasks/${taskId}/reviews/bulk`, {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ expected_revision: revision, items: [item] }),
   }),
   compilePlan: (taskId: string) => request<ExecutionPlan>(`/api/v1/tasks/${taskId}/plan/compile`, { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:'{}' }),
   plan: (taskId: string, planId?: string) => request<ExecutionPlan>(`/api/v1/tasks/${taskId}/plan${planId?`?plan_id=${encodeURIComponent(planId)}`:''}`),
-  approvePlan: (taskId: string, revision: number, plan: ExecutionPlan) => request<{status:string}>(`/api/v1/tasks/${taskId}/plan/approve`, { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision,plan_id:plan.plan_id,plan_hash:plan.plan_hash}) }),
+  approvePlan: (taskId: string, revision: number, plan: ExecutionPlan) => request<{status:string;approved:boolean;plan_id:string;plan_hash:string;plan_basis_revision:number;approved_task_revision:number}>(`/api/v1/tasks/${taskId}/plan/approve`, { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision,plan_id:plan.plan_id,plan_hash:plan.plan_hash}) }),
   executePlan: (taskId: string, revision: number, plan: ExecutionPlan) => request<ExecutionPlan>(`/api/v1/tasks/${taskId}/execute`, { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision,plan_id:plan.plan_id,plan_hash:plan.plan_hash}) }),
   compileUndo: (taskId: string, revision: number, forwardPlanId: string, forwardPlanHash: string) => request<ExecutionPlan>(`/api/v1/tasks/${taskId}/undo/plan`, { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision,plan_id:forwardPlanId,plan_hash:forwardPlanHash}) }),
   events: (taskId: string, afterSeq = 0) => request<{items:TaskEvent[]}>(`/api/v1/tasks/${taskId}/events?after_seq=${afterSeq}`),
@@ -218,6 +425,54 @@ export const api = {
   exportReport: (taskId: string, grant: string, format: 'json'|'csv', filename?: string) => request<Record<string, unknown>>(`/api/v1/tasks/${taskId}/report/export`, { method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({export_grant:grant,format,filename}) }),
   components: () => request<Array<Record<string, unknown>>>('/api/v1/components'),
   devGrant: (path: string, purpose = 'source') => request<DirectoryGrant>('/api/v1/dev/grants', { method: 'POST', body: JSON.stringify({ path, purpose }) }),
+  conversations: (view: 'active'|'deleted'|'all' = 'active') => request<Conversation[]>(`/api/v1/conversations?view=${view}`),
+  createConversation: (payload: { title?: string; model_profile_id?: string | null; scope_grant: string; metadata?: Record<string, unknown>; context?: Record<string, unknown> }) =>
+    request<Conversation>('/api/v1/conversations', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload) }),
+  conversation: (id: string) => request<Conversation>(`/api/v1/conversations/${id}`),
+  renameConversation: (id: string, title: string) => request<Conversation>(`/api/v1/conversations/${id}`, {
+    method: 'PATCH', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ title }),
+  }),
+  archiveConversation: (id: string) => request<Conversation>(`/api/v1/conversations/${id}`, {
+    method: 'PATCH', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ status: 'ARCHIVED' }),
+  }),
+  deleteConversation: (id: string) => request<{ conversation: Conversation; disk_files_changed: false; undo_started: false }>(`/api/v1/conversations/${id}`, {
+    method: 'DELETE', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
+  }),
+  restoreConversation: (id: string) => request<Conversation>(`/api/v1/conversations/${id}/restore`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
+  }),
+  conversationMessages: (id: string) => request<ConversationMessage[]>(`/api/v1/conversations/${id}/messages`),
+  appendConversationMessage: (id: string, payload: { role: ConversationMessageRole; content: string; message_type?: ConversationMessageType; metadata?: Record<string, unknown>; referenced_plan_version_id?: string | null; referenced_execution_round_id?: string | null }) =>
+    request<ConversationMessage>(`/api/v1/conversations/${id}/messages`, {
+      method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+    }),
+  conversationContext: (id: string) => request<ConversationContext>(`/api/v1/conversations/${id}/context`),
+  updateConversationContext: (id: string, expected_revision: number, changes: Record<string, unknown>) => request<ConversationContext>(`/api/v1/conversations/${id}/context`, {
+    method: 'PATCH', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ expected_revision, changes }),
+  }),
+  conversationFiles: (id: string) => request<ConversationFile[]>(`/api/v1/conversations/${id}/files`),
+  conversationPlans: (id: string) => request<ConversationPlanVersion[]>(`/api/v1/conversations/${id}/plans`),
+  conversationPlanVersions: (id: string, limit = 20) => request<ConversationPlanVersion[]>(`/api/v1/conversations/${id}/plan-versions?limit=${limit}`),
+  conversationPlanVersion: (id: string, versionId: string) => request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/${versionId}`),
+  currentConversationPlanVersion: (id: string) => request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/current`),
+  conversationPlanDiff: (id: string, versionId: string, fromVersionId?: string | null) => request<ConversationPlanDiff>(`/api/v1/conversations/${id}/plan-versions/${versionId}/diff${fromVersionId ? `?from_version_id=${encodeURIComponent(fromVersionId)}` : ''}`),
+  approveConversationPlanVersion: (id: string, versionId: string, payload: { expected_context_revision?: number; plan_hash?: string; authorization?: Record<string, unknown> } = {}) => request<Record<string, unknown>>(`/api/v1/conversations/${id}/plan-versions/${versionId}/approve`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+  }),
+  restoreConversationPlanVersion: (id: string, versionId: string, payload: { expected_context_revision?: number; expected_current_plan_version_id?: string } = {}) => request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/${versionId}/restore`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+  }),
+  requestConversationPlanExecution: (id: string, versionId: string, payload: { expected_context_revision?: number; plan_hash?: string; status?: 'PENDING'|'RUNNING'; summary?: Record<string, unknown>; affected_file_count?: number } = {}) => request<ConversationExecutionRound>(`/api/v1/conversations/${id}/plan-versions/${versionId}/execution-rounds`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+  }),
+  conversationExecutions: (id: string) => request<ConversationExecutionRound[]>(`/api/v1/conversations/${id}/executions`),
+  conversationWorkspaceState: (id: string) => request<ConversationWorkspaceState>(`/api/v1/conversations/${id}/workspace-state`),
+  prepareConversationRefinement: (id: string, payload: { user_message: string; confirmed_global?: boolean }) => request<RefinementResult>(`/api/v1/conversations/${id}/refinements/prepare`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+  }),
+  executeConversationRefinement: (id: string, versionId: string, payload: { expected_context_revision?: number; plan_hash?: string } = {}) => request<{ execution_round: ConversationExecutionRound; workspace: ConversationWorkspaceState }>(`/api/v1/conversations/${id}/plan-versions/${versionId}/execute`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+  }),
 }
 
 export async function chooseDirectory(purpose: 'source'|'output'|'export', typedPath?: string): Promise<DirectoryGrant> {

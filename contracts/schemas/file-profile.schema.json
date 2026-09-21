@@ -8,6 +8,21 @@
       "type": "string",
       "format": "uuid"
     },
+    "source_path": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "extension": {
+      "type": "string",
+      "maxLength": 32
+    },
+    "mime_type": {
+      "type": ["string", "null"],
+      "maxLength": 200
+    },
     "modality": {
       "type": "string",
       "enum": [
@@ -64,6 +79,7 @@
               "extracted_text",
               "ocr",
               "visual_caption",
+              "visual_description",
               "transcript",
               "subtitle",
               "user_context"
@@ -233,12 +249,25 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 100
+    },
+    "parser_status": {
+      "type": "string",
+      "enum": ["ready", "partial", "failed", "unsupported"]
+    },
+    "parser_warnings": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 300},
+      "maxItems": 40
     }
   },
   "additionalProperties": false,
   "required": [
     "schema_version",
     "file_id",
+    "source_path",
+    "name",
+    "extension",
+    "mime_type",
     "modality",
     "document_kind",
     "metadata",
@@ -248,7 +277,9 @@
     "coverage",
     "warnings",
     "capabilities_used",
-    "parser_version"
+    "parser_version",
+    "parser_status",
+    "parser_warnings"
   ],
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:guixu:file-profile:v1",

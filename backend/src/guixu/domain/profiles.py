@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
@@ -25,7 +27,7 @@ class EvidenceLocator(BaseModel):
 class Evidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(min_length=1, max_length=80)
-    kind: Literal["metadata", "extracted_text", "ocr", "visual_caption", "transcript", "subtitle", "user_context"]
+    kind: Literal["metadata", "extracted_text", "ocr", "visual_caption", "visual_description", "transcript", "subtitle", "user_context"]
     text: str = Field(max_length=12_000)
     locator: EvidenceLocator = Field(default_factory=EvidenceLocator)
     quality: Literal["high", "medium", "low"]
@@ -52,6 +54,10 @@ class FileProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal[1] = 1
     file_id: str
+    source_path: str = ""
+    name: str = ""
+    extension: str = ""
+    mime_type: str | None = None
     modality: Literal["image", "text", "document", "audio", "video", "other"]
     document_kind: Literal["pdf", "docx", "pptx", "xlsx"] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -62,9 +68,28 @@ class FileProfile(BaseModel):
     warnings: list[str] = Field(default_factory=list, max_length=40)
     capabilities_used: list[str] = Field(default_factory=list)
     parser_version: str
+    parser_status: Literal["ready", "partial", "failed", "unsupported"] = "ready"
+    parser_warnings: list[str] = Field(default_factory=list, max_length=40)
 
 
 class ParseOutcome(BaseModel):
     status: Literal["ready", "partial", "failed", "unsupported"]
     profile: FileProfile
     cache_artifacts: list[str] = Field(default_factory=list)
+
+
+def with_file_context(outcome: ParseOutcome, path: Path) -> ParseOutcome:
+    """Attach local file facts without using them as a semantic classifier.
+
+    These fields route parsers and help audit a result. Model outbound builders must
+    explicitly opt in to any name/path disclosure.
+    """
+    profile = outcome.profile.model_copy(update={
+        "source_path": str(path.resolve()),
+        "name": path.name,
+        "extension": path.suffix.lower(),
+        "mime_type": mimetypes.guess_type(path.name)[0],
+        "parser_status": outcome.status,
+        "parser_warnings": list(outcome.profile.warnings),
+    })
+    return outcome.model_copy(update={"profile": profile})

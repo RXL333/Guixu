@@ -1,10 +1,12 @@
-import { cleanup, fireEvent, render } from '@testing-library/vue'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/vue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import TaskStepper from '../src/components/TaskStepper.vue'
 import EvidenceDrawer from '../src/components/EvidenceDrawer.vue'
+import HistoryPage from '../src/pages/HistoryPage.vue'
+import { api } from '../src/services/api'
 import { router } from '../src/router'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('phase 06 UI safety contract', () => {
   it('UI04 exposes named task phases to assistive technology', () => {
@@ -16,7 +18,7 @@ describe('phase 06 UI safety contract', () => {
   it('UI09 renders evidence as text rather than trusted HTML', () => {
     const detail = {
       file: { id:'f', scope_id:'s', basename:'<img src=x onerror=alert(1)>', relative_path:'x', extension:'.txt', modality:'text', size_bytes:1, scan_status:'eligible', exclusion_code:null, scope_name:'root', metadata:{type_evidence:'x'} },
-      profile: { file_id:'f', modality:'text', document_kind:null, metadata:{}, content_summary:'', evidence:[{id:'e',kind:'extracted_text',text:'<script>window.pwned=true</script>',locator:{paragraph:1},quality:'high',origin:'test'}],coverage:{mode:'full',total_pages:null,sampled_pages:[],total_duration_sec:null,truncated:false},warnings:[],capabilities_used:[],parser_version:'test' },
+      profile: { file_id:'f', source_path:'C:/fixture/notes.txt', name:'notes.txt', extension:'.txt', mime_type:'text/plain', modality:'text', document_kind:null, metadata:{}, content_summary:'', evidence:[{id:'e',kind:'extracted_text',text:'<script>window.pwned=true</script>',locator:{paragraph:1},quality:'high',origin:'test'}],coverage:{mode:'full',total_pages:null,sampled_pages:[],total_duration_sec:null,truncated:false},warnings:[],capabilities_used:[],parser_version:'test',parser_status:'ready' as const,parser_warnings:[] },
       suggestion:null, latest_review:null,
     }
     const view = render(EvidenceDrawer, { props: { detail } })
@@ -37,7 +39,9 @@ describe('phase 06 UI safety contract', () => {
 
   it('UI08 has real routes for every required task and navigation view', () => {
     const paths = new Set(router.getRoutes().map(route => route.path))
-    for (const path of ['/','/tasks/new','/tasks/:id/analyze','/tasks/:id/taxonomy','/tasks/:id/review','/tasks/:id/run','/tasks/:id/report','/templates','/rules','/history','/models','/settings']) expect(paths.has(path)).toBe(true)
+    for (const path of ['/','/tasks/new','/tasks/:id/analyze','/tasks/:id/taxonomy','/tasks/:id/review','/tasks/:id/run','/tasks/:id/report','/templates','/history','/trash','/models','/settings']) expect(paths.has(path)).toBe(true)
+    expect(paths.has('/rules')).toBe(false)
+    expect(router.getRoutes().find(route=>route.path==='/templates')?.redirect).toBe('/')
   })
 
   it('UI03 distinguishes current page from all filtered results', async () => {
@@ -73,14 +77,86 @@ describe('phase 06 UI safety contract', () => {
     const page = await import('../src/pages/TaskRunPage.vue?raw')
     expect(page.default).toContain('if(busy.value||')
     expect(page.default).toContain('const current=await api.task')
+    expect(page.default).toContain('const verified=await api.plan')
+    expect(page.default).toContain('verified.plan_hash!==original.hash')
+    expect(page.default).toContain('PLAN_NOT_APPROVED')
+    expect(page.default).toContain('PLAN_HASH_MISMATCH')
   })
 
-  it('template cards select a template for a new task', async () => {
-    const [templates, task] = await Promise.all([import('../src/pages/TemplatesPage.vue?raw'), import('../src/pages/NewTaskPage.vue?raw')])
-    expect(templates.default).toContain('用于新建任务')
-    expect(templates.default).toContain('useTemplate(item)')
-    expect(task.default).toContain('route.query.template')
-    expect(task.default).toContain('template_key: templateKey.value')
-    expect(task.default).toContain('需要模型')
+  it('new organization is a single AI-only flow without legacy modes', async () => {
+    const task = await import('../src/pages/NewTaskPage.vue?raw')
+    expect(task.default).toContain('开始一次 AI 整理')
+    expect(task.default).toContain('告诉 AI 你希望怎样整理这些文件')
+    expect(task.default).toContain('需要选择 AI 模型')
+    expect(task.default).toContain('最大目录深度')
+    expect(task.default).toContain('分析强度')
+    expect(task.default).toContain('预览确认后移动')
+    expect(task.default).toContain('acknowledgeAI')
+    for (const legacy of ['template_key','fixed_tree','fixed_categories','direct_move','分类模板']) expect(task.default).not.toContain(legacy)
+  })
+
+  it('taxonomy review supports edits before AI file classification', async () => {
+    const page = await import('../src/pages/TaskTaxonomyPage.vue?raw')
+    expect(page.default).toContain('编辑分类树')
+    expect(page.default).toContain('新增类别')
+    expect(page.default).toContain('updateTaxonomy')
+    expect(page.default).toContain('批准分类树并开始 AI 分类')
+  })
+
+  it('deletes one task only after explicit disk-safe confirmation', async () => {
+    const item = {id:'t1',name:'测试任务',status:'FAILED',phase:'REPORT',revision:1,settings:{},counters:{discovered:2},created_at:'now',updated_at:'now'} as any
+    vi.spyOn(api,'tasks').mockResolvedValueOnce({items:[item]}).mockResolvedValueOnce({items:[]})
+    const remove=vi.spyOn(api,'deleteTask').mockResolvedValue({...item,deleted_at:'now'})
+    vi.spyOn(window,'confirm').mockReturnValue(true)
+    await router.push('/history');await router.isReady()
+    const view=render(HistoryPage,{global:{plugins:[router]}})
+    await view.findByText('测试任务')
+    await fireEvent.click(view.getByRole('button',{name:'测试任务 更多操作'}))
+    await fireEvent.click(view.getByRole('button',{name:/删除任务/}))
+    await waitFor(()=>expect(remove).toHaveBeenCalledWith('t1',1))
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不会删除或移动磁盘上的文件'))
+  })
+
+  it('supports filtered batch selection and batch delete', async () => {
+    const items=['a','b'].map(id=>({id,name:`任务${id}`,status:'FAILED',phase:'REPORT',revision:1,settings:{},counters:{},created_at:'now',updated_at:'now'})) as any
+    vi.spyOn(api,'tasks').mockResolvedValueOnce({items}).mockResolvedValueOnce({items:[]})
+    const remove=vi.spyOn(api,'batchDeleteTasks').mockResolvedValue({items:[],deleted:2})
+    vi.spyOn(window,'confirm').mockReturnValue(true)
+    await router.push('/history');const view=render(HistoryPage,{global:{plugins:[router]}});await view.findByText('任务a')
+    await fireEvent.click(view.getByRole('button',{name:'选择全部当前筛选结果'}))
+    await fireEvent.click(view.getByRole('button',{name:'批量删除'}))
+    await waitFor(()=>expect(remove).toHaveBeenCalledWith(['a','b']))
+  })
+
+  it('recently deleted tasks can be restored and running deletion is disabled', async () => {
+    const deleted={id:'d',name:'已删除',status:'FAILED',phase:'REPORT',revision:2,settings:{},counters:{},created_at:'now',updated_at:'now',deleted_at:'now'} as any
+    vi.spyOn(api,'tasks').mockResolvedValueOnce({items:[deleted]}).mockResolvedValueOnce({items:[]})
+    const restore=vi.spyOn(api,'restoreTask').mockResolvedValue({...deleted,deleted_at:null})
+    await router.push('/trash');const view=render(HistoryPage,{global:{plugins:[router]}});await view.findByText('已删除')
+    await fireEvent.click(view.getByRole('button',{name:'已删除 更多操作'}));await fireEvent.click(view.getByRole('button',{name:'恢复'}))
+    await waitFor(()=>expect(restore).toHaveBeenCalledWith('d',2))
+    const source=await import('../src/pages/HistoryPage.vue?raw')
+    expect(source.default).toContain("['RUNNING','PAUSE_REQUESTED','RECOVERY_REQUIRED']")
+    expect(source.default).toContain(':disabled="!deletedView&&blocked(item)"')
+  })
+
+  it('recently deleted tasks support guarded batch permanent deletion', async () => {
+    const items=['x','y'].map(id=>({id,name:`删除${id}`,status:'FAILED',phase:'REPORT',revision:2,settings:{},counters:{},created_at:'now',updated_at:'now',deleted_at:'now'})) as any
+    vi.spyOn(api,'tasks').mockResolvedValueOnce({items}).mockResolvedValueOnce({items:[]})
+    const purge=vi.spyOn(api,'batchPermanentlyDeleteTasks').mockResolvedValue({permanently_deleted:2,disk_files_changed:false})
+    vi.spyOn(window,'confirm').mockReturnValue(true)
+    await router.push('/trash');const view=render(HistoryPage,{global:{plugins:[router]}});await view.findByText('删除x')
+    await fireEvent.click(view.getByRole('button',{name:'选择全部当前筛选结果'}))
+    await fireEvent.click(view.getByRole('button',{name:'批量永久删除'}))
+    await waitFor(()=>expect(purge).toHaveBeenCalledWith(['x','y']))
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不会删除磁盘上的文件'))
+  })
+
+  it('navigation removes template and rule products and exposes recent deletion', async () => {
+    const app=await import('../src/App.vue?raw')
+    expect(app.default).toContain('整理记录')
+    expect(app.default).toContain('最近删除')
+    expect(app.default).not.toContain('分类模板')
+    expect(app.default).not.toContain('自动规则')
   })
 })

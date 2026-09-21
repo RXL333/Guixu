@@ -44,7 +44,7 @@ def test_dt02_rejects_wrong_host_and_origin(project_root: Path, tmp_path: Path):
         ).json()["error"]["code"] == "ORIGIN_REJECTED"
 
 
-def test_phase01_seeds_t24_type_template(project_root: Path, tmp_path: Path):
+def test_legacy_template_table_is_not_seeded_or_exposed_at_runtime(project_root: Path, tmp_path: Path):
     app = create_app(
         project_root=project_root,
         data_dir=tmp_path / "data",
@@ -53,10 +53,8 @@ def test_phase01_seeds_t24_type_template(project_root: Path, tmp_path: Path):
     )
     with TestClient(app):
         with app.state.database.engine.connect() as connection:
-            row = connection.exec_driver_sql(
-                "SELECT template_key,origin FROM template_versions WHERE template_key='universal.types'"
-            ).fetchone()
-            assert row == ("universal.types", "builtin")
+            assert connection.exec_driver_sql("SELECT COUNT(*) FROM template_versions").scalar_one() == 0
+        assert "/api/v1/templates" not in app.openapi()["paths"]
 
 
 def test_dt04_frozen_worker_reuses_executable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -73,13 +71,13 @@ def test_dt07_database_version_and_consistent_backup(project_root: Path, tmp_pat
     database = Database(tmp_path / "data" / "app.sqlite3", project_root / "contracts" / "database.sql")
     database.initialize()
     with database.engine.connect() as connection:
-        assert connection.exec_driver_sql("SELECT version FROM schema_metadata WHERE singleton=1").scalar_one() == 1
+        assert connection.exec_driver_sql("SELECT version FROM schema_metadata WHERE singleton=1").scalar_one() == 6
     backup = database.backup_for_migration()
     assert backup.is_file() and backup.parent.name == "backups"
     copy = sqlite3.connect(backup)
     try:
         assert copy.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-        assert copy.execute("SELECT version FROM schema_metadata WHERE singleton=1").fetchone()[0] == 1
+        assert copy.execute("SELECT version FROM schema_metadata WHERE singleton=1").fetchone()[0] == 6
     finally:
         copy.close()
         database.close()

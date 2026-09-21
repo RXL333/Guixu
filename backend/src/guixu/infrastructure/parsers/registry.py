@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 from guixu.domain.files import detect_modality
-from guixu.domain.profiles import Coverage, FileProfile, ParseOutcome
+from guixu.domain.profiles import Coverage, FileProfile, ParseOutcome, with_file_context
 from guixu.infrastructure.parsers.common import PARSER_VERSION
 from guixu.infrastructure.parsers.documents import DOCUMENT_PARSERS
 from guixu.infrastructure.parsers.images import parse_image
@@ -28,19 +28,21 @@ class ParserRegistry:
         try:
             self._validate_signature(path, suffix)
             if suffix in TEXT_SUFFIXES:
-                return parse_text(path, file_id, preset)
-            if suffix in DOCUMENT_PARSERS:
-                return DOCUMENT_PARSERS[suffix](path, file_id, preset)
-            if suffix in IMAGE_SUFFIXES:
-                return parse_image(path, file_id, preset, artifact_dir or path.parent / ".guixu-thumbnails")
-            if suffix in AUDIO_SUFFIXES:
-                return parse_media(path, file_id, "audio", preset)
-            if suffix in VIDEO_SUFFIXES:
-                return parse_media(path, file_id, "video", preset)
-            return self._failure(file_id, modality, "unsupported", "UNSUPPORTED_FORMAT")
+                outcome = parse_text(path, file_id, preset)
+            elif suffix in DOCUMENT_PARSERS:
+                outcome = DOCUMENT_PARSERS[suffix](path, file_id, preset)
+            elif suffix in IMAGE_SUFFIXES:
+                outcome = parse_image(path, file_id, preset, artifact_dir or path.parent / ".guixu-thumbnails")
+            elif suffix in AUDIO_SUFFIXES:
+                outcome = parse_media(path, file_id, "audio", preset)
+            elif suffix in VIDEO_SUFFIXES:
+                outcome = parse_media(path, file_id, "video", preset)
+            else:
+                outcome = self._failure(file_id, modality, "unsupported", "UNSUPPORTED_FORMAT")
         except Exception as exc:
             code = str(exc) if str(exc).isupper() or "_" in str(exc) else type(exc).__name__.upper()
-            return self._failure(file_id, modality, "failed", code[:300])
+            outcome = self._failure(file_id, modality, "failed", code[:300])
+        return with_file_context(outcome, path)
 
     def _validate_signature(self, path: Path, suffix: str) -> None:
         header = path.read_bytes()[:16]
@@ -61,4 +63,3 @@ class ParserRegistry:
     def _failure(file_id: str, modality: str, status: str, warning: str) -> ParseOutcome:
         profile = FileProfile(file_id=file_id, modality=modality, metadata={}, coverage=Coverage(mode="metadata_only"), warnings=[warning], capabilities_used=[], parser_version=PARSER_VERSION)
         return ParseOutcome(status=status, profile=profile)
-

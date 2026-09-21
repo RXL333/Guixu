@@ -37,6 +37,12 @@ class TaskService:
             raise ValueError("copy mode requires output_grant")
         if settings.operation_mode == "direct_move" and not self.allow_direct_move:
             raise ValueError("direct_move is disabled until phase 08 safety acceptance")
+        if not model_profile_id or not model_snapshot or not model_snapshot.get("enabled"):
+            raise ValueError("AI_MODEL_REQUIRED")
+        if settings.classification_source != "auto_plan":
+            raise ValueError("LEGACY_CLASSIFICATION_SOURCE_NOT_ALLOWED")
+        if any(key in classification_request for key in ("template_key", "template_version", "fixed_tree")):
+            raise ValueError("LEGACY_CLASSIFICATION_REQUEST_NOT_ALLOWED")
         task = self.repository.create(name, settings, classification_request, model_profile_id, model_snapshot)
         with self._lock:
             self._task_grants[task["id"]] = (source_grant, output_grant)
@@ -50,7 +56,8 @@ class TaskService:
                 source_grant, output_grant = self._task_grants[task_id]
             source = self.registry.get(source_grant, "source").canonical_root
             output = self.registry.get(output_grant, "output").canonical_root if output_grant else None
-            settings = TaskSettings.model_validate(task["settings"])
+            compatible_settings = {key: value for key, value in task["settings"].items() if key != "classification_mode"}
+            settings = TaskSettings.model_validate(compatible_settings)
             known_outputs = tuple(path for path in self.repository.known_output_roots() if path != source)
             result = self.scanner.scan(source, settings, output, known_outputs)
             scopes = result.scopes

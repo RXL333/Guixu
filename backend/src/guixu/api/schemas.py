@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from guixu.domain.settings import TaskSettings
 
@@ -19,11 +19,120 @@ class CreateTaskRequest(BaseModel):
     settings: TaskSettings
     classification_request: dict[str, Any] = Field(default_factory=dict)
     model_profile_id: str | None = None
-    template_key: str | None = None
-    template_version: int | None = Field(default=None, ge=1)
     user_instructions: str = Field(default="", max_length=10_000)
-    rule_ids: list[str] = Field(default_factory=list)
-    fixed_tree: dict[str, Any] | None = None
+
+
+class TaskMutationRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+
+
+class RenameTaskRequest(TaskMutationRequest):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class DeleteTaskRequest(TaskMutationRequest):
+    delete_reason: str | None = Field(default=None, max_length=500)
+
+
+class TaskBatchRequest(BaseModel):
+    task_ids: list[str] = Field(min_length=1, max_length=500)
+    delete_reason: str | None = Field(default=None, max_length=500)
+
+
+class CreateConversationRequest(BaseModel):
+    title: str = Field(default="未命名整理", min_length=1, max_length=160)
+    model_profile_id: str | None = None
+    # The API accepts a grant reference, never an arbitrary filesystem path.
+    scope_grant: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationPatchRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=160)
+    status: str | None = Field(default=None, pattern="^(ACTIVE|ARCHIVED)$")
+
+
+class ConversationMessageRequest(BaseModel):
+    role: str = Field(pattern="^(USER|ASSISTANT|SYSTEM_EVENT)$")
+    content: str = Field(min_length=1, max_length=100_000)
+    message_type: str = Field(default="TEXT", pattern="^(TEXT|STATUS|PLAN_PROPOSAL|EXECUTION_RESULT|ERROR|SYSTEM_EVENT)$")
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    referenced_plan_version_id: str | None = None
+    referenced_execution_round_id: str | None = None
+
+
+class ConversationContextUpdateRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    changes: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationPlanVersionRequest(BaseModel):
+    expected_context_revision: int | None = Field(default=None, ge=1)
+    basis_context_revision: int | None = Field(default=None, ge=1)
+    parent_plan_version_id: str | None = None
+    source: str = Field(default="USER_REQUEST", pattern="^(USER_REQUEST|SYSTEM|LEGACY)$")
+    status: str = Field(default="DRAFT", pattern="^(DRAFT|PROPOSED|APPROVED|EXECUTED|SUPERSEDED|CANCELLED)$")
+    taxonomy_id: str | None = None
+    taxonomy_snapshot: dict[str, Any] = Field(default_factory=dict)
+    plan_id: str | None = None
+    plan_hash: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+    summary: str = Field(default="", max_length=10_000)
+    change_summary: dict[str, Any] = Field(default_factory=dict)
+    affected_file_count: int = Field(default=0, ge=0)
+    kept_file_count: int = Field(default=0, ge=0)
+    conflict_count: int = Field(default=0, ge=0)
+    created_by_message_id: str | None = None
+    restored_from_version_id: str | None = None
+
+
+class ConversationPlanVersionApproveRequest(BaseModel):
+    expected_context_revision: int | None = Field(default=None, ge=1)
+    plan_hash: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+    authorization: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationPlanVersionRestoreRequest(BaseModel):
+    expected_context_revision: int | None = Field(default=None, ge=1)
+    expected_current_plan_version_id: str | None = None
+
+
+class ConversationPlanVersionExecutionRequest(BaseModel):
+    expected_context_revision: int | None = Field(default=None, ge=1)
+    plan_hash: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+    status: str = Field(default="PENDING", pattern="^(PENDING|RUNNING)$")
+    summary: dict[str, Any] = Field(default_factory=dict)
+    affected_file_count: int = Field(default=0, ge=0)
+
+
+class ConversationRefinementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_message: str = Field(min_length=1, max_length=12_000)
+    confirmed_global: bool = False
+
+
+class ConversationRefinementExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_context_revision: int | None = Field(default=None, ge=1)
+    plan_hash: str | None = Field(default=None, min_length=64, max_length=64)
+
+
+class ConversationExecutionRoundRequest(BaseModel):
+    expected_context_revision: int | None = Field(default=None, ge=1)
+    plan_version_id: str
+    execution_plan_id: str
+    status: str = Field(default="PENDING", pattern="^(PENDING|RUNNING|COMPLETED|FAILED|CANCELLED|RECOVERY_REQUIRED)$")
+    summary: dict[str, Any] = Field(default_factory=dict)
+    affected_file_count: int = Field(default=0, ge=0)
+
+
+class ConversationFileRequest(BaseModel):
+    file_id: str
+
+
+class ConversationTaskLinkRequest(BaseModel):
+    task_id: str
+    plan_version_id: str | None = None
 
 
 class StartTaskRequest(BaseModel):
@@ -51,33 +160,15 @@ class ReanalyzeRequest(BaseModel):
     file_ids: list[str] = Field(min_length=1, max_length=500)
 
 
-class DuplicateTemplateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
-    template_key: str | None = None
-
-
-class TemplateImportRequest(BaseModel):
-    templates: list[dict[str, Any]] = Field(min_length=1, max_length=100)
-
-
-class RuleInputRequest(BaseModel):
-    name: str
-    priority: int = Field(ge=0)
-    enabled: bool = True
-    scope: dict[str, Any] = Field(default_factory=dict)
-    condition: dict[str, Any]
-    action: dict[str, Any]
-
-
-class RuleTestRequest(BaseModel):
-    task_id: str
-    file_ids: list[str] = Field(max_length=500)
-    draft_rule: RuleInputRequest
-
-
 class ApproveTaxonomyRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     tree_hash: str = Field(pattern="^[0-9a-f]{64}$")
+
+
+class UpdateTaxonomyRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    tree_hash: str = Field(pattern="^[0-9a-f]{64}$")
+    nodes: list[dict[str, Any]] = Field(min_length=1, max_length=200)
 
 
 class ReviewItemRequest(BaseModel):
@@ -98,6 +189,7 @@ class ModelOptionsRequest(BaseModel):
     thinking_mode: str = Field(default="disabled", pattern="^(disabled|enabled|server_default)$")
     timeout_seconds: int = Field(default=60, ge=5, le=600)
     max_concurrency: int = Field(default=1, ge=1, le=4)
+    batch_size: int = Field(default=20, ge=1, le=50)
 
 
 class ModelInputRequest(BaseModel):

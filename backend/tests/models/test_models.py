@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import base64
+import io
 import threading
 import uuid
 from contextlib import contextmanager
@@ -9,10 +11,11 @@ from pathlib import Path
 
 import httpx
 import pytest
+from PIL import Image
 from sqlalchemy import text
 
 from guixu.application.model_gateway import ModelGateway
-from guixu.application.models import ModelProfileService
+from guixu.application.models import ModelProfileService, build_probe_png_data_url, unknown_capabilities
 from guixu.application.privacy import PrivacyService
 from guixu.domain.privacy import PrivacyError, build_outbound, scope_hash
 from guixu.domain.profiles import Coverage, Evidence, FileProfile
@@ -64,6 +67,14 @@ def model_input(url: str, *, runtime="openai_compatible", trust="loopback"):
             "trust_scope":trust,"options":{"thinking_mode":"server_default","timeout_seconds":5,"max_concurrency":1},"enabled":True}
 
 
+def mark_supported(models: ModelProfileService, model_id: str, *, vision: bool = False) -> None:
+    caps = unknown_capabilities()
+    for key in ("reachable", "authentication", "text", "json_mode", "cancellation"):
+        caps[key] = {"status": "supported", "message": "test", "tested_at": "2026-09-15T00:00:00Z"}
+    caps["vision"] = {"status": "supported" if vision else "unsupported", "message": "test", "tested_at": "2026-09-15T00:00:00Z"}
+    models._save_capabilities(model_id, caps)
+
+
 def profile() -> FileProfile:
     return FileProfile(file_id=str(uuid.uuid4()), modality="text", content_summary="private summary", summary_origin="deterministic",
         evidence=[Evidence(id="e1",kind="extracted_text",text="private body",quality="high",origin="text",locator={"paragraph":1})],
@@ -101,6 +112,43 @@ def test_deepseek_protocol_fields_are_adapter_only():
     assert calls[0]["authorization"] == "Bearer test-key"
 
 
+def test_deepseek_vision_uses_minimal_multimodal_request_and_valid_probe_png():
+    data_url = build_probe_png_data_url()
+    assert data_url.startswith("data:image/png;base64,")
+    image_bytes = base64.b64decode(data_url.split(",", 1)[1], validate=True)
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        assert image.format == "PNG" and image.size == (64, 64)
+        image.verify()
+
+    calls = []
+    def handler(request: httpx.Request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices":[{"message":{"content":"A red square on a blue background."}}]})
+    factory = lambda **kwargs: httpx.Client(transport=httpx.MockTransport(handler), timeout=kwargs["timeout"],
+                                             follow_redirects=False, trust_env=False)
+    adapter = DeepSeekAdapter(OpenAICompatibleTransport(client_factory=factory))
+    messages = [{"role":"user","content":[
+        {"type":"text","text":"Describe the main visual content of this image briefly."},
+        {"type":"image_url","image_url":{"url":data_url}},
+    ]}]
+    adapter.chat({"base_url":"https://api.deepseek.com","model_id":"deepseek-flash","trust_scope":"cloud",
+                  "options":{"thinking_mode":"disabled","timeout_seconds":5}}, messages, "test-key")
+    assert calls == [{"model":"deepseek-flash","messages":messages,"stream":False}]
+
+
+def test_transport_preserves_provider_error_details():
+    def handler(_: httpx.Request):
+        return httpx.Response(400, json={"error":{"code":"invalid_request_error","message":"unsupported image"}})
+    factory = lambda **kwargs: httpx.Client(transport=httpx.MockTransport(handler), timeout=kwargs["timeout"],
+                                             follow_redirects=False, trust_env=False)
+    with pytest.raises(ModelTransportError) as exc:
+        OpenAICompatibleTransport(client_factory=factory).chat(base_url="http://127.0.0.1:1", model_id="m",
+            messages=[], secret=None, timeout_seconds=5, max_attempts=1)
+    assert exc.value.code == "MODEL_REQUEST_REJECTED"
+    assert exc.value.provider_code == "invalid_request_error"
+    assert exc.value.provider_message == "unsupported image"
+
+
 def test_ai07_probe_each_capability_and_ai08_invalidation(services):
     db, task, models, privacy, secrets = services
     def qwen(_, body):
@@ -116,6 +164,27 @@ def test_ai07_probe_each_capability_and_ai08_invalidation(services):
         assert changed["capabilities"]["text"]["status"] == "unknown"
 
 
+def test_probe_persists_verified_vision_metadata(services):
+    db, task, models, privacy, secrets = services
+    def qwen(_, body):
+        content = body["messages"][0]["content"]
+        if isinstance(content, list):
+            return 200, {}, {"choices":[{"message":{"content":"A red square on a blue background."}}]}
+        answer = '{"probe":true}' if "response_format" in body else "GUIXU_PROBE_OK"
+        return 200, {}, {"choices":[{"message":{"content":answer}}]}
+    with fake_service(qwen) as (url, calls):
+        item = models.create(model_input(url))
+        caps = models.probe(item["id"])
+        assert caps["vision"]["status"] == "supported"
+        assert caps["vision"]["vision"] is True
+        assert caps["vision"]["vision_verified"] is True
+        assert caps["vision"]["probe_status"] == "success"
+        assert caps["vision"]["probe_error"] is None
+        assert caps["vision"]["last_probe_at"]
+        reloaded = ModelProfileService(db, secrets).get(item["id"])
+        assert reloaded["capabilities"]["vision"] == caps["vision"]
+
+
 def test_ai04_single_repair_ai09_budget_counts_attempts(services):
     db, task, models, privacy, secrets = services
     def responder(n, body):
@@ -123,12 +192,41 @@ def test_ai04_single_repair_ai09_budget_counts_attempts(services):
         return 200, {}, {"choices":[{"message":{"content":content}}],"usage":{"prompt_tokens":3,"completion_tokens":2}}
     p=profile()
     with fake_service(responder) as (url, calls):
-        model=models.create(model_input(url)); budget={"max_calls":3,"max_input_tokens":1000,"max_output_tokens":1000,"max_cost_micros":None,"currency":None}
+        model=models.create(model_input(url)); mark_supported(models, model["id"]); budget={"max_calls":3,"max_input_tokens":1000,"max_output_tokens":1000,"max_cost_micros":None,"currency":None}
         consent_hash=scope_hash(model["id"],["extracted_text"],budget)
         privacy.grant(task["id"],model["id"],["extracted_text"],budget,consent_hash,task["revision"],True)
         result=ModelGateway(db,models,privacy).classify(task_id=task["id"],profile_id=model["id"],profile=p,
-            taxonomy={"taxonomy_id":"tax","nodes":[{"category_id":"x","selectable":True}]},policy={},rule_hints=[])
+            taxonomy={"taxonomy_id":"tax","nodes":[{"category_id":"x","selectable":True}]},policy={})
         assert result["abstain"] is True and len(calls)==2 and privacy.usage(task["id"])["calls"]==2
+
+
+def test_image_classification_requires_vision_and_sends_only_controlled_derivative(services, tmp_path: Path):
+    db, task, models, privacy, secrets = services
+    image = tmp_path / "derivative.jpg"
+    from PIL import Image
+    Image.new("RGB", (32, 32), "blue").save(image, "JPEG")
+    seen = {}
+    def responder(_, body):
+        seen.update(body)
+        return 200, {}, {"choices": [{"message": {"content": json.dumps({"ok": True})}}]}
+    visual = FileProfile(file_id=str(uuid.uuid4()), modality="image", metadata={}, evidence=[],
+                         coverage=Coverage(mode="full"), parser_version="test")
+    with fake_service(responder) as (url, calls):
+        model = models.create(model_input(url))
+        with pytest.raises(Exception, match="AI_CAPABILITY"):
+            ModelGateway(db, models, privacy).classify(task_id=task["id"], profile_id=model["id"], profile=visual,
+                taxonomy={"taxonomy_id":"tax","nodes":[{"category_id":"x","selectable":True}]}, policy={}, derivative_paths=[str(image)])
+        mark_supported(models, model["id"], vision=True)
+        budget={"max_calls":3,"max_input_tokens":100000,"max_output_tokens":1000,"max_cost_micros":None,"currency":None}
+        consent_hash=scope_hash(model["id"],["derivative_images"],budget)
+        current=TaskRepository(db).get(task["id"])
+        privacy.grant(task["id"],model["id"],["derivative_images"],budget,consent_hash,current["revision"],True)
+        ModelGateway(db, models, privacy).classify(task_id=task["id"], profile_id=model["id"], profile=visual,
+            taxonomy={"taxonomy_id":"tax","nodes":[{"category_id":"x","selectable":True}]}, policy={}, derivative_paths=[str(image)])
+        content=seen["messages"][1]["content"]
+        assert isinstance(content,list) and content[1]["type"]=="image_url"
+        assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+        assert str(image) not in json.dumps(seen)
 
 
 def test_ai06_ai10_ai11_ai12_privacy_and_no_secret_leak(services):

@@ -21,7 +21,7 @@ class SqliteOperationJournal:
     def __init__(self, database: Database) -> None:
         self.database = database
 
-    def persist_plan(self, plan: ExecutionPlan) -> None:
+    def persist_plan(self, plan: ExecutionPlan, plan_basis_revision: int | None = None) -> None:
         summary = {
             "total": len(plan.operations),
             "move": sum(item.action == "move" for item in plan.operations),
@@ -29,18 +29,23 @@ class SqliteOperationJournal:
             "skip": sum(item.action in {"skip", "noop"} for item in plan.operations),
         }
         with self.database.begin() as connection:
+            if plan_basis_revision is None:
+                plan_basis_revision = int(connection.execute(text(
+                    "SELECT revision FROM tasks WHERE id=:task"
+                ), {"task": plan.task_id}).scalar_one())
             connection.execute(
                 text("""
                 INSERT INTO plans(
                   id,task_id,version,plan_hash,plan_kind,parent_plan_id,status,operation_mode,
-                  settings_hash,taxonomy_hashes_json,source_snapshot_hash,summary_json,created_at
-                ) VALUES(:id,:task,:version,:hash,:kind,:parent,'validated',:mode,:settings,:taxonomies,:snapshot,:summary,:now)
+                  settings_hash,taxonomy_hashes_json,source_snapshot_hash,plan_basis_revision,summary_json,created_at
+                ) VALUES(:id,:task,:version,:hash,:kind,:parent,'validated',:mode,:settings,:taxonomies,:snapshot,:basis,:summary,:now)
                 """),
                 {
                     "id": plan.plan_id, "task": plan.task_id, "version": plan.version,
                     "hash": plan.plan_hash, "kind": plan.plan_kind, "parent": plan.parent_plan_id,
                     "mode": plan.operation_mode, "settings": plan.settings_hash,
                     "taxonomies": canonical_json(plan.taxonomy_hashes), "snapshot": plan.source_snapshot_hash,
+                    "basis": plan_basis_revision,
                     "summary": canonical_json(summary), "now": utc_now(),
                 },
             )
@@ -66,30 +71,83 @@ class SqliteOperationJournal:
                     },
                 )
 
-    def approve(self, plan_id: str, plan_hash: str, authorization_kind: str = "interactive") -> None:
+    def approve(self, plan_id: str, plan_hash: str, expected_task_revision: int | None = None,
+                authorization_kind: str = "interactive") -> None:
         with self.database.begin() as connection:
             existing = connection.execute(
-                text("SELECT plan_hash,status FROM plans WHERE id=:id"), {"id": plan_id}
+                text("SELECT p.plan_hash,p.status,p.plan_basis_revision,p.approved_task_revision,t.revision FROM plans p JOIN tasks t ON t.id=p.task_id WHERE p.id=:id"), {"id": plan_id}
             ).first()
+            if existing is not None and expected_task_revision is None:
+                expected_task_revision = int(existing[4])
             if (
                 existing is not None
                 and existing[0] == plan_hash
                 and existing[1] in {"approved", "executing", "finished"}
+                and existing[3] == expected_task_revision
+                and existing[4] == expected_task_revision
             ):
                 # Retrying the exact, already-authorized immutable plan is safe. This
                 # lets the UI recover when approval succeeded but the following request
                 # was interrupted, without weakening hash or plan-state validation.
                 return
+            if existing is None:
+                raise ValueError("PLAN_NOT_FOUND")
+            if existing[0] != plan_hash:
+                raise ValueError("PLAN_HASH_MISMATCH")
+            if existing[4] != expected_task_revision:
+                raise ValueError("REVISION_CONFLICT")
+            if existing[2] != expected_task_revision:
+                raise ValueError("PLAN_STALE")
             result = connection.execute(
                 text("""
                 UPDATE plans SET status='approved',approved_at=:now,authorization_kind=:kind,
-                  authorization_json=:auth WHERE id=:id AND plan_hash=:hash AND status='validated'
+                  authorization_json=:auth,approved_task_revision=:revision
+                  WHERE id=:id AND plan_hash=:hash AND status='validated'
                 """),
                 {"id": plan_id, "hash": plan_hash, "now": utc_now(), "kind": authorization_kind,
-                 "auth": canonical_json({"approved_hash": plan_hash})},
+                 "revision": expected_task_revision,
+                 "auth": canonical_json({"approved_hash": plan_hash, "task_revision": expected_task_revision})},
             )
             if result.rowcount != 1:
                 raise ValueError("PLAN_STALE")
+
+    def assert_execution_ready(self, task_id: str, plan_id: str, plan_hash: str,
+                               expected_task_revision: int) -> None:
+        with self.database.engine.connect() as connection:
+            row = connection.execute(text("""
+                SELECT p.task_id,p.plan_hash,p.status,p.approved_task_revision,t.revision
+                FROM plans p JOIN tasks t ON t.id=p.task_id WHERE p.id=:plan
+            """), {"plan": plan_id}).first()
+        if row is None:
+            raise ValueError("PLAN_NOT_FOUND")
+        if row[0] != task_id:
+            raise ValueError("SCOPE_CONFLICT")
+        if row[1] != plan_hash:
+            raise ValueError("PLAN_HASH_MISMATCH")
+        if row[2] not in {"approved", "executing", "finished"}:
+            raise ValueError("PLAN_NOT_APPROVED")
+        if row[3] != expected_task_revision or row[4] != expected_task_revision:
+            raise ValueError("REVISION_CONFLICT" if row[4] != expected_task_revision else "PLAN_STALE")
+
+    def plan_metadata(self, plan_id: str) -> dict[str, object]:
+        with self.database.engine.connect() as connection:
+            row = connection.execute(text("""
+                SELECT status,plan_basis_revision,approved_task_revision,approved_at
+                FROM plans WHERE id=:id
+            """), {"id": plan_id}).mappings().first()
+        if row is None:
+            raise KeyError(plan_id)
+        return {"status": row["status"], "plan_basis_revision": row["plan_basis_revision"],
+                "approved_task_revision": row["approved_task_revision"], "approved_at": row["approved_at"],
+                "approved": row["status"] in {"approved", "executing", "finished"}}
+
+    def operation_results(self, plan_id: str) -> list[dict[str, object]]:
+        with self.database.engine.connect() as connection:
+            rows = connection.execute(text("""
+                SELECT id AS operation_id,file_id,ordinal,state,error_code,source_path,target_path
+                FROM operations WHERE plan_id=:plan ORDER BY ordinal
+            """), {"plan": plan_id}).mappings()
+            return [dict(row) for row in rows]
 
     def approved_hash(self, plan_id: str) -> str | None:
         with self.database.engine.connect() as connection:

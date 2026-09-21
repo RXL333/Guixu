@@ -22,20 +22,29 @@ def headers(*, mutate: bool = False, key: str | None = None) -> dict[str, str]:
     return result
 
 
+def fixture_model(client: TestClient) -> dict:
+    existing = client.app.state.models.list()
+    if existing:
+        return existing[0]
+    return client.app.state.models.create({"name":"Reliability AI","provider":"qwen_local","runtime":"openai_compatible",
+        "base_url":"http://127.0.0.1:8000/v1","model_id":"fixture","trust_scope":"loopback",
+        "options":{"thinking_mode":"disabled","timeout_seconds":5,"max_concurrency":1,"batch_size":20},"enabled":True})
+
+
 def create_report_task(client: TestClient, source: Path) -> dict:
     grant = client.post(
         "/api/v1/dev/grants", headers=headers(), json={"path": str(source), "purpose": "source"}
     ).json()["data"]["grant_id"]
     settings = client.get("/api/v1/settings", headers=headers()).json()["data"]["values"]
-    settings.update({"operation_mode": "report_only", "classification_source": "template"})
+    settings.update({"operation_mode": "report_only", "classification_source": "auto_plan"})
+    model = fixture_model(client)
     task = client.post(
         "/api/v1/tasks", headers=headers(mutate=True),
-        json={"name": "阶段七可靠性", "source_grant": grant, "settings": settings},
+        json={"name": "阶段七可靠性", "source_grant": grant, "settings": settings,
+              "model_profile_id":model["id"],"user_instructions":"按内容整理"},
     ).json()["data"]
-    return client.post(
-        f"/api/v1/tasks/{task['id']}/start", headers=headers(mutate=True),
-        json={"expected_revision": task["revision"]},
-    ).json()["data"]
+    client.app.state.tasks.start(task["id"], task["revision"])
+    return client.app.state.repository.get(task["id"])
 
 
 def test_mutation_idempotency_replays_response_and_rejects_changed_body(project_root: Path, tmp_path: Path):
@@ -45,8 +54,10 @@ def test_mutation_idempotency_replays_response_and_rejects_changed_body(project_
     with TestClient(app) as client:
         grant = client.post("/api/v1/dev/grants", headers=headers(), json={"path": str(source), "purpose": "source"}).json()["data"]["grant_id"]
         settings = client.get("/api/v1/settings", headers=headers()).json()["data"]["values"]
-        settings["operation_mode"] = "report_only"
-        payload = {"name": "幂等创建", "source_grant": grant, "settings": settings}
+        settings.update({"operation_mode":"report_only","classification_source":"auto_plan"})
+        model = fixture_model(client)
+        payload = {"name": "幂等创建", "source_grant": grant, "settings": settings,
+                   "model_profile_id":model["id"],"user_instructions":"按内容整理"}
         key = "same-logical-create"
         first = client.post("/api/v1/tasks", headers=headers(mutate=True, key=key), json=payload)
         second = client.post("/api/v1/tasks", headers=headers(mutate=True, key=key), json=payload)

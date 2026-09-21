@@ -1,5 +1,7 @@
 # API、桌面桥与错误契约
 
+> **兼容性提示：** 模板 API 和旧分类模式已于 2026-09-20 从运行时契约移除；机器可读现状以 `contracts/openapi-runtime.json` 为准。
+
 ## 1. 协议
 
 REST根路径 `/api/v1`，JSON UTF-8。contracts/openapi.json 是机器可读的初始契约。生产运行时由FastAPI类型生成OpenAPI，CI比较关键字段与本契约，避免前端和后端各自发明字段。

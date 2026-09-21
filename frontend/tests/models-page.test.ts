@@ -35,4 +35,34 @@ describe('model connection deletion', () => {
     await waitFor(() => expect(mocks.deleteModel).toHaveBeenCalledWith('model-1', 3))
     await waitFor(() => expect(view.queryByText('本地测试连接')).toBeNull())
   })
+
+  it('shows verified text and vision states plus a concrete probe error', async () => {
+    mocks.models.mockResolvedValueOnce([{
+      ...model,
+      capabilities: {
+        text: { status: 'supported', message: 'ok', tested_at: '2026-09-19T00:00:00Z', verified: true },
+        vision: { status: 'error', message: 'MODEL_REQUEST_REJECTED', tested_at: '2026-09-19T00:00:00Z',
+          verified: false, probe_error: 'MODEL_REQUEST_REJECTED: invalid_request_error: unsupported image' },
+      },
+    }])
+    const view = render(ModelsPage)
+    await view.findByText('文本：', { exact: false })
+    expect(view.getByText((_, element) => element?.tagName === 'P' && element.textContent === '文本：已验证')).toBeTruthy()
+    expect(view.getByText((_, element) => element?.tagName === 'P' && element.textContent === '视觉：失败')).toBeTruthy()
+    expect(view.getByText((_, element) => element?.tagName === 'P' && element.textContent === '视觉失败原因：MODEL_REQUEST_REJECTED: invalid_request_error: unsupported image')).toBeTruthy()
+  })
+
+  it('shows vision as verified after a successful persisted probe', async () => {
+    mocks.models.mockResolvedValueOnce([{
+      ...model,
+      capabilities: {
+        text: { status: 'supported', message: 'ok', tested_at: '2026-09-19T00:00:00Z', verified: true },
+        vision: { status: 'supported', message: 'ok', tested_at: '2026-09-19T00:00:00Z', verified: true,
+          vision: true, vision_verified: true, probe_status: 'success', probe_error: null },
+      },
+    }])
+    const view = render(ModelsPage)
+    expect(await view.findByText((_, element) => element?.tagName === 'P' && element.textContent === '视觉：已验证')).toBeTruthy()
+    expect(view.queryByText('视觉失败原因：', { exact: false })).toBeNull()
+  })
 })

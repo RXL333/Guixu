@@ -18,8 +18,22 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from guixu import __version__
-from guixu.api.schemas import ApprovePlanRequest, ApproveTaxonomyRequest, BulkReviewRequest, ComponentImportRequest, ConsentRequest, CreateTaskRequest, DuplicateTemplateRequest, ExecutePlanRequest, ExpectedRevisionRequest, ExportReportRequest, ModelInputRequest, ModelPatchRequest, ModelSecretRequest, ReanalyzeRequest, RegisterGrantRequest, RuleInputRequest, RuleTestRequest, StartTaskRequest, TemplateImportRequest
+from guixu.api.schemas import (ApprovePlanRequest, ApproveTaxonomyRequest, BulkReviewRequest,
+                               ComponentImportRequest, ConsentRequest, ConversationContextUpdateRequest,
+                               ConversationExecutionRoundRequest, ConversationFileRequest,
+                               ConversationMessageRequest, ConversationPatchRequest,
+                               ConversationPlanVersionApproveRequest, ConversationPlanVersionExecutionRequest,
+                               ConversationPlanVersionRequest, ConversationPlanVersionRestoreRequest,
+                               ConversationRefinementExecuteRequest, ConversationRefinementRequest,
+                               ConversationTaskLinkRequest,
+                               CreateConversationRequest, CreateTaskRequest, DeleteTaskRequest,
+                               ExecutePlanRequest, ExpectedRevisionRequest, ExportReportRequest,
+                               ModelInputRequest, ModelPatchRequest, ModelSecretRequest,
+                               ReanalyzeRequest, RegisterGrantRequest, RenameTaskRequest,
+                               StartTaskRequest, TaskBatchRequest, UpdateTaxonomyRequest)
 from guixu.application.classification import ClassificationService
+from guixu.application.ai_file_classifier import AIFileClassifier
+from guixu.application.ai_taxonomy_planner import AITaxonomyPlanner, TaxonomyPlanningError
 from guixu.application.coordinator import TaskCoordinator
 from guixu.application.operations import OperationService
 from guixu.application.models import ModelError, ModelProfileService
@@ -30,12 +44,14 @@ from guixu.application.previews import PreviewTicketService
 from guixu.application.parsing import ParsingService
 from guixu.application.tasks import TaskService
 from guixu.application.taxonomies import TaxonomyService
-from guixu.application.templates import TemplateError, TemplateService
-from guixu.application.rules import RuleService
 from guixu.domain.classification import ClassificationError
 from guixu.domain.settings import load_default_settings
 from guixu.infrastructure.db.database import Database
 from guixu.infrastructure.db.repository import TaskRepository
+from guixu.infrastructure.db.conversation_repository import ConversationRepository
+from guixu.application.conversations import ConversationService
+from guixu.application.plan_versions import PlanVersionService
+from guixu.application.post_execution import PostExecutionConversationService
 from guixu.infrastructure.db.operation_journal import SqliteOperationJournal
 from guixu.infrastructure.filesystem.grants import GrantError, SourceRegistry
 from guixu.infrastructure.resources.components import ComponentError, ComponentManager, status_dict
@@ -69,11 +85,11 @@ def create_app(
     database.initialize()
     defaults = load_default_settings(project_root)
     database.seed_json("default_settings", defaults.model_dump(mode="json"))
-    template_seed = json.loads((project_root / "seed" / "templates.json").read_text("utf-8"))
-    for template in template_seed["templates"]:
-        database.seed_builtin_template(template)
     registry = SourceRegistry()
     repository = TaskRepository(database)
+    conversation_repository = ConversationRepository(database)
+    conversations = ConversationService(conversation_repository)
+    plan_versions = PlanVersionService(conversation_repository, database)
     tasks = TaskService(repository, registry, allow_direct_move=allow_direct_move)
     journal = SqliteOperationJournal(database)
     operations = OperationService(repository, journal)
@@ -81,14 +97,19 @@ def create_app(
     interrupted_tasks = coordinator.audit_startup()
     parsing = ParsingService(repository, data_dir / "cache" / "profiles")
     components = ComponentManager(database, data_dir / "components")
-    templates = TemplateService(database, project_root / "contracts" / "schemas" / "template.schema.json")
-    rules = RuleService(database)
     taxonomies = TaxonomyService(database)
     classifications = ClassificationService(database, project_root / "contracts" / "schemas" / "classification-result.schema.json")
     credential_store = WindowsCredentialStore()
     models = ModelProfileService(database, credential_store)
     privacy = PrivacyService(database)
     model_gateway = ModelGateway(database, models, privacy)
+    ai_planner = AITaxonomyPlanner(repository, parsing, taxonomies, model_gateway)
+    ai_classifier = AIFileClassifier(repository, parsing, classifications, model_gateway)
+    post_execution = PostExecutionConversationService(
+        database=database, conversations=conversation_repository, tasks=repository,
+        journal=journal, coordinator=coordinator, parsing=parsing,
+        evaluator=model_gateway.evaluate_refinement,
+    )
     reporting = ReportService(database, repository, registry)
     previews = PreviewTicketService(repository)
     frontend_dist = project_root / "frontend" / "dist"
@@ -103,19 +124,22 @@ def create_app(
     app.state.database = database
     app.state.registry = registry
     app.state.repository = repository
+    app.state.conversations = conversations
+    app.state.plan_versions = plan_versions
+    app.state.post_execution = post_execution
     app.state.tasks = tasks
     app.state.operations = operations
     app.state.coordinator = coordinator
     app.state.interrupted_tasks = interrupted_tasks
     app.state.parsing = parsing
     app.state.components = components
-    app.state.templates = templates
-    app.state.rules = rules
     app.state.taxonomies = taxonomies
     app.state.classifications = classifications
     app.state.models = models
     app.state.privacy = privacy
     app.state.model_gateway = model_gateway
+    app.state.ai_planner = ai_planner
+    app.state.ai_classifier = ai_classifier
     app.state.reporting = reporting
     app.state.previews = previews
     app.state.project_root = project_root
@@ -192,14 +216,14 @@ def create_app(
     async def component_error(request: Request, exc: ComponentError):
         return error_response(422, str(exc), "离线组件资源包校验失败。", request.state.request_id)
 
-    @app.exception_handler(TemplateError)
-    async def template_error(request: Request, exc: TemplateError):
-        return error_response(400, str(exc), "模板未通过校验或内置模板不可覆盖。", request.state.request_id)
-
     @app.exception_handler(ClassificationError)
     async def classification_error(request: Request, exc: ClassificationError):
         code = str(exc); status = 409 if code in {"RULE_CONFLICT", "SCOPE_CONFLICT", "REVISION_CONFLICT"} else 422
-        return error_response(status, code, "分类或规则未通过受限契约校验。", request.state.request_id)
+        return error_response(status, code, "AI 分类结果未通过受限契约校验。", request.state.request_id)
+
+    @app.exception_handler(TaxonomyPlanningError)
+    async def taxonomy_planning_error(request: Request, exc: TaxonomyPlanningError):
+        return error_response(422, str(exc), "AI 分类树未通过结构或安全约束。", request.state.request_id)
 
     @app.exception_handler(ModelError)
     @app.exception_handler(ModelTransportError)
@@ -282,44 +306,6 @@ def create_app(
         imported = components.import_directory(grant.canonical_root, payload.component_type, payload.expected_manifest_sha256)
         return envelope(status_dict(imported), request.state.request_id)
 
-    @app.get("/api/v1/templates")
-    def list_templates(request: Request, modality: str | None = None, origin: str | None = None, limit: int = Query(100, ge=1, le=500)):
-        items = templates.list(modality=modality)
-        if origin: items = [item for item in items if item["origin"] == origin]
-        definitions = [item["definition"] for item in items[:limit]]
-        return envelope({"items": definitions, "total": len(items), "next_cursor": None}, request.state.request_id)
-
-    @app.get("/api/v1/templates/{template_key}")
-    def get_template(template_key: str, request: Request):
-        try: item = templates.get(template_key)
-        except KeyError: return error_response(404, "TEMPLATE_NOT_FOUND", "模板不存在。", request.state.request_id)
-        return envelope(item["definition"], request.state.request_id)
-
-    @app.post("/api/v1/templates/import")
-    def import_templates(payload: TemplateImportRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
-        del idempotency_key
-        return envelope([templates.import_user(item)["definition"] for item in payload.templates], request.state.request_id)
-
-    @app.post("/api/v1/templates/{template_key}/duplicate", status_code=201)
-    def duplicate_template(template_key: str, payload: DuplicateTemplateRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
-        del idempotency_key
-        new_key = payload.template_key or f"user.{template_key.replace('.', '_')}"
-        return envelope(templates.duplicate(template_key, new_key, payload.name)["definition"], request.state.request_id)
-
-    @app.get("/api/v1/rules")
-    def list_rules(request: Request):
-        items = rules.list(); return envelope({"items": items, "total": len(items), "next_cursor": None}, request.state.request_id)
-
-    @app.post("/api/v1/rules", status_code=201)
-    def create_rule(payload: RuleInputRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
-        del idempotency_key
-        return envelope(rules.create(payload.model_dump(mode="python")), request.state.request_id)
-
-    @app.post("/api/v1/rules/test")
-    def test_rule(payload: RuleTestRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
-        del idempotency_key
-        return envelope(rules.test(payload.task_id, payload.file_ids, payload.draft_rule.model_dump(mode="python")), request.state.request_id)
-
     @app.post("/api/v1/dev/grants")
     def register_grant(payload: RegisterGrantRequest, request: Request):
         if not app.state.allow_typed_grants:
@@ -330,17 +316,383 @@ def create_app(
             request.state.request_id,
         )
 
+    # PHASE D: durable Conversation state only. These endpoints persist typed
+    # records and references; they intentionally do not invoke an LLM or agent.
+    @app.get("/api/v1/conversations")
+    def list_conversations(request: Request, view: str = Query("active", pattern="^(active|deleted|all)$")):
+        return envelope(conversations.list_conversations(view), request.state.request_id)
+
+    @app.post("/api/v1/conversations", status_code=201)
+    def create_conversation(payload: CreateConversationRequest, request: Request,
+                            idempotency_key: str = Header(default="conversation-create")):
+        del idempotency_key
+        if not payload.scope_grant:
+            return error_response(422, "CONVERSATION_SCOPE_REQUIRED", "会话必须绑定已授权的源目录。", request.state.request_id)
+        try:
+            grant = registry.get(payload.scope_grant, "source")
+            scope = {
+                "source_root": str(grant.canonical_root),
+                "display_name": grant.canonical_root.name or str(grant.canonical_root),
+                "scope_kind": "folder",
+                "authorization_ref": grant.grant_id,
+                "authorization": {"purpose": grant.purpose, "writable": grant.writable},
+            }
+            result = conversations.create_conversation(title=payload.title, model_profile_id=payload.model_profile_id,
+                                                        scope=scope, metadata=payload.metadata, context=payload.context)
+        except GrantError:
+            raise
+        except KeyError:
+            return error_response(404, "MODEL_NOT_FOUND", "模型连接不存在。", request.state.request_id)
+        except (ValueError, TypeError) as exc:
+            return error_response(422, str(exc), "会话数据不符合约束。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}")
+    def get_conversation(conversation_id: str, request: Request):
+        try:
+            result = conversations.get_conversation(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.patch("/api/v1/conversations/{conversation_id}")
+    def patch_conversation(conversation_id: str, payload: ConversationPatchRequest, request: Request,
+                           idempotency_key: str = Header(default="conversation-patch")):
+        del idempotency_key
+        try:
+            result = conversations.get_conversation(conversation_id)
+            if payload.title is not None:
+                result = conversations.rename_conversation(conversation_id, payload.title)
+            if payload.status == "ARCHIVED":
+                result = conversations.archive_conversation(conversation_id)
+            elif payload.status == "ACTIVE" and result.get("status") == "ARCHIVED":
+                result = conversations.activate_conversation(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "会话当前不能修改。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.delete("/api/v1/conversations/{conversation_id}")
+    def delete_conversation(conversation_id: str, request: Request,
+                            idempotency_key: str = Header(default="conversation-delete")):
+        del idempotency_key
+        try:
+            result = conversations.soft_delete_conversation(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope({"conversation": result, "disk_files_changed": False, "undo_started": False}, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/restore")
+    def restore_conversation(conversation_id: str, request: Request,
+                             idempotency_key: str = Header(default="conversation-restore")):
+        del idempotency_key
+        try:
+            result = conversations.restore_conversation(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/messages")
+    def list_conversation_messages(conversation_id: str, request: Request, include_redacted: bool = False):
+        try:
+            result = conversations.list_messages(conversation_id, include_redacted=include_redacted)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/messages", status_code=201)
+    def append_conversation_message(conversation_id: str, payload: ConversationMessageRequest, request: Request,
+                                    idempotency_key: str = Header(default="conversation-message")):
+        del idempotency_key
+        try:
+            result = conversations.append_message(conversation_id, payload.role, payload.content,
+                                                  message_type=payload.message_type, metadata=payload.metadata,
+                                                  referenced_plan_version_id=payload.referenced_plan_version_id,
+                                                  referenced_execution_round_id=payload.referenced_execution_round_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "消息不能写入当前会话。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/context")
+    def get_conversation_context(conversation_id: str, request: Request):
+        try:
+            result = conversations.get_context(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话状态不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.patch("/api/v1/conversations/{conversation_id}/context")
+    def update_conversation_context(conversation_id: str, payload: ConversationContextUpdateRequest, request: Request,
+                                    idempotency_key: str = Header(default="conversation-context")):
+        del idempotency_key
+        try:
+            result = conversations.update_context(conversation_id, payload.expected_revision, payload.changes)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话状态不存在。", request.state.request_id)
+        except ValueError as exc:
+            status = 409 if str(exc) == "CONTEXT_REVISION_CONFLICT" else 422
+            return error_response(status, str(exc), "会话当前状态已变化，请重新读取后再更新。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/plans")
+    def list_conversation_plans(conversation_id: str, request: Request):
+        try:
+            result = conversations.list_plan_versions(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/plans", status_code=201)
+    def create_conversation_plan(conversation_id: str, payload: ConversationPlanVersionRequest, request: Request,
+                                 idempotency_key: str = Header(default="conversation-plan")):
+        del idempotency_key
+        try:
+            result = plan_versions.create_new_version(conversation_id, **payload.model_dump(mode="python"))
+        except KeyError:
+            return error_response(404, "CONVERSATION_OR_PLAN_NOT_FOUND", "会话或核心计划不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "方案版本基于过期会话状态或引用不一致。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/plan-versions")
+    def list_conversation_plan_versions(conversation_id: str, request: Request, limit: int = Query(20, ge=1, le=100)):
+        try:
+            result = plan_versions.list(conversation_id)[-limit:]
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/plan-versions/current")
+    def get_current_conversation_plan_version(conversation_id: str, request: Request):
+        try:
+            result = plan_versions.current(conversation_id)
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "当前方案版本不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}")
+    def get_conversation_plan_version(conversation_id: str, version_id: str, request: Request):
+        try:
+            result = plan_versions.get(version_id)
+            if result["conversation_id"] != conversation_id:
+                raise KeyError(version_id)
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/diff")
+    def diff_conversation_plan_version(conversation_id: str, version_id: str, request: Request,
+                                       from_version_id: str | None = None):
+        try:
+            target = plan_versions.get(version_id)
+            if target["conversation_id"] != conversation_id:
+                raise KeyError(version_id)
+            parent_id = from_version_id or target.get("parent_plan_version_id")
+            if not parent_id:
+                return envelope({"old_plan_version_id": None, "new_plan_version_id": version_id,
+                                 "categories_added": [], "categories_removed": [], "category_changes": [],
+                                 "file_changes": [], "affected_file_ids": [],
+                                 "summary_counts": {"total": 0, "unchanged": 0}}, request.state.request_id)
+            result = plan_versions.diff(parent_id, version_id)
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "方案版本无法比较。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/approve", status_code=200)
+    def approve_conversation_plan_version(conversation_id: str, version_id: str,
+                                          payload: ConversationPlanVersionApproveRequest, request: Request,
+                                          idempotency_key: str = Header(default="conversation-plan-approve")):
+        del idempotency_key
+        try:
+            result = post_execution.approve(conversation_id, version_id, **payload.model_dump(mode="python"))
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "方案版本无法批准或批准已失效。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/workspace-state")
+    def get_conversation_workspace_state(conversation_id: str, request: Request):
+        try:
+            result = post_execution.workspace.current_state(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/refinements/prepare")
+    def prepare_conversation_refinement(conversation_id: str, payload: ConversationRefinementRequest,
+                                        request: Request,
+                                        idempotency_key: str = Header(default="conversation-refinement")):
+        del idempotency_key
+        try:
+            result = post_execution.prepare_refinement(
+                conversation_id, user_message=payload.user_message,
+                confirmed_global=payload.confirmed_global,
+            )
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except (BudgetError, ModelError, ModelTransportError, PrivacyError) as exc:
+            code = getattr(exc, "code", str(exc))
+            return error_response(409, code, "本轮 AI 分析不可用或授权不足。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "无法准备本轮整理调整。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/execute")
+    def execute_conversation_refinement(conversation_id: str, version_id: str,
+                                        payload: ConversationRefinementExecuteRequest, request: Request,
+                                        idempotency_key: str = Header(default="conversation-refinement-execute")):
+        del idempotency_key
+        try:
+            result = post_execution.execute(conversation_id, version_id, **payload.model_dump(mode="python"))
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "方案已过期、未批准或执行条件发生变化。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/restore", status_code=201)
+    def restore_conversation_plan_version(conversation_id: str, version_id: str,
+                                          payload: ConversationPlanVersionRestoreRequest, request: Request,
+                                          idempotency_key: str = Header(default="conversation-plan-restore")):
+        del idempotency_key
+        try:
+            result = plan_versions.restore(conversation_id, version_id, **payload.model_dump(mode="python"))
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "旧方案无法安全恢复，请重新生成方案。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/execution-rounds", status_code=201)
+    def request_conversation_plan_execution(conversation_id: str, version_id: str,
+                                            payload: ConversationPlanVersionExecutionRequest, request: Request,
+                                            idempotency_key: str = Header(default="conversation-plan-execution")):
+        del idempotency_key
+        try:
+            result = plan_versions.request_execution(conversation_id, version_id, **payload.model_dump(mode="python"))
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "方案版本未批准、已过期或执行条件发生变化。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/executions")
+    def list_conversation_executions(conversation_id: str, request: Request):
+        try:
+            result = conversations.list_execution_rounds(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/executions", status_code=201)
+    def create_conversation_execution(conversation_id: str, payload: ConversationExecutionRoundRequest, request: Request,
+                                      idempotency_key: str = Header(default="conversation-execution")):
+        del idempotency_key
+        try:
+            result = conversations.create_execution_round(conversation_id, payload.plan_version_id, payload.execution_plan_id,
+                                                          expected_context_revision=payload.expected_context_revision,
+                                                          status=payload.status, summary=payload.summary,
+                                                          affected_file_count=payload.affected_file_count)
+        except KeyError:
+            return error_response(404, "CONVERSATION_OR_PLAN_NOT_FOUND", "会话、方案版本或执行计划不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "执行轮次引用不一致或会话状态已变化。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/files")
+    def list_conversation_files(conversation_id: str, request: Request, include_removed: bool = False):
+        try:
+            result = conversations.list_conversation_files(conversation_id, include_removed=include_removed)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/files", status_code=201)
+    def attach_conversation_file(conversation_id: str, payload: ConversationFileRequest, request: Request,
+                                 idempotency_key: str = Header(default="conversation-file")):
+        del idempotency_key
+        try:
+            result = conversations.attach_file_to_conversation(conversation_id, payload.file_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_OR_FILE_NOT_FOUND", "会话或文件不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/files/{file_id}/verify")
+    def verify_conversation_file(conversation_id: str, file_id: str, request: Request,
+                                 idempotency_key: str = Header(default="conversation-file-verify")):
+        del idempotency_key
+        try:
+            result = conversations.verify_conversation_file(conversation_id, file_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_FILE_NOT_FOUND", "会话文件引用不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/tasks")
+    def link_conversation_task(conversation_id: str, payload: ConversationTaskLinkRequest, request: Request,
+                               idempotency_key: str = Header(default="conversation-task-link")):
+        del idempotency_key
+        try:
+            result = conversations.link_task(conversation_id, payload.task_id, payload.plan_version_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_OR_TASK_NOT_FOUND", "会话或任务不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "任务与会话方案版本不匹配。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
     @app.get("/api/v1/tasks")
-    def list_tasks(request: Request):
-        return envelope({"items": repository.list()}, request.state.request_id)
+    def list_tasks(request: Request, view: str = Query("active", pattern="^(active|deleted|all)$")):
+        return envelope({"items": repository.list(view)}, request.state.request_id)
+
+    @app.post("/api/v1/tasks/batch-delete")
+    def batch_delete_tasks(payload: TaskBatchRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        if any(coordinator.is_active(task_id) for task_id in payload.task_ids):
+            return error_response(409, "TASK_DELETE_BLOCKED", "运行中的任务必须先安全取消并等待 worker 结束。", request.state.request_id)
+        try:
+            items = repository.soft_delete(payload.task_ids, "user_batch", payload.delete_reason)
+        except KeyError:
+            return error_response(404, "TASK_NOT_FOUND", "一个或多个任务不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc).split(":", 1)[0], "运行中或待恢复任务不能直接删除。", request.state.request_id)
+        return envelope({"items": items, "deleted": len(items)}, request.state.request_id)
+
+    @app.post("/api/v1/tasks/batch-restore")
+    def batch_restore_tasks(payload: TaskBatchRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        try:
+            items = repository.restore(payload.task_ids)
+        except KeyError:
+            return error_response(404, "TASK_NOT_FOUND", "一个或多个任务不存在。", request.state.request_id)
+        return envelope({"items": items, "restored": len(items)}, request.state.request_id)
+
+    @app.post("/api/v1/tasks/batch-permanent-delete")
+    def batch_permanently_delete_tasks(payload: TaskBatchRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        try:
+            repository.permanently_delete_many(payload.task_ids)
+        except KeyError:
+            return error_response(404, "TASK_NOT_FOUND", "一个或多个任务不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(
+                409, str(exc),
+                "至少一个任务未进入最近删除，或仍保留计划、操作日志或 Undo 安全依赖；不会删除磁盘文件。",
+                request.state.request_id,
+            )
+        return envelope({"permanently_deleted": len(set(payload.task_ids)), "disk_files_changed": False}, request.state.request_id)
 
     @app.post("/api/v1/tasks", status_code=201)
     def create_task(payload: CreateTaskRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
         del idempotency_key
         try:
             classification_request = dict(payload.classification_request)
-            for key, value in {"template_key":payload.template_key,"template_version":payload.template_version,"user_instructions":payload.user_instructions,"rule_ids":payload.rule_ids,"fixed_tree":payload.fixed_tree}.items():
-                if value not in (None, "", []): classification_request[key] = value
+            if payload.user_instructions:
+                classification_request["user_instructions"] = payload.user_instructions
             model_snapshot = models.get(payload.model_profile_id) if payload.model_profile_id else None
             task = tasks.create_task(
                 payload.name, payload.source_grant, payload.output_grant, payload.settings, classification_request,
@@ -353,6 +705,57 @@ def create_app(
         except ValueError as exc:
             return error_response(400, "INVALID_CONFIGURATION", str(exc), request.state.request_id)
         return envelope(task, request.state.request_id)
+
+    @app.patch("/api/v1/tasks/{task_id}")
+    def rename_task(task_id: str, payload: RenameTaskRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        try:
+            task = repository.rename(task_id, payload.expected_revision, payload.name)
+        except KeyError:
+            return error_response(404, "TASK_NOT_FOUND", "任务不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "任务名称或版本已变化。", request.state.request_id)
+        return envelope(task, request.state.request_id)
+
+    @app.delete("/api/v1/tasks/{task_id}")
+    def delete_task(task_id: str, payload: DeleteTaskRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        if coordinator.is_active(task_id):
+            return error_response(409, "TASK_DELETE_BLOCKED", "运行中的任务必须先安全取消并等待 worker 结束。", request.state.request_id)
+        try:
+            repository.assert_revision(task_id, payload.expected_revision)
+            task = repository.soft_delete([task_id], "user", payload.delete_reason)[0]
+        except KeyError:
+            return error_response(404, "TASK_NOT_FOUND", "任务不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc).split(":", 1)[0], "运行中、待恢复或已变化的任务不能直接删除。", request.state.request_id)
+        return envelope(task, request.state.request_id)
+
+    @app.post("/api/v1/tasks/{task_id}/restore")
+    def restore_task(task_id: str, payload: ExpectedRevisionRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        try:
+            repository.assert_revision(task_id, payload.expected_revision)
+            task = repository.restore([task_id])[0]
+        except KeyError:
+            return error_response(404, "TASK_NOT_FOUND", "任务不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "任务版本已变化。", request.state.request_id)
+        return envelope(task, request.state.request_id)
+
+    @app.delete("/api/v1/tasks/{task_id}/permanent")
+    def permanently_delete_task(task_id: str, payload: ExpectedRevisionRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        try:
+            repository.assert_revision(task_id, payload.expected_revision)
+            repository.permanently_delete(task_id)
+        except KeyError:
+            return error_response(404, "TASK_NOT_FOUND", "任务不存在。", request.state.request_id)
+        except ValueError as exc:
+            code = str(exc)
+            message = "该任务仍保留计划、操作日志或 Undo 安全依赖，不能永久删除；不会删除磁盘文件。"
+            return error_response(409, code, message, request.state.request_id)
+        return envelope({"permanently_deleted": True, "disk_files_changed": False}, request.state.request_id)
 
     @app.get("/api/v1/tasks/{task_id}")
     def get_task(task_id: str, request: Request):
@@ -374,18 +777,18 @@ def create_app(
             status = 409 if code == "REVISION_CONFLICT" else 503
             return error_response(status, code, "当前阶段仅开放只读报告模式。", request.state.request_id)
         started_task = repository.get(task_id)
-        if started_task["settings"]["classification_source"] == "template" and not taxonomies.list_task(task_id):
-            template_key = started_task["classification_request"].get("template_key", "universal.types")
-            try:
-                definition = started_task["template_snapshot"] or templates.get(template_key)["definition"]
-                settings = started_task["settings"]
-                scopes = repository.list_scopes(task_id)
-                if len(definition["nodes"]) * len(scopes) > settings["max_new_directories"]:
-                    raise ValueError("TASK_DIRECTORY_LIMIT")
-                for scope in scopes:
-                    taxonomies.save_draft(task_id, scope["id"], definition["nodes"], "template", max_depth=settings["max_depth"], max_siblings=settings["max_siblings"], max_nodes=settings["max_nodes_per_scope"], policy={"template_key": template_key, "template_version": definition["version"]})
-            except (KeyError, ValueError) as exc:
-                return error_response(400, "INVALID_TEMPLATE", str(exc), request.state.request_id)
+        modalities = repository.eligible_modalities(task_id)
+        try:
+            models.require_capabilities(started_task["model_profile_id"], modalities)
+        except ModelError as exc:
+            repository.append_event(task_id, "AI_CAPABILITY_MISMATCH", {
+                "model_profile_id": started_task["model_profile_id"],
+                "code": str(exc),
+                "missing_capabilities": getattr(exc, "missing_capabilities", []),
+            })
+            return error_response(409, str(exc), "当前模型能力不足或尚未验证，请在模型连接页完成探测后重试。", request.state.request_id,
+                                  {"missing_capabilities": getattr(exc, "missing_capabilities", [])})
+        ai_planner.plan_task(task_id)
         return envelope(repository.get(task_id), request.state.request_id)
 
     @app.get("/api/v1/tasks/{task_id}/files")
@@ -478,24 +881,41 @@ def create_app(
             taxonomy = taxonomies.approve(task_id, taxonomy_id, payload.tree_hash, payload.expected_revision)
         except KeyError: return error_response(404, "TAXONOMY_NOT_FOUND", "分类树不存在。", request.state.request_id)
         except ValueError as exc: return error_response(409, str(exc), "分类树版本或哈希已变化。", request.state.request_id)
-        classification_status = "completed"
-        template_key = taxonomy["policy"].get("template_key", "universal.types")
+        ai_classifier.classify_taxonomy(task_id, taxonomy)
+        task = repository.advance_after_classification(task_id)
+        repository.append_event(task_id, "AI_CLASSIFICATION_COMPLETED", {"taxonomy_id": taxonomy_id})
+        return envelope({"command_id": str(uuid.uuid4()), "status": "completed", "taxonomy": taxonomy,
+                         "classification_status": "completed", "task": task}, request.state.request_id)
+
+    @app.put("/api/v1/tasks/{task_id}/taxonomies/{taxonomy_id}")
+    def update_taxonomy(task_id: str, taxonomy_id: str, payload: UpdateTaxonomyRequest, request: Request,
+                        idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
         try:
-            for file_id in repository.eligible_file_ids(task_id, taxonomy["scope_id"]):
-                profile = parsing.parse(task_id, file_id).profile
-                task = repository.get(task_id)
-                callback = None
-                if task.get("model_profile_id"):
-                    callback = lambda _payload, p=profile: model_gateway.classify(task_id=task_id, profile_id=task["model_profile_id"], profile=p, taxonomy=taxonomy, policy=taxonomy["policy"], rule_hints=[])
-                classifications.classify(task_id=task_id, file_id=file_id, taxonomy=taxonomy, profile=profile, template_key=template_key, rules=task["rules_snapshot"], test_model=callback)
-        except (ClassificationError, PrivacyError, BudgetError, ModelTransportError) as exc:
-            code = getattr(exc, "code", str(exc))
-            if code not in {"MODEL_UNAVAILABLE", "PRIVACY_CONSENT_REQUIRED", "BUDGET_EXCEEDED"}: raise
-            classification_status = code.lower()
-            repository.append_event(task_id, classification_status, {"taxonomy_id": taxonomy_id})
-        repository.refresh_counters(task_id)
-        repository.append_event(task_id, "classification_completed", {"taxonomy_id": taxonomy_id, "status": classification_status})
-        return envelope({"command_id": str(uuid.uuid4()), "status": "completed", "taxonomy": taxonomy, "classification_status": classification_status}, request.state.request_id)
+            updated = taxonomies.replace_draft(task_id, taxonomy_id, payload.tree_hash, payload.nodes,
+                                               payload.expected_revision)
+        except KeyError:
+            return error_response(404, "TAXONOMY_NOT_FOUND", "分类树不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "分类树已变化或编辑结果不符合约束。", request.state.request_id)
+        repository.append_event(task_id, "TAXONOMY_EDITED", {"taxonomy_id": updated["taxonomy_id"],
+                                                               "node_count": len(updated["nodes"])})
+        return envelope(updated, request.state.request_id)
+
+    @app.post("/api/v1/tasks/{task_id}/taxonomies/{taxonomy_id}/classify", status_code=202)
+    def retry_taxonomy_classification(task_id: str, taxonomy_id: str, request: Request,
+                                      idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        try:
+            taxonomy = taxonomies.get(task_id, taxonomy_id)
+        except KeyError:
+            return error_response(404, "TAXONOMY_NOT_FOUND", "分类树不存在。", request.state.request_id)
+        if taxonomy["status"] != "approved":
+            return error_response(409, "TAXONOMY_NOT_APPROVED", "必须先批准分类树。", request.state.request_id)
+        ai_classifier.classify_taxonomy(task_id, taxonomy)
+        task = repository.advance_after_classification(task_id)
+        repository.append_event(task_id, "AI_CLASSIFICATION_COMPLETED", {"taxonomy_id": taxonomy_id, "retry": True})
+        return envelope({"command_id": str(uuid.uuid4()), "status": "completed", "task": task}, request.state.request_id)
 
     @app.post("/api/v1/tasks/{task_id}/reviews/bulk")
     def bulk_reviews(task_id: str, payload: BulkReviewRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
@@ -552,7 +972,8 @@ def create_app(
             return error_response(404, "TASK_NOT_FOUND", "任务不存在。", request.state.request_id)
         except ValueError as exc:
             return error_response(409, str(exc), "任务尚未准备好生成计划。", request.state.request_id)
-        return envelope(asdict(plan), request.state.request_id)
+        return envelope({**asdict(plan), **journal.plan_metadata(plan.plan_id),
+                         "results": journal.operation_results(plan.plan_id)}, request.state.request_id)
 
     @app.get("/api/v1/tasks/{task_id}/plan")
     def get_plan(task_id: str, request: Request, plan_id: str | None = None):
@@ -565,7 +986,8 @@ def create_app(
             if plan.task_id != task_id: raise KeyError(task_id)
         except KeyError:
             return error_response(404, "PLAN_NOT_FOUND", "整理计划不存在。", request.state.request_id)
-        return envelope(asdict(plan), request.state.request_id)
+        return envelope({**asdict(plan), **journal.plan_metadata(plan.plan_id),
+                         "results": journal.operation_results(plan.plan_id)}, request.state.request_id)
 
     @app.get("/api/v1/tasks/{task_id}/operations")
     def list_operations(task_id: str, request: Request, plan_id: str | None = None, state: str | None = None,
@@ -598,7 +1020,8 @@ def create_app(
             operations.approve(task_id, payload.plan_id, payload.plan_hash, payload.expected_revision)
         except ValueError as exc:
             return error_response(409, str(exc), "计划已失效或哈希不匹配。", request.state.request_id)
-        return envelope({"plan_id": payload.plan_id, "plan_hash": payload.plan_hash, "status": "approved"}, request.state.request_id)
+        return envelope({"plan_id": payload.plan_id, "plan_hash": payload.plan_hash,
+                         **journal.plan_metadata(payload.plan_id)}, request.state.request_id)
 
     @app.post("/api/v1/tasks/{task_id}/execute", status_code=202)
     def execute_plan(task_id: str, payload: ExecutePlanRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
@@ -607,7 +1030,8 @@ def create_app(
             plan = coordinator.execute(task_id, payload.plan_id, payload.plan_hash, payload.expected_revision)
         except (ValueError, KeyError) as exc:
             return error_response(409, str(exc), "计划未批准、已失效或执行条件发生变化。", request.state.request_id)
-        return envelope(asdict(plan), request.state.request_id)
+        return envelope({**asdict(plan), **journal.plan_metadata(plan.plan_id),
+                         "results": journal.operation_results(plan.plan_id)}, request.state.request_id)
 
     @app.post("/api/v1/tasks/{task_id}/pause", status_code=202)
     def pause_task(task_id: str, payload: ExpectedRevisionRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
@@ -655,7 +1079,7 @@ def create_app(
             plan = operations.compile_undo(task_id, payload.plan_id, payload.expected_revision)
         except (ValueError, KeyError) as exc:
             return error_response(409, str(exc), "无法根据当前磁盘状态生成撤销计划。", request.state.request_id)
-        return envelope(asdict(plan), request.state.request_id)
+        return envelope({**asdict(plan), **journal.plan_metadata(plan.plan_id)}, request.state.request_id)
 
     if frontend_dist.exists():
         assets = frontend_dist / "assets"

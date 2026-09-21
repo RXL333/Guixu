@@ -1,5 +1,7 @@
 # 开发、验证与打包
 
+> **迁移提示：** 新开发不得恢复模板/RuleEngine 分类入口；当前过渡基线见 `docs/LEGACY_PRODUCT_CLEANUP.md`。
+
 ## 工具链
 
 - Windows x64

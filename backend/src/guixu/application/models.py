@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
+import io
 import json
 import uuid
 from typing import Any, Protocol
 
+from PIL import Image, ImageDraw
 from sqlalchemy import text
 
 from guixu.infrastructure.db.database import Database, utc_now
@@ -26,7 +29,32 @@ RUNTIMES = {"deepseek", "openai_compatible", "ollama", "lmstudio", "vllm", "llam
 
 
 def unknown_capabilities() -> dict[str, Any]:
-    return {key: {"status": "unknown", "message": "尚未探测。", "tested_at": None} for key in CAPABILITY_KEYS}
+    capabilities = {
+        key: {
+            "status": "unknown",
+            "message": "尚未探测。",
+            "tested_at": None,
+            "verified": False,
+            "last_probe_at": None,
+            "probe_status": "not_run",
+            "probe_error": None,
+        }
+        for key in CAPABILITY_KEYS
+    }
+    capabilities["vision"].update({"vision": False, "vision_verified": False})
+    return capabilities
+
+
+def build_probe_png_data_url() -> str:
+    """Create a small, deterministic image and verify its encoded bytes locally."""
+    image = Image.new("RGB", (64, 64), "#1f5fae")
+    ImageDraw.Draw(image).rectangle((16, 16, 47, 47), fill="#e53935")
+    output = io.BytesIO()
+    image.save(output, format="PNG", optimize=False)
+    png_bytes = output.getvalue()
+    with Image.open(io.BytesIO(png_bytes)) as decoded:
+        decoded.verify()
+    return "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
 
 
 class ModelProfileService:
@@ -91,7 +119,27 @@ class ModelProfileService:
     def probe(self, profile_id: str) -> dict[str, Any]:
         profile = self.get(profile_id); secret = self.secrets.get(profile_id)
         now = utc_now(); caps = unknown_capabilities()
-        def cap(status: str, message: str) -> dict[str, Any]: return {"status": status, "message": message, "tested_at": now}
+        def cap(status: str, message: str, *, probe_error: str | None = None,
+                vision: bool = False) -> dict[str, Any]:
+            result = {
+                "status": status,
+                "message": message,
+                "tested_at": now,
+                "verified": status == "supported",
+                "last_probe_at": now,
+                "probe_status": "success" if status == "supported" else "failed",
+                "probe_error": probe_error,
+            }
+            if vision:
+                result.update({"vision": status == "supported", "vision_verified": status == "supported"})
+            return result
+        def transport_error(exc: ModelTransportError) -> str:
+            details = [exc.code]
+            if exc.provider_code:
+                details.append(exc.provider_code)
+            if exc.provider_message:
+                details.append(exc.provider_message)
+            return ": ".join(details)
         adapter = DeepSeekAdapter(self.transport) if profile["provider"] == "deepseek" else QwenLocalAdapter(self.transport)
         fixed_text = [{"role":"user","content":"Reply with exactly GUIXU_PROBE_OK."}]
         try:
@@ -100,21 +148,54 @@ class ModelProfileService:
             caps["authentication"] = cap("supported", "认证通过或服务无需认证。")
             caps["text"] = cap("supported" if "GUIXU_PROBE_OK" in result.content else "error", "固定文本探测完成。")
         except ModelTransportError as exc:
-            caps["reachable"] = cap("error" if exc.status is None else "supported", exc.code)
-            caps["authentication"] = cap("error" if exc.code == "MODEL_AUTH_FAILED" else "unknown", exc.code)
+            detail = transport_error(exc)
+            caps["reachable"] = cap("error" if exc.status is None else "supported", detail,
+                                    probe_error=None if exc.status is not None else detail)
+            caps["authentication"] = cap("error" if exc.code == "MODEL_AUTH_FAILED" else "unknown", detail,
+                                         probe_error=detail)
             self._save_capabilities(profile_id, caps); return caps
         try:
             result = adapter.chat(profile, [{"role":"user","content":"Return JSON with probe=true."}], secret, json_mode=True)
             parsed = json.loads(result.content); ok = parsed.get("probe") is True
             caps["json_mode"] = cap("supported" if ok else "unsupported", "固定 JSON 探测完成。")
-        except (ModelTransportError, ValueError, TypeError): caps["json_mode"] = cap("unsupported", "服务未返回要求的 JSON。")
-        pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII="
+        except ModelTransportError as exc:
+            detail = transport_error(exc)
+            caps["json_mode"] = cap("unsupported", detail, probe_error=detail)
+        except (ValueError, TypeError) as exc:
+            detail = f"MODEL_JSON_PROBE_INVALID: {exc}"
+            caps["json_mode"] = cap("unsupported", detail, probe_error=detail)
+        pixel = build_probe_png_data_url()
         try:
-            adapter.chat(profile, [{"role":"user","content":[{"type":"text","text":"Describe the single built-in test pixel."},{"type":"image_url","image_url":{"url":pixel}}]}], secret)
-            caps["vision"] = cap("supported", "内置几何测试图可处理。")
-        except ModelTransportError as exc: caps["vision"] = cap("unsupported" if exc.status == 400 else "error", exc.code)
+            result = adapter.chat(profile, [{"role":"user","content":[
+                {"type":"text","text":"Describe the main visual content of this image briefly."},
+                {"type":"image_url","image_url":{"url":pixel}},
+            ]}], secret, json_mode=False)
+            if not result.content.strip():
+                raise ModelTransportError("VISION_PROBE_EMPTY_RESPONSE")
+            caps["vision"] = cap("supported", "64×64 内置几何测试图可处理。", vision=True)
+        except ModelTransportError as exc:
+            detail = transport_error(exc)
+            caps["vision"] = cap("unsupported" if exc.status == 400 else "error", detail,
+                                 probe_error=detail, vision=True)
         caps["cancellation"] = cap("supported", "HTTP 请求使用受控超时并可由调用方取消；未向用户文件发请求。")
         self._save_capabilities(profile_id, caps); return caps
+
+    def require_capabilities(self, profile_id: str, modalities: set[str]) -> dict[str, Any]:
+        profile = self.get(profile_id)
+        if not profile["enabled"]:
+            raise ModelError("MODEL_UNAVAILABLE")
+        required = {"text", "json_mode"}
+        if "image" in modalities:
+            required.add("vision")
+        missing = [name for name in sorted(required) if profile["capabilities"].get(name, {}).get("status") != "supported"]
+        if missing:
+            code = "AI_CAPABILITY_MISMATCH" if any(
+                profile["capabilities"].get(name, {}).get("status") in {"unsupported", "error"} for name in missing
+            ) else "AI_CAPABILITY_UNVERIFIED"
+            error = ModelError(code)
+            error.missing_capabilities = missing
+            raise error
+        return profile
 
     def _save_capabilities(self, profile_id: str, caps: dict[str, Any]) -> None:
         with self.database.begin() as connection:

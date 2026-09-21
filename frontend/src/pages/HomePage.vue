@@ -17,13 +17,13 @@ onMounted(async () => {
     <header class="hero">
       <p class="eyebrow">LOCAL-FIRST FILE ORGANIZER</p>
       <div class="hero-line">
-        <div><h1>让文件，各归其位。</h1><p>先看清，再归档。每一步都由你确认。</p></div>
+        <div><h1>让 AI 读懂文件，再决定它们应该放在哪里。</h1><p>理解正文与画面，智能规划分类；每一步都可预览、可撤销，由你确认。</p></div>
         <span class="mode-chip"><ShieldCheck :size="16" /> 仅本机 · 只读阶段</span>
       </div>
     </header>
     <RouterLink class="source-cta" to="/tasks/new">
       <span class="folder-icon"><FolderSearch :size="30" /></span>
-      <span><strong>选择一个测试文件夹</strong><small>扫描真实文件并生成纯类型报告，不会移动或复制</small></span>
+      <span><strong>选择一个测试文件夹</strong><small>接入 DeepSeek 或本地 Qwen，先只读理解内容并规划整理方式</small></span>
       <span class="primary-button">新建整理任务 <ArrowRight :size="17" /></span>
     </RouterLink>
     <section class="section-block">
@@ -44,4 +44,3 @@ onMounted(async () => {
 <script lang="ts">
 import { Archive as ArchiveBox } from 'lucide-vue-next'
 </script>
-

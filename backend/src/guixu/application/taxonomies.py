@@ -26,6 +26,9 @@ class TaxonomyService:
             raise ValueError("SCOPE_CONFLICT")
         taxonomy_id = str(uuid.uuid4()); now = utc_now()
         with self.database.begin() as connection:
+            connection.execute(text(
+                "UPDATE taxonomies SET status='superseded' WHERE scope_id=:scope AND status='draft'"
+            ), {"scope": scope_id})
             connection.execute(text("""
                 INSERT INTO taxonomies(id,task_id,scope_id,version,source,status,policy_json,tree_hash,created_at)
                 VALUES(:id,:task,:scope,:version,:source,'draft',:policy,:hash,:now)
@@ -41,6 +44,27 @@ class TaxonomyService:
                         "fallback": int(node.get("is_fallback", False))})
             connection.execute(text("UPDATE plans SET status='superseded' WHERE task_id=:task AND status IN ('draft','validated','approved')"), {"task": task_id})
         return self.get(task_id, taxonomy_id)
+
+    def replace_draft(self, task_id: str, taxonomy_id: str, tree_hash: str,
+                      nodes: list[dict[str, Any]], expected_revision: int) -> dict[str, Any]:
+        current = self.get(task_id, taxonomy_id)
+        if current["status"] != "draft" or current["tree_hash"] != tree_hash:
+            raise ValueError("TAXONOMY_STALE")
+        with self.database.engine.connect() as connection:
+            settings = json.loads(connection.execute(text(
+                "SELECT settings_json FROM tasks WHERE id=:task"
+            ), {"task": task_id}).scalar_one())
+        validate_nodes(nodes, max_depth=settings["max_depth"], max_siblings=settings["max_siblings"],
+                       max_nodes=settings["max_nodes_per_scope"])
+        with self.database.begin() as connection:
+            changed = connection.execute(text(
+                "UPDATE tasks SET revision=revision+1,updated_at=:now WHERE id=:task AND revision=:revision"
+            ), {"task": task_id, "revision": expected_revision, "now": utc_now()})
+            if changed.rowcount != 1:
+                raise ValueError("REVISION_CONFLICT")
+        return self.save_draft(task_id, current["scope_id"], nodes, current["source"],
+                               max_depth=settings["max_depth"], max_siblings=settings["max_siblings"],
+                               max_nodes=settings["max_nodes_per_scope"], policy=current["policy"])
 
     def approve(self, task_id: str, taxonomy_id: str, tree_hash: str, expected_revision: int | None = None) -> dict[str, Any]:
         taxonomy = self.get(task_id, taxonomy_id)

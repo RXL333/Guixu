@@ -38,7 +38,6 @@ class TaskCoordinator:
             return task_id in self._active
 
     def execute(self, task_id: str, plan_id: str, plan_hash: str, expected_revision: int):
-        self.repository.assert_revision(task_id, expected_revision)
         if not self._global_execution_lock.acquire(blocking=False):
             raise ValueError("TASK_BUSY")
         signal = threading.Event()
@@ -48,6 +47,7 @@ class TaskCoordinator:
             self._requested_action.pop(task_id, None)
         self.repository.append_event(task_id, "execution_started", {"plan_id": plan_id})
         try:
+            self.journal.assert_execution_ready(task_id, plan_id, plan_hash, expected_revision)
             plan = self.journal.load_plan(plan_id)
             if plan.task_id != task_id:
                 raise ValueError("SCOPE_CONFLICT")

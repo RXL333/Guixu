@@ -9,7 +9,7 @@ from typing import Any, Callable
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 from sqlalchemy import text
 
-from guixu.domain.classification import ClassificationError, RuleEngine, classify_universal_types, review_band, validate_result
+from guixu.domain.classification import ClassificationError, review_band, validate_result
 from guixu.domain.profiles import FileProfile
 from guixu.infrastructure.db.database import Database, utc_now
 from guixu.infrastructure.db.repository import canonical_json
@@ -19,37 +19,19 @@ class ClassificationService:
     def __init__(self, database: Database, result_schema_path: Path) -> None:
         self.database = database
         self.validator = Draft202012Validator(json.loads(result_schema_path.read_text("utf-8")), format_checker=FormatChecker())
-        self.rules = RuleEngine()
 
     def classify(self, *, task_id: str, file_id: str, taxonomy: dict[str, Any], profile: FileProfile,
-                 template_key: str, rules: list[dict[str, Any]], test_model: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
+                 model_callback: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
         context = self._file_context(task_id, file_id, profile)
-        input_hash = self._input_hash(task_id, context, taxonomy, rules)
+        input_hash = self._input_hash(task_id, context, taxonomy)
         cached = self._cached(file_id, taxonomy["taxonomy_id"], input_hash)
         if cached is not None:
             return cached
-        decision = self.rules.evaluate(rules, context, template_key=template_key, scope_id=context["scope_id"])
-        if decision and decision.action == "exclude":
-            return {"excluded": True, "rule_ids": list(decision.rule_ids)}
-        if decision and decision.action == "force_category":
-            evidence_ids = [profile.evidence[0].id] if profile.evidence else []
-            result = {"file_id": file_id, "taxonomy_id": taxonomy["taxonomy_id"], "category_id": decision.category_id,
-                      "abstain": not evidence_ids, "model_score": None, "evidence_ids": evidence_ids,
-                      "reason": "用户强制规则命中，且引用当前文件证据。" if evidence_ids else "规则命中但缺少可核对证据。",
-                      "tags": [], "warnings": [] if evidence_ids else ["insufficient_evidence"]}
-            if not evidence_ids:
-                result["category_id"] = None
-            source, band = "rule", "high" if evidence_ids else "low"
-        elif template_key == "universal.types":
-            result = classify_universal_types(file_id, taxonomy, profile); source = "rule"
-            band = "high" if not result["abstain"] and not profile.warnings else "low"
-        else:
-            if test_model is None:
-                raise ClassificationError("MODEL_UNAVAILABLE")
-            payload = {"file_id": file_id, "taxonomy_id": taxonomy["taxonomy_id"], "profile": profile.model_dump(mode="json"),
-                       "allowed_selectable_categories": [node for node in taxonomy["nodes"] if node["selectable"]],
-                       "rule_hints": [decision.category_id] if decision else []}
-            result = test_model(payload); source = "ai"; band = review_band(result, profile)
+        if model_callback is None:
+            raise ClassificationError("MODEL_UNAVAILABLE")
+        payload = {"file_id": file_id, "taxonomy_id": taxonomy["taxonomy_id"], "profile": profile.model_dump(mode="json"),
+                   "allowed_selectable_categories": [node for node in taxonomy["nodes"] if node["selectable"]]}
+        result = model_callback(payload); source = "ai"; band = review_band(result, profile)
         try:
             self.validator.validate(result)
         except ValidationError as exc:
@@ -97,7 +79,7 @@ class ClassificationService:
             raise KeyError(file_id)
         return {**dict(row), "profile": profile.model_dump(mode="python")}
 
-    def _input_hash(self, task_id: str, context: dict[str, Any], taxonomy: dict[str, Any], rules: list[dict[str, Any]]) -> str:
+    def _input_hash(self, task_id: str, context: dict[str, Any], taxonomy: dict[str, Any]) -> str:
         with self.database.engine.connect() as connection:
             task = connection.execute(text("SELECT model_snapshot_json FROM tasks WHERE id=:task"), {"task": task_id}).scalar_one()
             consents = [dict(row) for row in connection.execute(text("""
@@ -110,7 +92,6 @@ class ClassificationService:
             "taxonomy_version": taxonomy.get("version"),
             "taxonomy_hash": taxonomy.get("tree_hash"),
             "policy": taxonomy.get("policy", {}),
-            "rules": rules,
             "model_snapshot": json.loads(task),
             "privacy": [{**row, "grant_json": json.loads(row["grant_json"])} for row in consents],
             "prompt_version": "classification-v1",

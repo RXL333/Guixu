@@ -14,8 +14,16 @@ import httpx
 
 
 class ModelTransportError(RuntimeError):
-    def __init__(self, code: str, *, status: int | None = None, retryable: bool = False, attempts: int = 1) -> None:
-        super().__init__(code); self.code = code; self.status = status; self.retryable = retryable; self.attempts = attempts
+    def __init__(self, code: str, *, status: int | None = None, retryable: bool = False,
+                 attempts: int = 1, provider_code: str | None = None,
+                 provider_message: str | None = None) -> None:
+        super().__init__(code)
+        self.code = code
+        self.status = status
+        self.retryable = retryable
+        self.attempts = attempts
+        self.provider_code = provider_code
+        self.provider_message = provider_message
 
 
 @dataclass(frozen=True)
@@ -70,18 +78,23 @@ class OpenAICompatibleTransport:
                 except (httpx.TimeoutException, httpx.NetworkError) as exc:
                     if attempt == max_attempts: raise ModelTransportError("MODEL_NETWORK_ERROR", retryable=True, attempts=attempt) from exc
                     continue
+                provider_code, provider_message = self._provider_error(response)
                 if response.status_code in {401, 403}:
-                    raise ModelTransportError("MODEL_AUTH_FAILED", status=response.status_code, attempts=attempt)
+                    raise ModelTransportError("MODEL_AUTH_FAILED", status=response.status_code, attempts=attempt,
+                                              provider_code=provider_code, provider_message=provider_message)
                 if response.is_redirect:
                     raise ModelTransportError("MODEL_REDIRECT_BLOCKED", status=response.status_code, attempts=attempt)
                 if response.status_code == 429:
-                    if attempt == max_attempts: raise ModelTransportError("MODEL_RATE_LIMITED", status=429, retryable=True, attempts=attempt)
+                    if attempt == max_attempts: raise ModelTransportError("MODEL_RATE_LIMITED", status=429, retryable=True, attempts=attempt,
+                                                                          provider_code=provider_code, provider_message=provider_message)
                     delay = self._retry_after(response.headers.get("Retry-After")); self.sleeper(min(delay, 30.0)); continue
                 if response.status_code >= 500:
-                    if attempt == max_attempts: raise ModelTransportError("MODEL_SERVER_ERROR", status=response.status_code, retryable=True, attempts=attempt)
+                    if attempt == max_attempts: raise ModelTransportError("MODEL_SERVER_ERROR", status=response.status_code, retryable=True, attempts=attempt,
+                                                                          provider_code=provider_code, provider_message=provider_message)
                     continue
                 if response.status_code >= 400:
-                    raise ModelTransportError("MODEL_REQUEST_REJECTED", status=response.status_code, attempts=attempt)
+                    raise ModelTransportError("MODEL_REQUEST_REJECTED", status=response.status_code, attempts=attempt,
+                                              provider_code=provider_code, provider_message=provider_message)
                 try:
                     payload = response.json(); content = payload["choices"][0]["message"]["content"]
                     usage = payload.get("usage") or {}
@@ -99,6 +112,25 @@ class OpenAICompatibleTransport:
             try: return max(0.0, parsedate_to_datetime(value).timestamp() - time.time())
             except (TypeError, ValueError): return 1.0
 
+    @staticmethod
+    def _provider_error(response: httpx.Response) -> tuple[str | None, str | None]:
+        """Extract bounded provider diagnostics without exposing request headers or bodies."""
+        if response.status_code < 400:
+            return None, None
+        try:
+            payload = response.json()
+        except ValueError:
+            return None, response.text[:1000] or None
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(error, dict):
+            code = error.get("code") or error.get("type")
+            message = error.get("message")
+            return (str(code)[:200] if code is not None else None,
+                    str(message)[:1000] if message is not None else None)
+        if isinstance(error, str):
+            return None, error[:1000]
+        return None, None
+
 
 class DeepSeekAdapter:
     def __init__(self, transport: OpenAICompatibleTransport) -> None: self.transport = transport
@@ -106,7 +138,13 @@ class DeepSeekAdapter:
         validate_endpoint(profile["base_url"], profile.get("trust_scope", "cloud"), "deepseek")
         extra: dict[str, Any] = {}
         mode = profile["options"].get("thinking_mode", "disabled")
-        if mode != "server_default": extra["thinking"] = {"type": mode}
+        has_images = any(
+            isinstance(message.get("content"), list)
+            and any(isinstance(block, dict) and block.get("type") == "image_url" for block in message["content"])
+            for message in messages
+        )
+        if mode != "server_default" and not has_images:
+            extra["thinking"] = {"type": mode}
         if json_mode: extra["response_format"] = {"type": "json_object"}
         return self.transport.chat(base_url=profile["base_url"], model_id=profile["model_id"], messages=messages,
                                    secret=secret, timeout_seconds=profile["options"].get("timeout_seconds", 60), extra=extra, max_attempts=max_attempts)

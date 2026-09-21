@@ -37,6 +37,11 @@ def uid() -> str:
 def assert_schema(project_root: Path, outcome) -> None:
     schema = json.loads((project_root / "contracts" / "schemas" / "file-profile.schema.json").read_text("utf-8"))
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(outcome.profile.model_dump(mode="json"))
+    assert outcome.profile.name
+    assert outcome.profile.source_path
+    assert outcome.profile.extension.startswith(".")
+    assert outcome.profile.parser_status == outcome.status
+    assert outcome.profile.parser_warnings == outcome.profile.warnings
 
 
 def test_pa01_text_markdown_json_csv(project_root: Path, tmp_path: Path):

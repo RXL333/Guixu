@@ -35,7 +35,8 @@ def build_outbound(profile: FileProfile, allowed: set[str], *, max_chars: int) -
     if not allowed <= ALLOWED_DATA_TYPES: raise PrivacyError("DATA_TYPE_NOT_ALLOWED")
     evidence = []
     remaining = max_chars
-    kind_map = {"extracted_text": "extracted_text", "ocr": "extracted_text", "transcript": "asr_text", "subtitle": "asr_text", "visual_caption": "derivative_images"}
+    kind_map = {"extracted_text": "extracted_text", "ocr": "extracted_text", "transcript": "asr_text", "subtitle": "asr_text",
+                "visual_caption": "derivative_images", "visual_description": "derivative_images"}
     for item in profile.evidence:
         data_type = kind_map.get(item.kind)
         if data_type not in allowed or remaining <= 0: continue

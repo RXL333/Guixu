@@ -31,6 +31,14 @@ async function remove(item: ModelProfile) {
   catch(e) { error.value=String(e) }
   finally { busy.value='' }
 }
+function verificationLabel(item: ModelProfile, key: 'text' | 'vision') {
+  return item.capabilities[key]?.status === 'supported' ? '已验证' : '失败'
+}
+function verificationError(item: ModelProfile, key: 'text' | 'vision') {
+  const capability = item.capabilities[key]
+  if (!capability || capability.status === 'supported') return ''
+  return capability.probe_error || capability.message || '尚未探测'
+}
 onMounted(load)
 </script>
 
@@ -50,6 +58,12 @@ onMounted(load)
     <article v-for="item in items" :key="item.id" class="state-card model-card">
       <header><div><strong>{{ item.name }}</strong><p>{{ item.model_id }} · {{ item.base_url }}</p></div><span>{{ item.has_secret ? '凭据已保存' : '无凭据' }}</span></header>
       <p class="privacy-note">{{ item.trust_scope === 'loopback' ? '仅本机回环' : item.trust_scope === 'trusted_lan' ? '可信局域网' : '云端服务' }}</p>
+      <div class="verification-summary">
+        <p :data-state="item.capabilities.text?.status"><b>文本：</b>{{ verificationLabel(item, 'text') }}</p>
+        <p :data-state="item.capabilities.vision?.status"><b>视觉：</b>{{ verificationLabel(item, 'vision') }}</p>
+        <p v-if="verificationError(item, 'text')" class="probe-error"><b>文本失败原因：</b>{{ verificationError(item, 'text') }}</p>
+        <p v-if="verificationError(item, 'vision')" class="probe-error"><b>视觉失败原因：</b>{{ verificationError(item, 'vision') }}</p>
+      </div>
       <div class="cap-grid"><span v-for="(cap,key) in item.capabilities" :key="key" :data-state="cap.status"><b>{{ key }}</b>{{ cap.status }}<small>{{ cap.message }}</small></span></div>
       <div class="model-actions">
         <button :disabled="!!busy" @click="probe(item)">测试连接与能力</button>
@@ -64,5 +78,5 @@ onMounted(load)
 </template>
 
 <style scoped>
-.model-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.model-form label{display:grid;gap:7px;font-size:13px}.model-form input,.model-form select{min-height:42px;padding:0 12px;border:1px solid #bdc5bb;border-radius:8px;background:#fff;color:#20372f}.segmented,.privacy-note,.model-form button{grid-column:1/-1}.segmented button{min-height:36px;margin-right:8px;padding:0 14px;border:1px solid #bdc5bb;border-radius:7px;background:#f3f1ea;color:#20372f}.segmented .active{background:#226d59;color:white;border-color:#226d59}.model-form .primary{min-height:42px;border:0;border-radius:8px;background:#226d59;color:white;font-weight:600}.model-card{margin-top:16px}.model-card header{display:flex;justify-content:space-between;gap:20px}.model-card p{margin:4px 0}.cap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}.cap-grid span{display:grid;padding:10px;border:1px solid #d9ddd3;border-radius:8px;font-size:12px}.cap-grid span[data-state="supported"]{border-color:#4f8b6d}.cap-grid small{color:#69766d;margin-top:4px}.privacy-note{color:#69766d}.model-actions{display:flex;gap:10px;flex-wrap:wrap}.danger-button{border-color:#b34d45!important;color:#9d332c!important;background:#fff8f6!important}.delete-confirm{margin-top:12px;padding:12px;border:1px solid #d79a93;border-radius:8px;background:#fff8f6}.error{color:#a33}@media(max-width:900px){.model-form,.cap-grid{grid-template-columns:1fr}}
+.model-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.model-form label{display:grid;gap:7px;font-size:13px}.model-form input,.model-form select{min-height:42px;padding:0 12px;border:1px solid #bdc5bb;border-radius:8px;background:#fff;color:#20372f}.segmented,.privacy-note,.model-form button{grid-column:1/-1}.segmented button{min-height:36px;margin-right:8px;padding:0 14px;border:1px solid #bdc5bb;border-radius:7px;background:#f3f1ea;color:#20372f}.segmented .active{background:#226d59;color:white;border-color:#226d59}.model-form .primary{min-height:42px;border:0;border-radius:8px;background:#226d59;color:white;font-weight:600}.model-card{margin-top:16px}.model-card header{display:flex;justify-content:space-between;gap:20px}.model-card p{margin:4px 0}.verification-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0;padding:12px;border-radius:8px;background:#f5f4ee}.verification-summary p{padding:4px 0}.verification-summary p[data-state="supported"]{color:#226d59}.verification-summary p[data-state="unsupported"],.verification-summary p[data-state="error"],.probe-error{color:#9d332c}.verification-summary .probe-error{grid-column:1/-1;overflow-wrap:anywhere}.cap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}.cap-grid span{display:grid;padding:10px;border:1px solid #d9ddd3;border-radius:8px;font-size:12px}.cap-grid span[data-state="supported"]{border-color:#4f8b6d}.cap-grid small{color:#69766d;margin-top:4px}.privacy-note{color:#69766d}.model-actions{display:flex;gap:10px;flex-wrap:wrap}.danger-button{border-color:#b34d45!important;color:#9d332c!important;background:#fff8f6!important}.delete-confirm{margin-top:12px;padding:12px;border:1px solid #d79a93;border-radius:8px;background:#fff8f6}.error{color:#a33}@media(max-width:900px){.model-form,.cap-grid,.verification-summary{grid-template-columns:1fr}.verification-summary .probe-error{grid-column:1}}
 </style>
