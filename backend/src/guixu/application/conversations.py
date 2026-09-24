@@ -30,6 +30,9 @@ class ConversationService:
     def rename_conversation(self, conversation_id: str, title: str) -> dict[str, Any]:
         return self.repository.rename(conversation_id, title)
 
+    def set_model_profile(self, conversation_id: str, model_profile_id: str) -> dict[str, Any]:
+        return self.repository.set_model_profile(conversation_id, model_profile_id)
+
     def archive_conversation(self, conversation_id: str) -> dict[str, Any]:
         return self.repository.archive(conversation_id)
 

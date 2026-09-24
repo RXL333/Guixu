@@ -51,6 +51,7 @@ class CreateConversationRequest(BaseModel):
 class ConversationPatchRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
     status: str | None = Field(default=None, pattern="^(ACTIVE|ARCHIVED)$")
+    model_profile_id: str | None = None
 
 
 class ConversationMessageRequest(BaseModel):

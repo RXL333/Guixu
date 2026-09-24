@@ -488,6 +488,8 @@ def create_app(
             result = conversations.get_conversation(conversation_id)
             if payload.title is not None:
                 result = conversations.rename_conversation(conversation_id, payload.title)
+            if payload.model_profile_id is not None:
+                result = conversations.set_model_profile(conversation_id, payload.model_profile_id)
             if payload.status == "ARCHIVED":
                 result = conversations.archive_conversation(conversation_id)
             elif payload.status == "ACTIVE" and result.get("status") == "ARCHIVED":
@@ -495,7 +497,8 @@ def create_app(
         except KeyError:
             return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
         except ValueError as exc:
-            return error_response(409, str(exc), "会话当前不能修改。", request.state.request_id)
+            message = "当前模型连接不可用。" if str(exc) == "MODEL_NOT_AVAILABLE" else "会话当前不能修改。"
+            return error_response(409, str(exc), message, request.state.request_id)
         return envelope(result, request.state.request_id)
 
     @app.delete("/api/v1/conversations/{conversation_id}")

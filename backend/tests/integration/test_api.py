@@ -98,6 +98,40 @@ def test_model_delete_hides_connection_but_keeps_audit_record(project_root: Path
         assert retained == (0, created["revision"] + 1)
 
 
+def test_conversation_model_selection_updates_conversation_and_context(project_root: Path, tmp_path: Path):
+    token = "conversation-model-selection"
+    source = tmp_path / "source"
+    source.mkdir()
+    app = create_app(project_root=project_root, data_dir=tmp_path / "data", session_token=token,
+                     allow_typed_grants=True)
+    with TestClient(app) as client:
+        grant = client.post("/api/v1/dev/grants", headers=headers(token), json={
+            "path": str(source), "purpose": "source",
+        }).json()["data"]["grant_id"]
+        first = model(app)
+        second = app.state.models.create({"name": "API AI 2", "provider": "qwen_local", "runtime": "openai_compatible",
+            "base_url": "http://127.0.0.1:8000/v1", "model_id": "fixture-2", "trust_scope": "loopback",
+            "options": {"thinking_mode": "disabled", "timeout_seconds": 5, "max_concurrency": 1, "batch_size": 20},
+            "enabled": True})
+        created = client.post("/api/v1/conversations", headers=headers(token, True), json={
+            "title": "模型选择", "model_profile_id": first["id"], "scope_grant": grant,
+        })
+        assert created.status_code == 201, created.text
+        conversation_id = created.json()["data"]["id"]
+
+        switched = client.patch(f"/api/v1/conversations/{conversation_id}", headers=headers(token), json={
+            "model_profile_id": second["id"],
+        })
+        assert switched.status_code == 200, switched.text
+        payload = switched.json()["data"]
+        assert payload["model_profile_id"] == second["id"]
+        assert payload["context"]["model_profile_id"] == second["id"]
+
+        context = client.get(f"/api/v1/conversations/{conversation_id}/context", headers=headers(token))
+        assert context.status_code == 200
+        assert context.json()["data"]["model_profile_id"] == second["id"]
+
+
 def test_conversation_message_file_reference_api_is_batched_and_scope_safe(project_root: Path, tmp_path: Path):
     source = tmp_path / "references"; source.mkdir()
     (source / "a.txt").write_text("alpha", encoding="utf-8")

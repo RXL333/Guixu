@@ -13,6 +13,7 @@ const menuOpen = ref(false)
 const modelOpen = ref(false)
 const title = computed(() => props.conversation?.title || '新的整理会话')
 const scopeName = computed(() => props.conversation?.scopes?.[0]?.display_name || '尚未绑定文件夹')
+const modelBusy = ref(false)
 
 async function rename() {
   menuOpen.value = false
@@ -25,6 +26,13 @@ async function remove() {
   if (!await confirmAction('只删除归序中的会话记录，不会删除或移动磁盘上的文件。是否继续？')) return
   await store.deleteConversation(props.conversation.id)
   await router.push('/')
+}
+async function selectModel(modelId: string) {
+  if (modelBusy.value) return
+  modelBusy.value = true
+  try {
+    if (await store.setConversationModel(modelId)) modelOpen.value = false
+  } finally { modelBusy.value = false }
 }
 </script>
 
@@ -44,8 +52,9 @@ async function remove() {
         </button>
         <div v-if="modelOpen" class="model-selector-menu">
           <p v-if="!store.models.length">暂无已配置模型</p>
-          <p v-if="store.activeModel">当前会话使用：{{ store.activeModel.name }}</p>
-          <p v-if="store.models.length">模型连接可在设置中管理；此处不会切换当前会话的分析模型。</p>
+          <button v-for="model in store.models" :key="model.id" type="button" :class="{ selected: model.id === store.activeModel?.id }" :disabled="modelBusy" @click="selectModel(model.id)">
+            <span>{{ model.name }}</span><small>{{ model.provider === 'qwen_local' ? '本地' : '云端' }} · {{ model.model_id }}</small>
+          </button>
           <RouterLink to="/models">管理模型连接</RouterLink>
         </div>
       </div>

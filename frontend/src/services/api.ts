@@ -525,6 +525,9 @@ export const api = {
   renameConversation: (id: string, title: string) => request<Conversation>(`/api/v1/conversations/${id}`, {
     method: 'PATCH', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ title }),
   }),
+  updateConversationModel: (id: string, modelProfileId: string) => request<Conversation>(`/api/v1/conversations/${id}`, {
+    method: 'PATCH', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ model_profile_id: modelProfileId }),
+  }),
   archiveConversation: (id: string) => request<Conversation>(`/api/v1/conversations/${id}`, {
     method: 'PATCH', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ status: 'ARCHIVED' }),
   }),

@@ -182,6 +182,22 @@ export const useConversationStore = defineStore('conversations', () => {
     } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
   }
 
+  async function setConversationModel(modelProfileId: string) {
+    const conversationId = currentConversation.value?.id
+    if (!conversationId || !modelProfileId) return false
+    try {
+      const updated = await api.updateConversationModel(conversationId, modelProfileId)
+      currentConversation.value = { ...currentConversation.value!, ...updated }
+      conversations.value = conversations.value.map(item => item.id === conversationId ? { ...item, ...updated } : item)
+      context.value = updated.context ?? await api.conversationContext(conversationId)
+      notice.value = `已切换到 ${models.value.find(model => model.id === modelProfileId)?.name || '所选模型'}。`
+      return true
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause)
+      return false
+    }
+  }
+
   async function deleteConversation(id: string) {
     try {
       await api.deleteConversation(id)
@@ -406,7 +422,7 @@ export const useConversationStore = defineStore('conversations', () => {
     loading, loadingConversations, error, notice, selectedFileIds, focusedFileId, activeCategoryId, activeScope, activeModel, recovery, recoveryBusy,
     undoPlans, pendingUndoPlan, undoBusy,
     clearError, clearNotice, loadConversations, loadConversation, loadModels, createConversation,
-    renameConversation, deleteConversation, appendMessage, prepareRefinement, confirmGlobalRefinement, cancelGlobalRefinement, reconcileConversation, resumeAnalysis, retryAgentTurn,
+    renameConversation, setConversationModel, deleteConversation, appendMessage, prepareRefinement, confirmGlobalRefinement, cancelGlobalRefinement, reconcileConversation, resumeAnalysis, retryAgentTurn,
     approveAndExecute, requestUndo, confirmUndo, cancelUndo, viewPlanVersion, restorePlanVersion, toggleFile, removeFileReference, clearFileReferences, selectReferencedFiles,
   }
 })

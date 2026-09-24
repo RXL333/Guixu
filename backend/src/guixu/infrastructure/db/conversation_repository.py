@@ -162,6 +162,36 @@ class ConversationRepository:
                 raise ValueError("CONVERSATION_DELETED")
         return self.get(conversation_id)
 
+    def set_model_profile(self, conversation_id: str, model_profile_id: str) -> dict[str, Any]:
+        clean_profile_id = model_profile_id.strip()
+        if not clean_profile_id:
+            raise ValueError("MODEL_PROFILE_REQUIRED")
+        now = utc_now()
+        with self.database.begin() as connection:
+            profile = connection.execute(text(
+                "SELECT id FROM model_profiles WHERE id=:profile AND enabled=1"
+            ), {"profile": clean_profile_id}).first()
+            if profile is None:
+                raise ValueError("MODEL_NOT_AVAILABLE")
+            conversation = connection.execute(text(
+                "SELECT deleted_at FROM conversations WHERE id=:id"
+            ), {"id": conversation_id}).first()
+            if conversation is None:
+                raise KeyError(conversation_id)
+            if conversation[0] is not None:
+                raise ValueError("CONVERSATION_DELETED")
+            connection.execute(text("""
+                UPDATE conversations
+                SET model_profile_id=:profile,revision=revision+1,updated_at=:now
+                WHERE id=:id AND deleted_at IS NULL
+            """), {"id": conversation_id, "profile": clean_profile_id, "now": now})
+            connection.execute(text("""
+                UPDATE conversation_contexts
+                SET model_profile_id=:profile,context_revision=context_revision+1,updated_at=:now
+                WHERE conversation_id=:id
+            """), {"id": conversation_id, "profile": clean_profile_id, "now": now})
+        return self.get(conversation_id)
+
     def soft_delete(self, conversation_id: str) -> dict[str, Any]:
         with self.database.begin() as connection:
             result = connection.execute(text("""
