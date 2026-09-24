@@ -77,6 +77,7 @@ function useExample(prompt: string) {
   else store.notice = '选择文件夹后，这条整理要求会填入输入框。'
 }
 function statusText() {
+  if (store.analysisBusy) return '正在扫描文件、分析内容并生成整理预览…'
   if (store.executionBusy) return '正在整理文件…'
   if (store.refinementBusy) return `正在检查${store.affectedScope?.affected_category_ids?.length ? '本轮影响范围' : '当前文件状态'}…`
   if (store.notice) return store.notice
@@ -86,7 +87,7 @@ function statusText() {
 }
 function statusTone(): 'idle' | 'loading' | 'success' | 'error' {
   if (store.error) return 'error'
-  if (store.loading || store.refinementBusy || store.executionBusy) return 'loading'
+  if (store.loading || store.analysisBusy || store.refinementBusy || store.executionBusy) return 'loading'
   if (store.notice) return 'success'
   return 'idle'
 }
@@ -153,9 +154,9 @@ watch(() => route.params.id, loadForRoute)
         </div>
       </div>
       <div class="chat-footer">
-        <OperationProgress v-if="store.refinementBusy || store.executionBusy || store.undoBusy" :label="store.undoBusy ? '正在核对并恢复文件' : store.executionBusy ? '正在整理文件' : '正在检查文件内容与整理要求'" />
+        <OperationProgress v-if="store.analysisBusy || store.refinementBusy || store.executionBusy || store.undoBusy" :label="store.analysisBusy ? '正在扫描文件并生成整理预览' : store.undoBusy ? '正在核对并恢复文件' : store.executionBusy ? '正在整理文件' : '正在检查文件内容与整理要求'" />
         <WorkspaceStatusBar :tone="statusTone()" :text="statusText()" />
-        <ChatComposer ref="composer" @references="showFiles()" :disabled="!store.currentConversation || !!store.error || store.refinementBusy || store.executionBusy || store.undoBusy" />
+        <ChatComposer ref="composer" @references="showFiles()" :disabled="!store.currentConversation || !!store.error || store.analysisBusy || store.refinementBusy || store.executionBusy || store.undoBusy" />
       </div>
     </main>
     <FileWorkspace ref="fileWorkspace" :plans="store.planVersions" :executions="store.executionRounds" :current-plan-version="store.currentPlanVersion" :viewing-plan-version="store.viewingPlanVersion" :plan-diff="store.planDiff" :version-loading="store.versionLoading" :collapsed="filePanelCollapsed" @collapse="filePanelCollapsed = true" @expand="filePanelCollapsed = false" @view-history="store.viewPlanVersion" @restore-version="store.restorePlanVersion" @approve-plan="store.approveAndExecute" @undo="store.requestUndo" />

@@ -13,6 +13,7 @@ export const useConversationStore = defineStore('conversations', () => {
   const planDiff = ref<ConversationPlanDiff | null>(null)
   const versionLoading = ref(false)
   const refinementBusy = ref(false)
+  const analysisBusy = ref(false)
   const executionBusy = ref(false)
   const affectedScope = ref<AffectedScope | null>(null)
   const refinementMetrics = ref<RefinementMetrics | null>(null)
@@ -219,6 +220,31 @@ export const useConversationStore = defineStore('conversations', () => {
     if (!conversationId || !content.trim()) return false
     try {
       const explicitSelection = [...selectedFileIds.value]
+      const firstAnalysis = !planVersions.value.length && !executionRounds.value.length && !context.value?.current_plan_version_id
+      if (firstAnalysis && activeModel.value) {
+        const model = activeModel.value
+        const acknowledged = typeof window !== 'undefined' && typeof window.confirm === 'function'
+          ? window.confirm(`首次分析会将已授权的文件内容证据发送给“${model.name}”。不会移动文件，是否继续？`)
+          : true
+        if (!acknowledged) return false
+        analysisBusy.value = true
+        notice.value = '正在扫描授权目录并分析文件内容…'
+        const result = await api.firstConversationTurn(conversationId, {
+          content: content.trim(), selected_file_ids: explicitSelection,
+          focused_file_id: explicitSelection.length ? null : focusedFileId.value,
+          active_category_id: activeCategoryId.value, acknowledge_privacy: true,
+        })
+        messages.value = [...messages.value, result.user_message, result.assistant_message]
+        files.value = result.files
+        context.value = result.context
+        planVersions.value = [...planVersions.value.filter(item => item.id !== result.plan_version.id), result.plan_version]
+        selectedFileIds.value = []
+        focusedFileId.value = null
+        notice.value = `首次分析完成：${result.metrics.file_count || 0} 个文件，已生成方案 v${result.plan_version.version_number}。`
+        currentConversation.value = { ...currentConversation.value!, last_message_at: result.assistant_message.created_at, updated_at: result.assistant_message.created_at }
+        conversations.value = conversations.value.map(item => item.id === conversationId ? { ...item, last_message_at: result.assistant_message.created_at, updated_at: result.assistant_message.created_at } : item)
+        return true
+      }
       const message = await api.appendConversationMessage(conversationId, {
         role: 'USER', content: content.trim(), selected_file_ids: explicitSelection,
         focused_file_id: explicitSelection.length ? null : focusedFileId.value,
@@ -250,6 +276,7 @@ export const useConversationStore = defineStore('conversations', () => {
       conversations.value = conversations.value.map(item => item.id === conversationId ? { ...item, last_message_at: message.created_at, updated_at: message.created_at } : item)
       return true
     } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return false }
+    finally { analysisBusy.value = false }
   }
 
   async function prepareRefinement(content: string, confirmedGlobal = false, referencedFileIds: string[] = [], triggerMessageId?: string) {
@@ -419,7 +446,7 @@ export const useConversationStore = defineStore('conversations', () => {
   return {
     conversations, currentConversation, messages, context, files, planVersions, currentPlanVersion, viewingPlanVersion, planDiff, versionLoading, executionRounds, models,
     refinementBusy, executionBusy, affectedScope, refinementMetrics, pendingGlobalMessage,
-    loading, loadingConversations, error, notice, selectedFileIds, focusedFileId, activeCategoryId, activeScope, activeModel, recovery, recoveryBusy,
+    loading, loadingConversations, error, notice, selectedFileIds, focusedFileId, activeCategoryId, activeScope, activeModel, analysisBusy, recovery, recoveryBusy,
     undoPlans, pendingUndoPlan, undoBusy,
     clearError, clearNotice, loadConversations, loadConversation, loadModels, createConversation,
     renameConversation, setConversationModel, deleteConversation, appendMessage, prepareRefinement, confirmGlobalRefinement, cancelGlobalRefinement, reconcileConversation, resumeAnalysis, retryAgentTurn,

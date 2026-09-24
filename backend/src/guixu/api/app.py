@@ -21,7 +21,7 @@ from guixu import __version__
 from guixu.api.schemas import (ApprovePlanRequest, ApproveTaxonomyRequest, BulkReviewRequest,
                                ComponentImportRequest, ConsentRequest, ConversationContextUpdateRequest,
                                ConversationExecutionRoundRequest, ConversationFileRequest,
-                               ConversationMessageRequest, ConversationPatchRequest,
+                               ConversationMessageRequest, ConversationPatchRequest, ConversationTurnRequest,
                                ConversationPlanVersionApproveRequest, ConversationPlanVersionExecutionRequest,
                                ConversationPlanVersionRequest, ConversationPlanVersionRestoreRequest,
                                ConversationRefinementExecuteRequest, ConversationRefinementRequest,
@@ -58,6 +58,7 @@ from guixu.application.post_execution import PostExecutionConversationService
 from guixu.application.file_references import ReferenceResolutionError, ReferenceResolver
 from guixu.application.session_recovery import SessionRecoveryService
 from guixu.application.conversational_undo import ConversationalUndoService, UndoError
+from guixu.application.first_analysis import FirstAnalysisError, FirstOrganizationAnalysisService
 from guixu.infrastructure.db.operation_journal import SqliteOperationJournal
 from guixu.infrastructure.filesystem.grants import GrantError, SourceRegistry
 from guixu.infrastructure.resources.components import ComponentError, ComponentManager, status_dict
@@ -127,6 +128,12 @@ def create_app(
     model_gateway = ModelGateway(database, models, privacy)
     ai_planner = AITaxonomyPlanner(repository, parsing, taxonomies, model_gateway, evidence_cache)
     ai_classifier = AIFileClassifier(repository, parsing, classifications, model_gateway, evidence_cache)
+    first_analysis = FirstOrganizationAnalysisService(
+        project_root=project_root, database=database, conversations=conversation_repository,
+        repository=repository, tasks=tasks, registry=registry, models=models, privacy=privacy,
+        planner=ai_planner, classifier=ai_classifier, taxonomies=taxonomies,
+        operations=operations, journal=journal,
+    )
     post_execution = PostExecutionConversationService(
         database=database, conversations=conversation_repository, tasks=repository,
         journal=journal, coordinator=coordinator, parsing=parsing,
@@ -171,6 +178,7 @@ def create_app(
     app.state.model_gateway = model_gateway
     app.state.ai_planner = ai_planner
     app.state.ai_classifier = ai_classifier
+    app.state.first_analysis = first_analysis
     app.state.reporting = reporting
     app.state.previews = previews
     app.state.project_root = project_root
@@ -347,8 +355,9 @@ def create_app(
             request.state.request_id,
         )
 
-    # PHASE D: durable Conversation state only. These endpoints persist typed
-    # records and references; they intentionally do not invoke an LLM or agent.
+    # Conversation persistence and the bounded first-organization turn. The
+    # turn composes the existing safe scanner/planner/classifier pipeline and
+    # only produces a preview; it does not execute filesystem operations.
     @app.get("/api/v1/conversations")
     def list_conversations(request: Request, view: str = Query("active", pattern="^(active|deleted|all)$")):
         return envelope(conversations.list_conversations(view), request.state.request_id)
@@ -565,6 +574,50 @@ def create_app(
             return error_response(409, exc.code, reference_error_message(exc.code), request.state.request_id, exc.details)
         except ValueError as exc:
             return error_response(409, str(exc), "消息不能写入当前会话。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/turns")
+    def first_conversation_turn(conversation_id: str, payload: ConversationTurnRequest, request: Request,
+                                idempotency_key: str = Header(default="conversation-first-turn")):
+        del idempotency_key
+        if not payload.acknowledge_privacy:
+            return error_response(409, "PRIVACY_CONSENT_REQUIRED", "首次分析前需要确认内容授权。", request.state.request_id)
+        try:
+            resolved = reference_resolver.resolve(
+                conversation_id, payload.content,
+                selected_file_ids=payload.selected_file_ids,
+                focused_file_id=payload.focused_file_id,
+                active_category_id=payload.active_category_id,
+            )
+            if resolved.get("missing"):
+                raise ReferenceResolutionError("REFERENCE_FILE_MISSING", details={"missing": resolved["missing"]})
+            if resolved.get("changed"):
+                raise ReferenceResolutionError("REFERENCE_FILE_CHANGED", details={"changed": resolved["changed"]})
+            user_message = conversations.append_message(
+                conversation_id, "USER", payload.content.strip(),
+                referenced_file_ids=resolved.get("file_ids"),
+                reference_source=None if resolved.get("source") == "NONE" else resolved.get("source"),
+                reference_role=payload.reference_role,
+            )
+            progress: list[dict[str, Any]] = []
+            result = first_analysis.run(
+                conversation_id,
+                user_message=payload.content.strip(),
+                message_id=user_message["id"],
+                acknowledge_privacy=True,
+                progress=progress.append,
+            )
+            result["user_message"] = user_message
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except ReferenceResolutionError as exc:
+            return error_response(409, exc.code, reference_error_message(exc.code), request.state.request_id, exc.details)
+        except FirstAnalysisError as exc:
+            return error_response(409, exc.code, str(exc), request.state.request_id, exc.details)
+        except (BudgetError, ModelError, ModelTransportError, PrivacyError, TaxonomyPlanningError) as exc:
+            return error_response(409, getattr(exc, "code", str(exc)), "首次 AI 分析不可用或授权不足。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "首次整理分析无法完成。", request.state.request_id)
         return envelope(result, request.state.request_id)
 
     @app.post("/api/v1/conversations/{conversation_id}/references/resolve")

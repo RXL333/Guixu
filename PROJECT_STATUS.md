@@ -1,6 +1,13 @@
 # 项目状态
 
-版本：0.1.0 dev（PHASE L Conversational Undo 已完成，禁止发布 0.2.0）。更新时间：2026-09-22。
+版本：0.1.0 dev（PHASE F 首次整理分析链路已接入，禁止发布 0.2.0）。更新时间：2026-09-24。
+
+## PHASE F 首次整理分析
+
+- 已修复“发送消息无反应”：此前前端只调用 Message API 保存用户消息，后端明确不触发分析；现在首次发送会调用真实 `POST /api/v1/conversations/{id}/turns`，执行扫描、内容证据解析、AI 规划、AI 分类和只读方案编译。
+- 首次分析生成 `PlanVersion v1`（`FULL / PROPOSED`，无 baseline execution），助手回复包含实际文件数量、分类数量和保留/冲突计数；不会移动或修改磁盘文件。
+- 首次流程需要有效目录授权、已启用模型和隐私确认；无能力或授权时返回明确错误，不使用本地语义 fallback。已有方案/执行记录继续走后续 refinement。
+- 专项验证：后端首次分析 + AI-only 闭环 3 passed；前端 Conversation Workspace 14 passed；typecheck/build 均 exit 0。报告：[phase-f-first-analysis-audit](artifacts/reports/phase-f-first-analysis-audit.md)、[real-phase-f-first-analysis-smoke](artifacts/reports/real-phase-f-first-analysis-smoke.md)。
 
 ## Conversation Agent 转型准备
 

@@ -393,6 +393,20 @@ export interface RefinementResult {
   assistant_message?: ConversationMessage
 }
 
+export interface FirstAnalysisResult {
+  status: 'COMPLETED'
+  intent: 'ORGANIZE_REQUEST'
+  task: Task
+  files: ConversationFile[]
+  plan_version: ConversationPlanVersion
+  user_message: ConversationMessage
+  assistant_message: ConversationMessage
+  context: ConversationContext
+  progress: Array<{ stage: string; label: string; status: string; details: Record<string, unknown> }>
+  metrics: Record<string, number | string | null>
+  disk_files_changed: false
+}
+
 type Envelope<T> = { data: T; meta: { request_id: string } }
 
 export class ApiError extends Error {
@@ -540,6 +554,10 @@ export const api = {
   conversationMessages: (id: string) => request<ConversationMessage[]>(`/api/v1/conversations/${id}/messages`),
   appendConversationMessage: (id: string, payload: { role: ConversationMessageRole; content: string; message_type?: ConversationMessageType; metadata?: Record<string, unknown>; referenced_plan_version_id?: string | null; referenced_execution_round_id?: string | null; selected_file_ids?: string[]; focused_file_id?: string | null; active_category_id?: string | null; expected_context_revision?: number; reference_role?: 'SUBJECT'|'RESULT'|'CONTEXT' }) =>
     request<ConversationMessage>(`/api/v1/conversations/${id}/messages`, {
+      method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+    }),
+  firstConversationTurn: (id: string, payload: { content: string; selected_file_ids?: string[]; focused_file_id?: string | null; active_category_id?: string | null; acknowledge_privacy: boolean; reference_role?: 'SUBJECT'|'RESULT'|'CONTEXT' }) =>
+    request<FirstAnalysisResult>(`/api/v1/conversations/${id}/turns`, {
       method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
     }),
   conversationContext: (id: string) => request<ConversationContext>(`/api/v1/conversations/${id}/context`),
