@@ -11,7 +11,10 @@ class DesktopBridge:
         import webview
 
         window = webview.windows[0]
-        selected = window.create_file_dialog(webview.FOLDER_DIALOG)
+        # pywebview 6 keeps FOLDER_DIALOG as a compatibility alias but emits a
+        # deprecation warning.  Use the namespaced enum so the desktop runner
+        # starts cleanly on current and future pywebview releases.
+        selected = window.create_file_dialog(webview.FileDialog.FOLDER)
         if not selected:
             return {"cancelled": True}
         grant = self.registry.register_typed_directory(selected[0], purpose)
@@ -34,4 +37,3 @@ class DesktopBridge:
             "writable": grant.writable,
             "warnings": [],
         }
-

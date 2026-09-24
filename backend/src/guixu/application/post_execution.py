@@ -313,7 +313,13 @@ class EvidenceReuseService:
 
 
 class PostExecutionConversationService:
-    """Narrow orchestration for a second or later, approval-gated DELTA round."""
+    """Approval-gated execution for conversation plan versions.
+
+    The same service handles the first FULL plan and later DELTA/FULL
+    refinements.  A first plan has no baseline execution round by design; it
+    is still safe to execute because the API revalidates its immutable plan
+    hash and file-state revision before this method is called.
+    """
 
     def __init__(self, *, database: Database, conversations: ConversationRepository,
                  tasks: TaskRepository, journal: SqliteOperationJournal,
@@ -454,12 +460,18 @@ class PostExecutionConversationService:
     def execute(self, conversation_id: str, plan_version_id: str, *, expected_context_revision: int | None = None,
                 plan_hash: str | None = None) -> dict[str, Any]:
         version = self.conversations.get_plan_version(plan_version_id)
+        plan_kind = version.get("plan_kind")
+        baseline_execution_round_id = version.get("baseline_execution_round_id")
         if (version["conversation_id"] != conversation_id or
-                version.get("plan_kind") not in {"FULL", "DELTA"} or
-                not version.get("baseline_execution_round_id")):
+                plan_kind not in {"FULL", "DELTA"} or
+                (plan_kind == "DELTA" and not baseline_execution_round_id)):
             raise ValueError("PLAN_VERSION_SCOPE_CONFLICT")
         current_workspace = self.workspace.current_state(conversation_id)
-        if current_workspace.get("latest_execution_round_id") != version.get("baseline_execution_round_id"):
+        # A first FULL plan has no previous execution to compare against.  For
+        # every refinement, the plan remains anchored to the latest completed
+        # round so an older proposal can never move files after the workspace
+        # has changed.
+        if baseline_execution_round_id and current_workspace.get("latest_execution_round_id") != baseline_execution_round_id:
             raise ValueError("DELTA_PLAN_STALE")
         change_summary = version.get("change_summary") or {}
         affected_ids = [str(item.get("file_id")) for item in change_summary.get("moves", []) if isinstance(item, dict) and item.get("file_id")]

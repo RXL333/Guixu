@@ -24,7 +24,7 @@ function lifecycleLabel() {
     <div v-if="plan.plan_kind === 'DELTA' && metrics.affected_files" class="plan-scope-summary">
       <span>候选范围 {{ metrics.affected_files }} 个</span><span>沿用内容分析 {{ metrics.evidence_reused || 0 }} 个</span>
     </div>
-    <button v-if="current && plan.status === 'PROPOSED' && plan.baseline_execution_round_id" class="plan-approve-button" type="button" :disabled="executionBusy" @click="emit('approve', plan)"><Check :size="16" />{{ executionBusy ? '正在执行…' : '确认执行' }}</button>
+    <button v-if="current && plan.status === 'PROPOSED' && plan.plan_hash" class="plan-approve-button" type="button" :disabled="executionBusy" @click="emit('approve', plan)"><Check :size="16" />{{ executionBusy ? '正在整理…' : (plan.plan_kind === 'FULL' && !plan.baseline_execution_round_id ? '确认并开始整理' : '确认执行') }}</button>
     <button class="business-card-link" type="button" @click="emit('viewHistory', plan.id)"><span>查看版本历史</span><ArrowUpRight :size="15" /></button>
   </article>
 </template>

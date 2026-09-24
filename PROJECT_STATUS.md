@@ -4,6 +4,7 @@
 
 ## PHASE F 首次整理分析
 
+- 首轮真实整理入口已补齐：首次 `FULL / PROPOSED` 方案现在显示“确认并开始整理”，沿用方案 hash、文件状态 revision、授权记录和现有 FileOperationEngine；确认前仍只预览，确认后才创建 ExecutionRound 并移动/复制文件。此前按钮仅对带 baseline 的后续 DELTA 方案显示，导致首轮只能分析不能执行。新增首轮批准→执行临时目录回归测试；同时将桌面目录选择改为 `webview.FileDialog.FOLDER`，消除 pywebview 弃用警告。
 - 已修复“发送消息无反应”：此前前端只调用 Message API 保存用户消息，后端明确不触发分析；现在首次发送会调用真实 `POST /api/v1/conversations/{id}/turns`，执行扫描、内容证据解析、AI 规划、AI 分类和只读方案编译。
 - 首次分析生成 `PlanVersion v1`（`FULL / PROPOSED`，无 baseline execution），助手回复包含实际文件数量、分类数量和保留/冲突计数；不会移动或修改磁盘文件。
 - 已用本机启用的 DeepSeek profile 在隔离目录完成真实 smoke：5 个 JPG → 真实视觉 planner/classifier → 4 个类别、5 个受影响文件、唯一 v1 预览；`model_calls` 为 planning/classification 各 1 次，5 条云端视觉 evidence，磁盘 SHA-256/路径不变，无 ExecutionRound。
