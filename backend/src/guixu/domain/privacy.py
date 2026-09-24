@@ -39,6 +39,10 @@ def build_outbound(profile: FileProfile, allowed: set[str], *, max_chars: int) -
                 "visual_caption": "derivative_images", "visual_description": "derivative_images"}
     for item in profile.evidence:
         data_type = kind_map.get(item.kind)
+        # A cached visual description is already local text.  It may be sent as
+        # minimized evidence without requesting a fresh derivative upload.
+        if item.kind == "visual_description" and "derivative_images" not in allowed:
+            data_type = "extracted_text"
         if data_type not in allowed or remaining <= 0: continue
         text = item.text[:remaining]; remaining -= len(text)
         evidence.append({"id": item.id, "kind": item.kind, "text": text, "locator": item.locator.model_dump(mode="json"), "quality": item.quality})

@@ -23,6 +23,16 @@ export interface TaskSettings {
   task_budget: Record<string, number | string | null>
 }
 
+export interface CacheStatus {
+  evidence_count: number
+  valid_count: number
+  invalid_count: number
+  stale_count: number
+  error_count: number
+  estimated_bytes: number
+  counters: Record<string, number>
+}
+
 export interface Task {
   id: string
   name: string
@@ -157,6 +167,9 @@ export interface ConversationMessage {
   status: 'ACTIVE' | 'REDACTED'
   referenced_plan_version_id?: string | null
   referenced_execution_round_id?: string | null
+  referenced_file_ids?: string[]
+  reference_source?: string | null
+  file_references?: Array<{ file_id: string; reference_source: string; reference_role: string; path_snapshot?: string | null; current_known_path?: string | null; state: string; basename: string }>
   metadata?: Record<string, unknown>
   created_at: string
 }
@@ -188,6 +201,7 @@ export interface ConversationPlanVersion {
   baseline_execution_round_id?: string | null
   plan_kind?: 'FULL'|'DELTA'
   basis_context_revision: number
+  basis_file_state_revision?: number
   source: string
   status: string
   taxonomy_id?: string | null
@@ -234,6 +248,41 @@ export interface ConversationExecutionRound {
   completed_at?: string | null
   summary?: Record<string, unknown>
   affected_file_count: number
+  round_kind?: 'FORWARD' | 'UNDO'
+  target_execution_round_id?: string | null
+  undo_state?: 'NOT_UNDONE' | 'PARTIALLY_UNDONE' | 'FULLY_UNDONE' | 'UNDO_BLOCKED' | 'NOT_REVERSIBLE'
+  reversible_file_count?: number
+  undone_file_count?: number
+  created_at: string
+}
+
+export type UndoItemStatus = 'READY'|'COMPLETED'|'ALREADY_REVERSED'|'BLOCKED_MISSING'|'BLOCKED_MODIFIED'|'BLOCKED_EXTERNAL_MOVE'|'BLOCKED_TARGET_CONFLICT'|'BLOCKED_DEPENDENCY'|'BLOCKED_SCOPE'|'FAILED'
+export interface ConversationUndoPlanItem {
+  id: string
+  file_id: string
+  original_operation_id: string
+  undo_operation_id?: string | null
+  operation_kind: 'MOVE'|'COPY'
+  ordinal: number
+  current_source: string
+  restore_target: string
+  expected_fingerprint: string
+  status: UndoItemStatus
+  block_reason?: string | null
+}
+export interface ConversationUndoPlan {
+  id: string
+  conversation_id: string
+  target_execution_round_id: string
+  core_plan_id?: string | null
+  status: 'WAITING_FOR_APPROVAL'|'APPROVED'|'EXECUTING'|'COMPLETED'|'PARTIALLY_COMPLETED'|'BLOCKED'|'STALE'|'CANCELLED'|'RECOVERY_REQUIRED'
+  basis_file_state_revision: number
+  plan_hash: string
+  requested_file_ids: string[]
+  summary: { target_round_number?: number; total?: number; ready?: number; blocked?: number; already_reversed?: number; partial?: boolean; dependency?: Record<string, unknown> }
+  approval: Record<string, unknown>
+  execution_round_id?: string | null
+  items: ConversationUndoPlanItem[]
   created_at: string
 }
 
@@ -292,6 +341,47 @@ export interface ConversationWorkspaceState {
   current_requirements: Array<Record<string, unknown>>
   current_files: ConversationFile[]
   total_scope_files: number
+}
+
+export interface WorkspaceReconciliationSummary {
+  conversation_id: string
+  scope_status: 'AVAILABLE' | 'SCOPE_UNAVAILABLE' | 'SCOPE_RELINK_REQUIRED'
+  file_state_revision: number
+  context_revision?: number
+  known_files: number
+  unchanged: number
+  moved: number
+  renamed: number
+  modified: number
+  missing: number
+  new_files: number
+  conflicts: number
+  requires_user_action: boolean
+  workspace_changed: boolean
+  changed_file_ids?: string[]
+  new_file_items?: Array<{ path: string; name: string }>
+  events?: Array<{ file_id?: string | null; state: string; current_path: string }>
+}
+
+export interface AgentTurn {
+  id: string
+  conversation_id: string
+  turn_kind: 'ANALYSIS' | 'REPLANNING' | 'EXECUTION' | 'OTHER'
+  status: 'QUEUED' | 'RUNNING' | 'WAITING_FOR_USER' | 'WAITING_FOR_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED'
+  interruption_code?: string | null
+  retry_of_turn_id?: string | null
+  created_at: string
+  started_at?: string | null
+  completed_at?: string | null
+}
+
+export interface ConversationRecoveryStatus {
+  conversation_id: string
+  conversation_status: string
+  reconciliation: WorkspaceReconciliationSummary | null
+  agent_turns: AgentTurn[]
+  model_available: boolean
+  requires_user_action: boolean
 }
 
 export interface RefinementResult {
@@ -354,12 +444,15 @@ export const api = {
   task: (id: string) => request<Task>(`/api/v1/tasks/${id}`),
   files: (id: string, limit=100, offset=0, query='', status='') => request<{ items: FileItem[]; total: number; next_cursor:number|null }>(`/api/v1/tasks/${id}/files?limit=${limit}&offset=${offset}&q=${encodeURIComponent(query)}${status?`&scan_status=${encodeURIComponent(status)}`:''}`),
   file: (taskId: string, fileId: string) => request<FileDetail>(`/api/v1/tasks/${taskId}/files/${fileId}`),
-  reanalyze: (taskId: string, revision: number, fileId: string) =>
+  reanalyze: (taskId: string, revision: number, fileId: string, forceRefresh = false) =>
     request<{ status: string }>(`/api/v1/tasks/${taskId}/reanalyze`, {
       method: 'POST',
       headers: { 'Idempotency-Key': crypto.randomUUID() },
-      body: JSON.stringify({ expected_revision: revision, file_ids: [fileId] }),
+      body: JSON.stringify({ expected_revision: revision, file_ids: [fileId], force_refresh: forceRefresh }),
     }),
+  cacheStatus: () => request<CacheStatus>('/api/v1/cache/status'),
+  clearCache: () => request<{ cleared: number }>('/api/v1/cache/clear', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } }),
+  cleanupCache: (olderThanDays = 30) => request<{ cleared: number }>(`/api/v1/cache/cleanup?older_than_days=${olderThanDays}`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } }),
   renameTask: (id: string, revision: number, name: string) => request<Task>(`/api/v1/tasks/${id}`, {
     method:'PATCH', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({expected_revision:revision,name}),
   }),
@@ -442,7 +535,7 @@ export const api = {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
   }),
   conversationMessages: (id: string) => request<ConversationMessage[]>(`/api/v1/conversations/${id}/messages`),
-  appendConversationMessage: (id: string, payload: { role: ConversationMessageRole; content: string; message_type?: ConversationMessageType; metadata?: Record<string, unknown>; referenced_plan_version_id?: string | null; referenced_execution_round_id?: string | null }) =>
+  appendConversationMessage: (id: string, payload: { role: ConversationMessageRole; content: string; message_type?: ConversationMessageType; metadata?: Record<string, unknown>; referenced_plan_version_id?: string | null; referenced_execution_round_id?: string | null; selected_file_ids?: string[]; focused_file_id?: string | null; active_category_id?: string | null; expected_context_revision?: number; reference_role?: 'SUBJECT'|'RESULT'|'CONTEXT' }) =>
     request<ConversationMessage>(`/api/v1/conversations/${id}/messages`, {
       method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
     }),
@@ -466,8 +559,35 @@ export const api = {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
   }),
   conversationExecutions: (id: string) => request<ConversationExecutionRound[]>(`/api/v1/conversations/${id}/executions`),
+  conversationUndoPlans: (id: string) => request<ConversationUndoPlan[]>(`/api/v1/conversations/${id}/undo-plans`),
+  requestConversationUndo: (id: string, payload: { user_message?: string; execution_round_id?: string; referenced_file_ids?: string[] }) => request<{ target: Record<string, unknown>; undo_plan: ConversationUndoPlan | null; query?: { reversible: boolean; message: string } }>(`/api/v1/conversations/${id}/undo-plans`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+  }),
+  approveConversationUndo: (id: string, undoPlanId: string, planHash: string) => request<ConversationUndoPlan>(`/api/v1/conversations/${id}/undo-plans/${undoPlanId}/approve`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ plan_hash: planHash, authorization: { kind: 'interactive', surface: 'conversation_workspace' } }),
+  }),
+  executeConversationUndo: (id: string, undoPlanId: string, planHash: string) => request<ConversationUndoPlan>(`/api/v1/conversations/${id}/undo-plans/${undoPlanId}/execute`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ plan_hash: planHash }),
+  }),
+  cancelConversationUndo: (id: string, undoPlanId: string) => request<ConversationUndoPlan>(`/api/v1/conversations/${id}/undo-plans/${undoPlanId}/cancel`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
+  }),
   conversationWorkspaceState: (id: string) => request<ConversationWorkspaceState>(`/api/v1/conversations/${id}/workspace-state`),
-  prepareConversationRefinement: (id: string, payload: { user_message: string; confirmed_global?: boolean }) => request<RefinementResult>(`/api/v1/conversations/${id}/refinements/prepare`, {
+  conversationRecoveryStatus: (id: string, reconcile = true) => request<ConversationRecoveryStatus>(`/api/v1/conversations/${id}/recovery-status?reconcile=${reconcile ? 'true' : 'false'}`),
+  reconcileConversation: (id: string) => request<WorkspaceReconciliationSummary>(`/api/v1/conversations/${id}/reconcile`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ trigger: 'MANUAL' }),
+  }),
+  revalidateConversationPlan: (id: string, planVersionId: string) => request<Record<string, unknown>>(`/api/v1/conversations/${id}/revalidate-plan`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ plan_version_id: planVersionId }),
+  }),
+  resumeConversationAnalysis: (id: string) => request<AgentTurn>(`/api/v1/conversations/${id}/resume-analysis`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
+  }),
+  conversationAgentTurns: (id: string) => request<AgentTurn[]>(`/api/v1/conversations/${id}/agent-turns`),
+  retryConversationAgentTurn: (id: string, turnId: string) => request<AgentTurn>(`/api/v1/conversations/${id}/agent-turns/${turnId}/retry`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
+  }),
+  prepareConversationRefinement: (id: string, payload: { user_message: string; confirmed_global?: boolean; referenced_file_ids?: string[]; trigger_message_id?: string }) => request<RefinementResult>(`/api/v1/conversations/${id}/refinements/prepare`, {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
   }),
   executeConversationRefinement: (id: string, versionId: string, payload: { expected_context_revision?: number; plan_hash?: string } = {}) => request<{ execution_round: ConversationExecutionRound; workspace: ConversationWorkspaceState }>(`/api/v1/conversations/${id}/plan-versions/${versionId}/execute`, {

@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from guixu.application.coordinator import TaskCoordinator
 from guixu.application.parsing import ParsingService
+from guixu.application.semantic_cache import EvidenceCacheService
 from guixu.application.plan_compiler import PlanCompiler
 from guixu.domain.plans import PlanCandidate
 from guixu.domain.profiles import FileProfile
@@ -229,7 +230,7 @@ class WorkspaceStateService:
 class AffectedScopeResolver:
     """Resolve taxonomy references, then expand them to DB-backed file IDs."""
 
-    def resolve(self, user_message: str, workspace: dict[str, Any]) -> dict[str, Any]:
+    def resolve(self, user_message: str, workspace: dict[str, Any], *, explicit_file_ids: list[str] | None = None) -> dict[str, Any]:
         if not workspace.get("latest_execution_round_id"):
             raise ValueError("NO_EXECUTED_BASELINE")
         message = user_message.strip()
@@ -246,7 +247,16 @@ class AffectedScopeResolver:
         global_replan = any(marker in message for marker in GLOBAL_MARKERS)
         target_category_id = self._target_category(message, categories)
         affected = [category_id for category_id, _ in categories if category_id != target_category_id]
-        if global_replan:
+        if explicit_file_ids:
+            known = {str(item["file_id"]): item for item in workspace["current_files"]}
+            candidates = list(dict.fromkeys(explicit_file_ids))
+            if not candidates or any(file_id not in known for file_id in candidates):
+                raise ValueError("REFERENCE_SCOPE_VIOLATION")
+            affected = sorted({str(known[file_id].get("category_id")) for file_id in candidates
+                               if known[file_id].get("category_id")})
+            scope_type = "EXPLICIT"
+            global_replan = False
+        elif global_replan:
             affected = sorted({str(item.get("category_id")) for item in workspace["current_files"] if item.get("category_id")})
             candidates = [item["file_id"] for item in workspace["current_files"]]
             scope_type = "GLOBAL"
@@ -281,11 +291,18 @@ class AffectedScopeResolver:
 
 
 class EvidenceReuseService:
+    def __init__(self, cache: EvidenceCacheService | None = None) -> None:
+        self.cache = cache
+
     def decide(self, file: dict[str, Any]) -> str:
         if file.get("state") == "FILE_CHANGED":
             return "INVALID"
         if file.get("state") in {"MISSING", "REMOVED"} or not file.get("exists"):
             return "INVALID"
+        if self.cache is not None and file.get("file_id") and file.get("current_fingerprint"):
+            for kind in ("TEXT_EXTRACT", "OCR_TEXT", "VISUAL_DESCRIPTION", "AUDIO_TRANSCRIPT", "VIDEO_TRANSCRIPT", "DOCUMENT_SUMMARY"):
+                if self.cache.get_valid_evidence(str(file["file_id"]), str(file["current_fingerprint"]), kind):
+                    return "REUSE"
         profile = file.get("profile") or {}
         evidence = profile.get("evidence") if isinstance(profile, dict) else None
         usable = any(
@@ -301,7 +318,8 @@ class PostExecutionConversationService:
     def __init__(self, *, database: Database, conversations: ConversationRepository,
                  tasks: TaskRepository, journal: SqliteOperationJournal,
                  coordinator: TaskCoordinator, parsing: ParsingService,
-                 evaluator: Callable[..., list[dict[str, Any]]]) -> None:
+                 evaluator: Callable[..., list[dict[str, Any]]],
+                 evidence_cache: EvidenceCacheService | None = None) -> None:
         self.database = database
         self.conversations = conversations
         self.tasks = tasks
@@ -311,12 +329,13 @@ class PostExecutionConversationService:
         self.evaluator = evaluator
         self.workspace = WorkspaceStateService(database, conversations)
         self.scope_resolver = AffectedScopeResolver()
-        self.evidence = EvidenceReuseService()
+        self.evidence = EvidenceReuseService(evidence_cache)
 
     def prepare_refinement(self, conversation_id: str, *, user_message: str,
-                           confirmed_global: bool = False) -> dict[str, Any]:
+                           confirmed_global: bool = False, explicit_file_ids: list[str] | None = None,
+                           trigger_message_id: str | None = None) -> dict[str, Any]:
         initial = self.workspace.current_state(conversation_id)
-        scope = self.scope_resolver.resolve(user_message, initial)
+        scope = self.scope_resolver.resolve(user_message, initial, explicit_file_ids=explicit_file_ids)
         if scope["requires_global_replan"] and not confirmed_global:
             decisions = [self.evidence.decide(item) for item in initial["current_files"]]
             return {
@@ -404,11 +423,14 @@ class PostExecutionConversationService:
             summary=("全局重新规划" if conversation_plan_kind == "FULL" else "局部调整") + f" · {len(move_decisions)} 个文件",
             change_summary=changes, affected_file_count=len(move_decisions),
             kept_file_count=initial["total_scope_files"] - len(move_decisions), conflict_count=0,
+            created_by_message_id=trigger_message_id,
         )
         assistant = self.conversations.append_message(
             conversation_id, "ASSISTANT",
             f"我检查了本轮影响范围中的 {len(scope['candidate_file_ids'])} 个文件，建议调整 {len(move_decisions)} 个；其他文件保持不变。目前还没有移动文件。",
             message_type="PLAN_PROPOSAL", referenced_plan_version_id=version["id"], metadata=changes["metrics"],
+            referenced_file_ids=[item["file_id"] for item in move_decisions],
+            reference_source="LATEST_PLAN_AFFECTED", reference_role="RESULT",
         )
         return {"status": "WAITING_FOR_APPROVAL", "intent": "POST_EXECUTION_REFINEMENT",
                 "affected_scope": scope, "plan_version": version, "assistant_message": assistant,
@@ -466,6 +488,8 @@ class PostExecutionConversationService:
                 f"本轮调整完成。移动 {version['affected_file_count']} 个文件，其他文件没有变化。",
                 message_type="EXECUTION_RESULT", referenced_plan_version_id=plan_version_id,
                 referenced_execution_round_id=completed["id"],
+                referenced_file_ids=affected_ids,
+                reference_source="LATEST_EXECUTION_AFFECTED", reference_role="RESULT",
             )
             return {"execution_round": completed, "workspace": self.workspace.current_state(conversation_id)}
         except Exception:

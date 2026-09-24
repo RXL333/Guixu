@@ -1,8 +1,20 @@
 # 项目状态
 
-版本：0.1.0 dev（PHASE H 多轮整理 V1 已完成，禁止发布 0.2.0）。更新时间：2026-09-21。
+版本：0.1.0 dev（PHASE L Conversational Undo 已完成，禁止发布 0.2.0）。更新时间：2026-09-22。
 
 ## Conversation Agent 转型准备
+
+- PHASE L Conversational Undo 已完成：schema v10 / Alembic 0010 新增不可变 UndoPlan/UndoPlanItem，并为 ExecutionRound 增加 FORWARD/UNDO、目标轮次和 partial/full undo state。UndoTargetResolver 支持最近一次、明确历史轮次和同一执行内的 File References；逆向路径只来自真实 COMMITTED OperationJournal。Dependency Analyzer 阻止后来又操作同一 stable file 的历史撤销；preview、approval、hash/revision/scope/fingerprint/no-clobber、外部修改/移动/缺失/目标冲突、幂等和 crash recovery 均接入既有 FileOperationExecutor/Recovery。Undo 成功形成新的 ExecutionRound/Journal，保留原历史，推进 file_state_revision，不倒退 PlanVersion，也不使内容未变的 Semantic Cache 失效。详见 [CONVERSATIONAL_UNDO](docs/CONVERSATIONAL_UNDO.md)、[审计](artifacts/reports/conversational-undo-audit.md) 和 [阶段报告](artifacts/reports/conversational-undo.md)。
+- PHASE L 验证：后端全量 176 passed / 2 warnings；前端 4 files / 34 passed，typecheck 与 production build 均 exit 0；20 文件真实临时目录完成 Round 1、局部 Round 2、5 文件 Undo 和继续 Round 4。Playwright 真实页面已保存 request/preview/conflict/confirming/complete/history 截图到 `artifacts/ui/conversational-undo/`，runtime OpenAPI contract 已重新导出。当前限制为不支持 Redo、级联撤销、跨轮次 partial batch，也没有通用 Agent Tool Registry。
+
+- PHASE K Session Recovery 已完成：schema v9 / Alembic 0009 新增持久化 AgentTurn 与 workspace reconciliation ledger，并为 PlanVersion 增加 `basis_file_state_revision`。启动时会把未结束 turn 标记为 INTERRUPTED，把仍有未完成 operation 的执行轮次标为 RECOVERY_REQUIRED；打开/执行前按 stable `files.id`、fingerprint 和授权 scope 核对外部移动、重命名、修改、缺失、冲突、新文件与 scope 不可用。相关方案会在受影响文件变化时要求重新校验，不自动重放模型、批准或执行；既有 OperationJournal/RecoveryService、Semantic Cache、PlanApproval 和 FileOperationEngine 继续复用。新增 recovery-status、reconcile、revalidate、resume/retry、external-changes、scope relink API 与最小 UI 提示。详见 [SESSION_RECOVERY](docs/SESSION_RECOVERY.md)、[session-recovery-audit](artifacts/reports/session-recovery-audit.md) 与 [session-recovery](artifacts/reports/session-recovery.md)。
+- PHASE K 验证：后端 169 passed / 2 warnings；前端 4 files / 31 passed，typecheck/build 均 exit 0；runtime OpenAPI contract 已重新导出。剩余边界为后续 Agent worker、Chat UI、Tool Calling、Watch Folder、Conversational Undo 与新的桌面人工截图验收。
+
+- PHASE J Semantic Cache 已完成：新增 schema v8 `file_evidence` canonical ledger 与 Alembic 0008；按 stable file ID + SHA-256 fingerprint 复用 parser/OCR/visual/document/media evidence，记录 producer/model/prompt/schema provenance，支持 content-change invalidation、force refresh、cleanup/clear、统计与单进程 single-flight。AI Planner/Classifier 和 Post-execution refinement 已接入统一服务；taxonomy/requirements 改变只重新分类，不重复读取有效证据。详见 [SEMANTIC_CACHE](docs/SEMANTIC_CACHE.md)、[semantic-cache-audit](artifacts/reports/semantic-cache-audit.md) 与 [semantic-cache](artifacts/reports/semantic-cache.md)。
+- PHASE J 限制：L3 分类 decision cache、向量/RAG、Watch Folder、跨 Task canonical file identity、多进程锁和真实 DeepSeek smoke 仍待后续/外部授权；本阶段没有删除旧 `file_profiles`，没有修改 FileOperationEngine 或真实磁盘文件。
+
+- PHASE I File References 已完成：schema v7 新增 MessageFileReference 关系表与 path snapshot，`ReferenceResolver` 可确定性解析 UI selection、focus、exact filename、最近消息集合、当前 Plan changes、最近成功 Execution 的实际 affected files 与明确 category-all。所有结果使用当前 Conversation 的 stable `file_id` 并执行 scope/missing/changed 校验；显式引用严格限制 AffectedScope/Delta Plan，不绕过 Plan、Approval、FileOperationEngine 或 Undo。前端已加入多选引用、Composer chips、消息 badge、点击联动、发送/切换清空和窄窗口布局修复。详见 [FILE_REFERENCES](docs/FILE_REFERENCES.md)、[审计](artifacts/reports/file-reference-audit.md) 与 [阶段报告](artifacts/reports/file-references.md)。
+- PHASE I 验证：后端 159 passed / 2 warnings；数据库与桌面安全专项 10 passed；前端 4 files / 31 passed，typecheck/build 均 exit 0；500 文件批量引用通过。Playwright 本地 QA 完成 7 个指定场景并保存到 `artifacts/ui/file-references/`。当前限制为未实现 Shift 范围选择、active-category 浏览 UI、missing 部分继续快捷确认；仓库仍无通用 AgentOrchestrator/Tool Registry，本阶段只接入现有 Message 与 Post-Execution refinement。
 
 - PHASE H Post-Execution Conversation 已完成：执行后 Conversation 保持 ACTIVE；新增 CurrentWorkspaceState、LOCAL/PARTIAL/GLOBAL 影响范围、Evidence reuse/refresh、基于明确 baseline ExecutionRound 的 FULL/DELTA PlanVersion、approval-gated 第二/第三轮执行、外部移动/内容变化/缺失/冲突保护。Conversation Workspace 支持完成后继续输入、全局确认、DELTA 摘要和第二轮执行结果；未实现高级文件指代、Conversational Undo、记忆、Watch Folder 或任意文件工具。详见 [POST_EXECUTION_CONVERSATION](docs/POST_EXECUTION_CONVERSATION.md) 与 [阶段报告](artifacts/reports/post-execution-conversation.md)。
 - PHASE H 验证：后端 153 passed / 2 warnings；专项真实临时目录测试 4 passed；前端 4 files / 28 passed，typecheck/build 均 exit 0。真实 `deepseek-flash` 隔离验收使用 20 个项目测试图片记录，只评估 10 个建筑候选、复用 10 份 evidence、生成 2 项 DELTA 并完成 Execution #2；模型调用一次，Conversation 保持 ACTIVE。按用户加速指令停止额外 UI 截图复验。
@@ -62,7 +74,8 @@
 
 ## 当前恢复点
 
-- 当前阶段：九阶段实现已收口；版本保持 dev，发布门等待外部补证。
+- 当前阶段：PHASE M UI Deep Polish 界面代码已交付（2026-09-24）；三栏视觉系统、输入/引用交互、文件窗口化、统一弹窗和设置/历史页已更新。前端 37 tests、后端 176 tests 通过；最新 typecheck/build、独立桌面构建与冻结诊断 exit 0，24 张截图已保存。原生 DPI/窗口人工验收、1600/1920 补测及既有能力限制仍保留，不能标记全阶段验收通过。详见 [ui-deep-polish](artifacts/reports/ui-deep-polish.md)。版本保持 dev，本次按用户要求收口，不进入下一阶段。
+- PHASE L 最近通过：后端 176 passed / 2 warnings，前端 34 passed、typecheck/build exit 0，schema v10 / Alembic 0010 与运行时 OpenAPI 已更新；20 文件真实磁盘 smoke 和真实浏览器 QA 已完成。
 - 最近通过：维护回归后端全量 121 passed、前端 11 passed/typecheck/build、`python scripts/verify.py all` 退出 0；计划批准支持同 ID/同 hash 幂等重试，模型连接支持确认删除并从可用列表移除；Windows onedir 已重建为 434 文件/301,371,902 bytes，冻结诊断与中文 worker exit 0。详见 [maintenance-2026-09-14](artifacts/reports/maintenance-2026-09-14.md)。
 - 已交付：`artifacts/release/Guixu-0.1.0/`、`Guixu-portable-x64-0.1.0.zip`、SBOM、SHA256SUMS、锁文件、迁移、源码、脚本、用户/开发手册和九份阶段报告。
 - 外部阻塞：Inno Setup/安装器、代码签名、无 Python/Node 干净机安装升级卸载、高 DPI/多系统；DeepSeek 完整应用/视觉链路、本地 Qwen、公平语义评测、ffmpeg/ffprobe/ASR、物理卷断开／云占位；生产 `direct_move` 仍关闭。

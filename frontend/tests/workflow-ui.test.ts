@@ -4,6 +4,7 @@ import TaskStepper from '../src/components/TaskStepper.vue'
 import EvidenceDrawer from '../src/components/EvidenceDrawer.vue'
 import HistoryPage from '../src/pages/HistoryPage.vue'
 import { api } from '../src/services/api'
+import * as dialogs from '../src/components/dialogState'
 import { router } from '../src/router'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -61,7 +62,7 @@ describe('phase 06 UI safety contract', () => {
 
   it('UI05 names budget and connection degradation states', async () => {
     const [models, analysis] = await Promise.all([import('../src/pages/ModelsPage.vue?raw'), import('../src/pages/TaskScanPage.vue?raw')])
-    expect(models.default).toContain('unavailable')
+    expect(models.default).toContain('添加模型连接后')
     expect(analysis.default).toContain('原文件未改变')
   })
 
@@ -107,21 +108,21 @@ describe('phase 06 UI safety contract', () => {
     const item = {id:'t1',name:'测试任务',status:'FAILED',phase:'REPORT',revision:1,settings:{},counters:{discovered:2},created_at:'now',updated_at:'now'} as any
     vi.spyOn(api,'tasks').mockResolvedValueOnce({items:[item]}).mockResolvedValueOnce({items:[]})
     const remove=vi.spyOn(api,'deleteTask').mockResolvedValue({...item,deleted_at:'now'})
-    vi.spyOn(window,'confirm').mockReturnValue(true)
+    vi.spyOn(dialogs,'confirmAction').mockResolvedValue(true)
     await router.push('/history');await router.isReady()
     const view=render(HistoryPage,{global:{plugins:[router]}})
     await view.findByText('测试任务')
     await fireEvent.click(view.getByRole('button',{name:'测试任务 更多操作'}))
     await fireEvent.click(view.getByRole('button',{name:/删除任务/}))
     await waitFor(()=>expect(remove).toHaveBeenCalledWith('t1',1))
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不会删除或移动磁盘上的文件'))
+    expect(dialogs.confirmAction).toHaveBeenCalledWith(expect.stringContaining('不会删除或移动磁盘上的文件'))
   })
 
   it('supports filtered batch selection and batch delete', async () => {
     const items=['a','b'].map(id=>({id,name:`任务${id}`,status:'FAILED',phase:'REPORT',revision:1,settings:{},counters:{},created_at:'now',updated_at:'now'})) as any
     vi.spyOn(api,'tasks').mockResolvedValueOnce({items}).mockResolvedValueOnce({items:[]})
     const remove=vi.spyOn(api,'batchDeleteTasks').mockResolvedValue({items:[],deleted:2})
-    vi.spyOn(window,'confirm').mockReturnValue(true)
+    vi.spyOn(dialogs,'confirmAction').mockResolvedValue(true)
     await router.push('/history');const view=render(HistoryPage,{global:{plugins:[router]}});await view.findByText('任务a')
     await fireEvent.click(view.getByRole('button',{name:'选择全部当前筛选结果'}))
     await fireEvent.click(view.getByRole('button',{name:'批量删除'}))
@@ -144,12 +145,12 @@ describe('phase 06 UI safety contract', () => {
     const items=['x','y'].map(id=>({id,name:`删除${id}`,status:'FAILED',phase:'REPORT',revision:2,settings:{},counters:{},created_at:'now',updated_at:'now',deleted_at:'now'})) as any
     vi.spyOn(api,'tasks').mockResolvedValueOnce({items}).mockResolvedValueOnce({items:[]})
     const purge=vi.spyOn(api,'batchPermanentlyDeleteTasks').mockResolvedValue({permanently_deleted:2,disk_files_changed:false})
-    vi.spyOn(window,'confirm').mockReturnValue(true)
+    vi.spyOn(dialogs,'confirmAction').mockResolvedValue(true)
     await router.push('/trash');const view=render(HistoryPage,{global:{plugins:[router]}});await view.findByText('删除x')
     await fireEvent.click(view.getByRole('button',{name:'选择全部当前筛选结果'}))
     await fireEvent.click(view.getByRole('button',{name:'批量永久删除'}))
     await waitFor(()=>expect(purge).toHaveBeenCalledWith(['x','y']))
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不会删除磁盘上的文件'))
+    expect(dialogs.confirmAction).toHaveBeenCalledWith(expect.stringContaining('不会删除磁盘上的文件'))
   })
 
   it('navigation removes template and rule products and exposes recent deletion', async () => {

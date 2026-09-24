@@ -96,3 +96,51 @@ def test_model_delete_hides_connection_but_keeps_audit_record(project_root: Path
             retained = connection.exec_driver_sql(
                 "SELECT enabled,revision FROM model_profiles WHERE id=?", (created["id"],)).first()
         assert retained == (0, created["revision"] + 1)
+
+
+def test_conversation_message_file_reference_api_is_batched_and_scope_safe(project_root: Path, tmp_path: Path):
+    source = tmp_path / "references"; source.mkdir()
+    (source / "a.txt").write_text("alpha", encoding="utf-8")
+    token = "reference-session"
+    app = create_app(project_root=project_root, data_dir=tmp_path / "data", session_token=token,
+                     allow_typed_grants=True)
+    with TestClient(app) as client:
+        grant = client.post("/api/v1/dev/grants", headers=headers(token),
+                            json={"path": str(source), "purpose": "source"}).json()["data"]["grant_id"]
+        settings = client.get("/api/v1/settings", headers=headers(token)).json()["data"]["values"]
+        settings.update({"operation_mode": "report_only", "classification_source": "auto_plan", "scan_mode": "current_only"})
+        profile = model(app)
+        created = client.post("/api/v1/tasks", headers=headers(token, True), json={
+            "name": "reference source", "source_grant": grant, "settings": settings,
+            "model_profile_id": profile["id"], "user_instructions": "test",
+        }).json()["data"]
+        app.state.tasks.start(created["id"], created["revision"])
+        file_id = app.state.repository.list_files(created["id"], 10, 0)[0][0]["id"]
+        conversation = client.post("/api/v1/conversations", headers=headers(token, True), json={
+            "title": "reference", "model_profile_id": profile["id"], "scope_grant": grant,
+        }).json()["data"]
+        attached = client.post(f"/api/v1/conversations/{conversation['id']}/files", headers=headers(token),
+                               json={"file_id": file_id})
+        assert attached.status_code == 201
+        context = client.get(f"/api/v1/conversations/{conversation['id']}/context", headers=headers(token)).json()["data"]
+        saved = client.post(f"/api/v1/conversations/{conversation['id']}/messages", headers=headers(token), json={
+            "role": "USER", "content": "这些先别动", "selected_file_ids": [file_id],
+            "expected_context_revision": context["context_revision"],
+        })
+        assert saved.status_code == 201, saved.text
+        payload = saved.json()["data"]
+        assert payload["referenced_file_ids"] == [file_id] and payload["reference_source"] == "UI_SELECTION"
+        history = client.get(f"/api/v1/conversations/{conversation['id']}/messages", headers=headers(token)).json()["data"]
+        assert history[0]["file_references"][0]["file_id"] == file_id
+
+        other = client.post("/api/v1/conversations", headers={**headers(token), "Idempotency-Key": "other-conversation"}, json={
+            "title": "other", "model_profile_id": profile["id"], "scope_grant": grant,
+        }).json()["data"]
+        violated = client.post(f"/api/v1/conversations/{other['id']}/messages", headers=headers(token), json={
+            "role": "USER", "content": "这些", "selected_file_ids": [file_id],
+        })
+        assert violated.status_code == 409 and violated.json()["error"]["code"] == "REFERENCE_SCOPE_VIOLATION"
+        ambiguous = client.post(f"/api/v1/conversations/{other['id']}/messages", headers=headers(token), json={
+            "role": "USER", "content": "这些都放旅行",
+        })
+        assert ambiguous.status_code == 409 and ambiguous.json()["error"]["code"] == "REFERENCE_AMBIGUOUS"

@@ -60,6 +60,11 @@ class ConversationMessageRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     referenced_plan_version_id: str | None = None
     referenced_execution_round_id: str | None = None
+    selected_file_ids: list[str] = Field(default_factory=list, max_length=10_000)
+    focused_file_id: str | None = None
+    active_category_id: str | None = None
+    expected_context_revision: int | None = Field(default=None, ge=1)
+    reference_role: str = Field(default="SUBJECT", pattern="^(SUBJECT|RESULT|CONTEXT)$")
 
 
 class ConversationContextUpdateRequest(BaseModel):
@@ -70,6 +75,7 @@ class ConversationContextUpdateRequest(BaseModel):
 class ConversationPlanVersionRequest(BaseModel):
     expected_context_revision: int | None = Field(default=None, ge=1)
     basis_context_revision: int | None = Field(default=None, ge=1)
+    basis_file_state_revision: int | None = Field(default=None, ge=1)
     parent_plan_version_id: str | None = None
     source: str = Field(default="USER_REQUEST", pattern="^(USER_REQUEST|SYSTEM|LEGACY)$")
     status: str = Field(default="DRAFT", pattern="^(DRAFT|PROPOSED|APPROVED|EXECUTED|SUPERSEDED|CANCELLED)$")
@@ -109,6 +115,8 @@ class ConversationRefinementRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     user_message: str = Field(min_length=1, max_length=12_000)
     confirmed_global: bool = False
+    referenced_file_ids: list[str] = Field(default_factory=list, max_length=10_000)
+    trigger_message_id: str | None = None
 
 
 class ConversationRefinementExecuteRequest(BaseModel):
@@ -135,6 +143,32 @@ class ConversationTaskLinkRequest(BaseModel):
     plan_version_id: str | None = None
 
 
+class ConversationRecoveryRequest(BaseModel):
+    trigger: str = Field(default="MANUAL", pattern="^(STARTUP|OPEN|BEFORE_OPERATION|MANUAL)$")
+
+
+class ConversationRelinkScopeRequest(BaseModel):
+    scope_grant: str = Field(min_length=1)
+
+
+class ConversationUndoRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_message: str = Field(default="", max_length=12_000)
+    execution_round_id: str | None = None
+    referenced_file_ids: list[str] = Field(default_factory=list, max_length=10_000)
+
+
+class ConversationUndoApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_hash: str = Field(pattern="^[0-9a-f]{64}$")
+    authorization: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationUndoExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_hash: str = Field(pattern="^[0-9a-f]{64}$")
+
+
 class StartTaskRequest(BaseModel):
     expected_revision: int = Field(ge=1)
 
@@ -158,6 +192,7 @@ class ComponentImportRequest(BaseModel):
 class ReanalyzeRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     file_ids: list[str] = Field(min_length=1, max_length=500)
+    force_refresh: bool = False
 
 
 class ApproveTaxonomyRequest(BaseModel):

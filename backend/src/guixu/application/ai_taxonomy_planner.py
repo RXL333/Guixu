@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from guixu.application.model_gateway import ModelGateway
 from guixu.application.parsing import ParsingService
+from guixu.application.semantic_cache import EvidenceCacheService, fingerprint_for_path
 from guixu.application.taxonomies import TaxonomyService
 from guixu.infrastructure.db.repository import TaskRepository
+from guixu.domain.profiles import Evidence, EvidenceLocator
 
 
 class TaxonomyPlanningError(ValueError):
@@ -20,11 +23,13 @@ class AITaxonomyPlanner:
     """Build draft taxonomies without local semantic category decisions."""
 
     def __init__(self, repository: TaskRepository, parsing: ParsingService,
-                 taxonomies: TaxonomyService, gateway: ModelGateway) -> None:
+                 taxonomies: TaxonomyService, gateway: ModelGateway,
+                 evidence_cache: EvidenceCacheService | None = None) -> None:
         self.repository = repository
         self.parsing = parsing
         self.taxonomies = taxonomies
         self.gateway = gateway
+        self.evidence_cache = evidence_cache
 
     def plan_task(self, task_id: str) -> list[dict[str, Any]]:
         task = self.repository.get(task_id)
@@ -43,9 +48,27 @@ class AITaxonomyPlanner:
         drafts = []
         for scope in self.repository.list_scopes(task_id):
             profiles = []
+            cached_visual_ids: set[str] = set()
             for file_id in self.repository.eligible_file_ids(task_id, scope["id"]):
                 outcome = self.parsing.parse(task_id, file_id, task["settings"]["analysis_preset"])
-                profiles.append((outcome.profile, outcome.cache_artifacts))
+                profile = outcome.profile
+                if self.evidence_cache is not None and profile.modality == "image":
+                    file = self.repository.get_file(task_id, file_id)
+                    path = Path(file["current_path"])
+                    if path.is_file():
+                        fingerprint = fingerprint_for_path(path)
+                        cached = self.evidence_cache.get_valid_evidence(file_id, fingerprint, "VISUAL_DESCRIPTION")
+                        if cached:
+                            text_value = str(cached.get("normalized_content") or cached.get("payload", {}).get("description") or cached.get("payload", {}).get("text") or "").strip()
+                            if text_value:
+                                profile = profile.model_copy(update={"evidence": [
+                                    *[item for item in profile.evidence if item.kind != "visual_description"],
+                                    Evidence(id=str(cached["id"]), kind="visual_description", text=text_value[:12_000],
+                                            locator=EvidenceLocator(), quality=cached.get("quality") or "high",
+                                            origin=f"CACHE:{cached.get('producer_name') or 'evidence'}"),
+                                ]})
+                                cached_visual_ids.add(file_id)
+                profiles.append((profile, outcome.cache_artifacts))
             representative = profiles[: self._sample_limit(task["settings"]["analysis_preset"])]
             payload = {
                 "classification_source": source,
@@ -67,7 +90,8 @@ class AITaxonomyPlanner:
             })
             try:
                 result = self.gateway.plan_taxonomy(
-                    task_id=task_id, profile_id=task["model_profile_id"], profiles=representative, request=payload
+                    task_id=task_id, profile_id=task["model_profile_id"], profiles=representative, request=payload,
+                    vision_refresh_file_ids={profile.file_id for profile, _ in representative if profile.file_id not in cached_visual_ids}
                 )
                 nodes, rationale = self._ai_nodes(result)
                 draft = self._save(task, scope, nodes, "template" if source == "template" else "auto", {

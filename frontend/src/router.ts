@@ -13,6 +13,7 @@ import ConversationWorkspacePage from './pages/ConversationWorkspacePage.vue'
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    ...(import.meta.env.DEV ? [{ path: '/__ui-review', component: () => import('./dev/UiReviewPage.vue') }] : []),
     { path: '/', component: ConversationWorkspacePage },
     { path: '/conversations/:id', component: ConversationWorkspacePage },
     { path: '/tasks/new', component: NewTaskPage },

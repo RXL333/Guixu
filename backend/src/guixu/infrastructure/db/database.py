@@ -11,7 +11,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import Connection
 
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 10
 
 
 def utc_now() -> str:
@@ -63,7 +63,7 @@ class Database:
             self._migrate(int(version))
 
     def _migrate(self, version: int) -> None:
-        if version not in {1, 2, 3, 4, 5}:
+        if version not in {1, 2, 3, 4, 5, 6, 7, 8, 9}:
             raise RuntimeError("DATABASE_MIGRATION_REQUIRED")
         self.backup_for_migration()
         with self.engine.begin() as connection:
@@ -121,6 +121,68 @@ class Database:
             if version <= 5:
                 self._ensure_post_execution_schema(connection)
                 connection.exec_driver_sql("UPDATE schema_metadata SET version=6,updated_at=? WHERE singleton=1", (utc_now(),))
+            if version <= 6:
+                self._ensure_file_reference_schema(connection)
+                connection.exec_driver_sql("UPDATE schema_metadata SET version=7,updated_at=? WHERE singleton=1", (utc_now(),))
+            if version <= 7:
+                self._ensure_semantic_cache_schema(connection)
+                connection.exec_driver_sql("UPDATE schema_metadata SET version=8,updated_at=? WHERE singleton=1", (utc_now(),))
+            if version <= 8:
+                self._ensure_session_recovery_schema(connection)
+                connection.exec_driver_sql("UPDATE schema_metadata SET version=9,updated_at=? WHERE singleton=1", (utc_now(),))
+            if version <= 9:
+                self._ensure_conversational_undo_schema(connection)
+                connection.exec_driver_sql("UPDATE schema_metadata SET version=10,updated_at=? WHERE singleton=1", (utc_now(),))
+
+    @staticmethod
+    def _ensure_conversational_undo_schema(connection: Connection) -> None:
+        """Add the PHASE L Conversation facade while preserving core journal history."""
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(conversation_execution_rounds)")}
+        for column, declaration in (
+            ("round_kind", "TEXT NOT NULL DEFAULT 'FORWARD'"),
+            ("target_execution_round_id", "TEXT"),
+            ("undo_state", "TEXT NOT NULL DEFAULT 'NOT_UNDONE'"),
+            ("reversible_file_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("undone_file_count", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if column not in columns:
+                connection.exec_driver_sql(f"ALTER TABLE conversation_execution_rounds ADD COLUMN {column} {declaration}")
+        statements = (
+            """CREATE TABLE IF NOT EXISTS conversation_undo_plans (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+                target_execution_round_id TEXT NOT NULL REFERENCES conversation_execution_rounds(id) ON DELETE RESTRICT,
+                core_plan_id TEXT REFERENCES plans(id) ON DELETE RESTRICT,
+                status TEXT NOT NULL CHECK(status IN ('WAITING_FOR_APPROVAL','APPROVED','EXECUTING','COMPLETED','PARTIALLY_COMPLETED','BLOCKED','STALE','CANCELLED','RECOVERY_REQUIRED')),
+                basis_file_state_revision INTEGER NOT NULL CHECK(basis_file_state_revision >= 1),
+                plan_hash TEXT NOT NULL CHECK(length(plan_hash)=64),
+                requested_file_ids_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(requested_file_ids_json)),
+                summary_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(summary_json)),
+                approval_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(approval_json)),
+                execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE SET NULL,
+                created_at TEXT NOT NULL, approved_at TEXT, completed_at TEXT, cancelled_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_conversation_undo_plans_conversation ON conversation_undo_plans(conversation_id,created_at DESC)",
+            """CREATE TABLE IF NOT EXISTS conversation_undo_plan_items (
+                id TEXT PRIMARY KEY,
+                undo_plan_id TEXT NOT NULL REFERENCES conversation_undo_plans(id) ON DELETE RESTRICT,
+                file_id TEXT NOT NULL REFERENCES files(id) ON DELETE RESTRICT,
+                original_operation_id TEXT NOT NULL REFERENCES operations(id) ON DELETE RESTRICT,
+                undo_operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,
+                operation_kind TEXT NOT NULL CHECK(operation_kind IN ('MOVE','COPY')),
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+                current_source TEXT NOT NULL,
+                restore_target TEXT NOT NULL,
+                expected_fingerprint TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('READY','COMPLETED','ALREADY_REVERSED','BLOCKED_MISSING','BLOCKED_MODIFIED','BLOCKED_EXTERNAL_MOVE','BLOCKED_TARGET_CONFLICT','BLOCKED_DEPENDENCY','BLOCKED_SCOPE','FAILED')),
+                block_reason TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(undo_plan_id,original_operation_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_conversation_undo_plan_items_plan ON conversation_undo_plan_items(undo_plan_id,ordinal)",
+        )
+        for statement in statements:
+            connection.exec_driver_sql(statement)
 
     @staticmethod
     def _ensure_conversation_schema(connection: Connection) -> None:
@@ -306,6 +368,106 @@ class Database:
         file_columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(conversation_files)")}
         if "current_category_id" not in file_columns:
             connection.exec_driver_sql("ALTER TABLE conversation_files ADD COLUMN current_category_id TEXT")
+
+    @staticmethod
+    def _ensure_file_reference_schema(connection: Connection) -> None:
+        connection.exec_driver_sql("""
+            CREATE TABLE IF NOT EXISTS conversation_message_file_references (
+              message_id TEXT NOT NULL REFERENCES conversation_messages(id) ON DELETE RESTRICT,
+              conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+              file_id TEXT NOT NULL REFERENCES files(id) ON DELETE RESTRICT,
+              reference_source TEXT NOT NULL CHECK(reference_source IN (
+                'UI_SELECTION','FOCUSED_FILE','RECENT_MESSAGE_REFERENCE','LATEST_PLAN_AFFECTED',
+                'LATEST_EXECUTION_AFFECTED','ACTIVE_CATEGORY_ALL','EXPLICIT_FILENAME'
+              )),
+              reference_role TEXT NOT NULL DEFAULT 'SUBJECT' CHECK(reference_role IN ('SUBJECT','RESULT','CONTEXT')),
+              path_snapshot TEXT,
+              created_at TEXT NOT NULL,
+              PRIMARY KEY(message_id,file_id)
+            )
+        """)
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_message_file_references_message ON conversation_message_file_references(message_id,created_at)")
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_message_file_references_conversation_file ON conversation_message_file_references(conversation_id,file_id)")
+
+    @staticmethod
+    def _ensure_semantic_cache_schema(connection: Connection) -> None:
+        """Create the PHASE J evidence ledger without rewriting parser snapshots."""
+        connection.exec_driver_sql("""
+            CREATE TABLE IF NOT EXISTS file_evidence (
+              id TEXT PRIMARY KEY,
+              file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+              content_fingerprint TEXT NOT NULL CHECK(length(content_fingerprint)=64),
+              evidence_kind TEXT NOT NULL CHECK(evidence_kind IN (
+                'METADATA','TEXT_EXTRACT','OCR_TEXT','VISUAL_DESCRIPTION','DOCUMENT_SUMMARY',
+                'AUDIO_TRANSCRIPT','AUDIO_SUMMARY','VIDEO_FRAME_DESCRIPTION','VIDEO_TRANSCRIPT',
+                'VIDEO_SUMMARY','COMBINED_CONTENT_SUMMARY','USER_CONTEXT'
+              )),
+              evidence_schema_version INTEGER NOT NULL DEFAULT 1 CHECK(evidence_schema_version >= 1),
+              payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),
+              normalized_content TEXT,
+              state TEXT NOT NULL DEFAULT 'VALID' CHECK(state IN ('VALID','STALE','INVALID','REFRESHING','ERROR')),
+              producer_type TEXT NOT NULL CHECK(producer_type IN ('LOCAL_PARSER','LOCAL_OCR','LOCAL_MEDIA','CLOUD_MODEL','LOCAL_MODEL','USER','LEGACY')),
+              producer_name TEXT NOT NULL,
+              producer_version TEXT NOT NULL DEFAULT 'unknown',
+              model_profile_id TEXT REFERENCES model_profiles(id) ON DELETE SET NULL,
+              model_id TEXT,
+              prompt_version TEXT,
+              quality TEXT CHECK(quality IS NULL OR quality IN ('high','medium','low')),
+              completeness_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(completeness_json)),
+              created_at TEXT NOT NULL,
+              last_used_at TEXT,
+              invalidated_at TEXT,
+              invalidation_reason TEXT,
+              error_code TEXT
+            )
+        """)
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_file_evidence_lookup ON file_evidence(file_id,content_fingerprint,evidence_kind,evidence_schema_version,state)")
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_file_evidence_fingerprint ON file_evidence(content_fingerprint,evidence_kind,state)")
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_file_evidence_cleanup ON file_evidence(state,invalidated_at)")
+
+    @staticmethod
+    def _ensure_session_recovery_schema(connection: Connection) -> None:
+        """Add restart-safe turn/reconciliation records without rewriting history."""
+        plan_columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(conversation_plan_versions)")}
+        if "basis_file_state_revision" not in plan_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE conversation_plan_versions ADD COLUMN basis_file_state_revision INTEGER NOT NULL DEFAULT 1"
+            )
+        connection.exec_driver_sql("""
+            CREATE TABLE IF NOT EXISTS conversation_agent_turns (
+              id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+              task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+              plan_version_id TEXT REFERENCES conversation_plan_versions(id) ON DELETE SET NULL,
+              execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE SET NULL,
+              retry_of_turn_id TEXT REFERENCES conversation_agent_turns(id) ON DELETE SET NULL,
+              turn_kind TEXT NOT NULL CHECK(turn_kind IN ('ANALYSIS','REPLANNING','EXECUTION','OTHER')),
+              status TEXT NOT NULL CHECK(status IN ('QUEUED','RUNNING','WAITING_FOR_USER','WAITING_FOR_APPROVAL','COMPLETED','FAILED','CANCELLED','INTERRUPTED')),
+              request_hash TEXT,
+              checkpoint_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(checkpoint_json)),
+              result_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(result_json)),
+              interruption_code TEXT,
+              created_at TEXT NOT NULL,
+              started_at TEXT,
+              completed_at TEXT,
+              last_heartbeat_at TEXT
+            )
+        """)
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_conversation_agent_turns_conversation ON conversation_agent_turns(conversation_id,created_at DESC)")
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_conversation_agent_turns_recovery ON conversation_agent_turns(status,created_at)")
+        connection.exec_driver_sql("""
+            CREATE TABLE IF NOT EXISTS conversation_reconciliations (
+              id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
+              trigger TEXT NOT NULL CHECK(trigger IN ('STARTUP','OPEN','BEFORE_OPERATION','MANUAL')),
+              scope_status TEXT NOT NULL CHECK(scope_status IN ('AVAILABLE','SCOPE_UNAVAILABLE','SCOPE_RELINK_REQUIRED')),
+              file_state_revision INTEGER NOT NULL CHECK(file_state_revision >= 1),
+              summary_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(summary_json)),
+              requires_user_action INTEGER NOT NULL DEFAULT 0 CHECK(requires_user_action IN (0,1)),
+              created_at TEXT NOT NULL
+            )
+        """)
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_conversation_reconciliations_conversation ON conversation_reconciliations(conversation_id,created_at DESC)")
 
     def backup_for_migration(self) -> Path:
         """Create an SQLite-consistent, non-overwriting backup before a future migration."""

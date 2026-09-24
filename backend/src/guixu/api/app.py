@@ -25,7 +25,9 @@ from guixu.api.schemas import (ApprovePlanRequest, ApproveTaxonomyRequest, BulkR
                                ConversationPlanVersionApproveRequest, ConversationPlanVersionExecutionRequest,
                                ConversationPlanVersionRequest, ConversationPlanVersionRestoreRequest,
                                ConversationRefinementExecuteRequest, ConversationRefinementRequest,
-                               ConversationTaskLinkRequest,
+                               ConversationTaskLinkRequest, ConversationRecoveryRequest,
+                               ConversationRelinkScopeRequest, ConversationUndoRequest,
+                               ConversationUndoApprovalRequest, ConversationUndoExecuteRequest,
                                CreateConversationRequest, CreateTaskRequest, DeleteTaskRequest,
                                ExecutePlanRequest, ExpectedRevisionRequest, ExportReportRequest,
                                ModelInputRequest, ModelPatchRequest, ModelSecretRequest,
@@ -42,6 +44,7 @@ from guixu.application.privacy import PrivacyService
 from guixu.application.reporting import ReportService
 from guixu.application.previews import PreviewTicketService
 from guixu.application.parsing import ParsingService
+from guixu.application.semantic_cache import EvidenceCacheService
 from guixu.application.tasks import TaskService
 from guixu.application.taxonomies import TaxonomyService
 from guixu.domain.classification import ClassificationError
@@ -52,6 +55,9 @@ from guixu.infrastructure.db.conversation_repository import ConversationReposito
 from guixu.application.conversations import ConversationService
 from guixu.application.plan_versions import PlanVersionService
 from guixu.application.post_execution import PostExecutionConversationService
+from guixu.application.file_references import ReferenceResolutionError, ReferenceResolver
+from guixu.application.session_recovery import SessionRecoveryService
+from guixu.application.conversational_undo import ConversationalUndoService, UndoError
 from guixu.infrastructure.db.operation_journal import SqliteOperationJournal
 from guixu.infrastructure.filesystem.grants import GrantError, SourceRegistry
 from guixu.infrastructure.resources.components import ComponentError, ComponentManager, status_dict
@@ -71,6 +77,20 @@ def error_response(status: int, code: str, message: str, request_id: str, detail
     )
 
 
+def reference_error_message(code: str) -> str:
+    return {
+        "REFERENCE_AMBIGUOUS": "无法确定你指哪些文件，请在右侧选择后再发送。",
+        "REFERENCE_DUPLICATE_FILENAME": "当前会话中有多个同名文件，请在右侧选择具体文件。",
+        "REFERENCE_FILE_MISSING": "引用中有文件已不在当前目录，请检查后重试。",
+        "REFERENCE_FILE_CHANGED": "引用中文件内容已变化，需要重新分析后再继续。",
+        "REFERENCE_SCOPE_VIOLATION": "引用包含当前会话授权范围之外的文件。",
+        "REFERENCE_CATEGORY_NOT_FOUND": "当前没有可用的分类范围，请明确选择文件。",
+        "REFERENCE_NOT_FOUND": "没有找到可追踪的文件引用。",
+        "REFERENCE_SET_EMPTY": "文件引用集合为空，请重新选择文件。",
+        "REFERENCE_STALE": "文件引用已过期，请刷新当前会话后重试。",
+    }.get(code, "文件引用需要确认。")
+
+
 def create_app(
     *,
     project_root: Path,
@@ -87,6 +107,8 @@ def create_app(
     database.seed_json("default_settings", defaults.model_dump(mode="json"))
     registry = SourceRegistry()
     repository = TaskRepository(database)
+    evidence_cache = EvidenceCacheService(database)
+    repository.evidence_cache = evidence_cache
     conversation_repository = ConversationRepository(database)
     conversations = ConversationService(conversation_repository)
     plan_versions = PlanVersionService(conversation_repository, database)
@@ -95,7 +117,7 @@ def create_app(
     operations = OperationService(repository, journal)
     coordinator = TaskCoordinator(repository, journal, operations)
     interrupted_tasks = coordinator.audit_startup()
-    parsing = ParsingService(repository, data_dir / "cache" / "profiles")
+    parsing = ParsingService(repository, data_dir / "cache" / "profiles", evidence_cache)
     components = ComponentManager(database, data_dir / "components")
     taxonomies = TaxonomyService(database)
     classifications = ClassificationService(database, project_root / "contracts" / "schemas" / "classification-result.schema.json")
@@ -103,13 +125,17 @@ def create_app(
     models = ModelProfileService(database, credential_store)
     privacy = PrivacyService(database)
     model_gateway = ModelGateway(database, models, privacy)
-    ai_planner = AITaxonomyPlanner(repository, parsing, taxonomies, model_gateway)
-    ai_classifier = AIFileClassifier(repository, parsing, classifications, model_gateway)
+    ai_planner = AITaxonomyPlanner(repository, parsing, taxonomies, model_gateway, evidence_cache)
+    ai_classifier = AIFileClassifier(repository, parsing, classifications, model_gateway, evidence_cache)
     post_execution = PostExecutionConversationService(
         database=database, conversations=conversation_repository, tasks=repository,
         journal=journal, coordinator=coordinator, parsing=parsing,
-        evaluator=model_gateway.evaluate_refinement,
+        evaluator=model_gateway.evaluate_refinement, evidence_cache=evidence_cache,
     )
+    session_recovery = SessionRecoveryService(database, conversation_repository, journal, evidence_cache)
+    session_recovery_startup = session_recovery.audit_startup()
+    conversational_undo = ConversationalUndoService(database, journal)
+    reference_resolver = ReferenceResolver(database, conversation_repository)
     reporting = ReportService(database, repository, registry)
     previews = PreviewTicketService(repository)
     frontend_dist = project_root / "frontend" / "dist"
@@ -127,6 +153,11 @@ def create_app(
     app.state.conversations = conversations
     app.state.plan_versions = plan_versions
     app.state.post_execution = post_execution
+    app.state.reference_resolver = reference_resolver
+    app.state.evidence_cache = evidence_cache
+    app.state.session_recovery = session_recovery
+    app.state.session_recovery_startup = session_recovery_startup
+    app.state.conversational_undo = conversational_undo
     app.state.tasks = tasks
     app.state.operations = operations
     app.state.coordinator = coordinator
@@ -355,6 +386,100 @@ def create_app(
             return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
         return envelope(result, request.state.request_id)
 
+    @app.get("/api/v1/conversations/{conversation_id}/recovery-status")
+    def conversation_recovery_status(conversation_id: str, request: Request, reconcile: bool = True):
+        try:
+            result = session_recovery.status(conversation_id, reconcile=reconcile)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/reconcile")
+    def reconcile_conversation(conversation_id: str, payload: ConversationRecoveryRequest, request: Request,
+                               idempotency_key: str = Header(default="conversation-reconcile")):
+        del idempotency_key
+        try:
+            result = session_recovery.reconcile(conversation_id, trigger=payload.trigger)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/revalidate-plan")
+    def revalidate_conversation_plan(conversation_id: str, payload: dict[str, str], request: Request,
+                                     idempotency_key: str = Header(default="conversation-revalidate-plan")):
+        del idempotency_key
+        plan_version_id = str(payload.get("plan_version_id") or "")
+        if not plan_version_id:
+            return error_response(422, "PLAN_VERSION_REQUIRED", "需要指定方案版本。", request.state.request_id)
+        try:
+            result = session_recovery.revalidate_plan(conversation_id, plan_version_id)
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/resume-analysis", status_code=202)
+    def resume_conversation_analysis(conversation_id: str, request: Request,
+                                     idempotency_key: str = Header(default="conversation-resume-analysis")):
+        del idempotency_key
+        try:
+            result = session_recovery.resume_analysis(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "当前会话需要先同步目录或重新授权。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/external-changes")
+    def conversation_external_changes(conversation_id: str, request: Request):
+        try:
+            result = session_recovery.status(conversation_id, reconcile=False)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result.get("reconciliation"), request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/relink-scope")
+    def relink_conversation_scope(conversation_id: str, payload: ConversationRelinkScopeRequest, request: Request,
+                                  idempotency_key: str = Header(default="conversation-relink-scope")):
+        del idempotency_key
+        if not app.state.allow_typed_grants:
+            return error_response(404, "NOT_AVAILABLE", "目录重新授权仅在桌面授权流程中可用。", request.state.request_id)
+        try:
+            grant = registry.get(payload.scope_grant, "source")
+            result = conversation_repository.relink_scope(conversation_id, {
+                "source_root": str(grant.canonical_root),
+                "display_name": grant.canonical_root.name or str(grant.canonical_root),
+                "scope_kind": "folder", "authorization_ref": grant.grant_id,
+                "authorization": {"purpose": grant.purpose, "writable": grant.writable},
+            })
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except GrantError:
+            raise
+        except ValueError as exc:
+            return error_response(409, str(exc), "新的目录授权不可用。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/agent-turns")
+    def list_conversation_agent_turns(conversation_id: str, request: Request):
+        try:
+            result = session_recovery.status(conversation_id, reconcile=False).get("agent_turns", [])
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/agent-turns/{turn_id}/retry", status_code=202)
+    def retry_conversation_agent_turn(conversation_id: str, turn_id: str, request: Request,
+                                      idempotency_key: str = Header(default="conversation-agent-turn-retry")):
+        del idempotency_key
+        try:
+            turn = session_recovery.get_agent_turn(turn_id)
+            if turn["conversation_id"] != conversation_id:
+                raise KeyError(turn_id)
+            result = session_recovery.retry_agent_turn(turn_id)
+        except KeyError:
+            return error_response(404, "AGENT_TURN_NOT_FOUND", "中断的分析记录不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
     @app.patch("/api/v1/conversations/{conversation_id}")
     def patch_conversation(conversation_id: str, payload: ConversationPatchRequest, request: Request,
                            idempotency_key: str = Header(default="conversation-patch")):
@@ -406,14 +531,50 @@ def create_app(
                                     idempotency_key: str = Header(default="conversation-message")):
         del idempotency_key
         try:
+            if payload.expected_context_revision is not None:
+                current_context = conversations.get_context(conversation_id)
+                if current_context["context_revision"] != payload.expected_context_revision:
+                    raise ValueError("CONTEXT_REVISION_CONFLICT")
+            resolved = reference_resolver.resolve(
+                conversation_id, payload.content,
+                selected_file_ids=payload.selected_file_ids,
+                focused_file_id=payload.focused_file_id,
+                active_category_id=payload.active_category_id,
+            ) if payload.role == "USER" else {"source": "NONE", "file_ids": []}
+            if resolved.get("missing"):
+                raise ReferenceResolutionError(
+                    "REFERENCE_FILE_MISSING",
+                    details={"missing": resolved["missing"],
+                             "remaining": [item for item in resolved["file_ids"] if item not in resolved["missing"]]},
+                )
+            if resolved.get("changed"):
+                raise ReferenceResolutionError("REFERENCE_FILE_CHANGED", details={"changed": resolved["changed"]})
             result = conversations.append_message(conversation_id, payload.role, payload.content,
                                                   message_type=payload.message_type, metadata=payload.metadata,
                                                   referenced_plan_version_id=payload.referenced_plan_version_id,
-                                                  referenced_execution_round_id=payload.referenced_execution_round_id)
+                                                  referenced_execution_round_id=payload.referenced_execution_round_id,
+                                                  referenced_file_ids=resolved.get("file_ids"),
+                                                  reference_source=None if resolved.get("source") == "NONE" else resolved.get("source"),
+                                                  reference_role=payload.reference_role)
         except KeyError:
             return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except ReferenceResolutionError as exc:
+            return error_response(409, exc.code, reference_error_message(exc.code), request.state.request_id, exc.details)
         except ValueError as exc:
             return error_response(409, str(exc), "消息不能写入当前会话。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/references/resolve")
+    def resolve_conversation_references(conversation_id: str, payload: ConversationMessageRequest, request: Request):
+        try:
+            result = reference_resolver.resolve(
+                conversation_id, payload.content,
+                selected_file_ids=payload.selected_file_ids,
+                focused_file_id=payload.focused_file_id,
+                active_category_id=payload.active_category_id,
+            )
+        except ReferenceResolutionError as exc:
+            return error_response(409, exc.code, reference_error_message(exc.code), request.state.request_id, exc.details)
         return envelope(result, request.state.request_id)
 
     @app.get("/api/v1/conversations/{conversation_id}/context")
@@ -509,6 +670,15 @@ def create_app(
                                           idempotency_key: str = Header(default="conversation-plan-approve")):
         del idempotency_key
         try:
+            requested = plan_versions.get(version_id)
+            if requested["conversation_id"] != conversation_id:
+                raise KeyError(version_id)
+            if payload.plan_hash and requested.get("plan_hash") != payload.plan_hash:
+                return error_response(409, "PLAN_HASH_MISMATCH", "方案内容摘要已不匹配。", request.state.request_id)
+            validation = session_recovery.revalidate_plan(conversation_id, version_id)
+            if not validation["valid"]:
+                return error_response(409, "PLAN_REVALIDATION_REQUIRED", "方案基于旧的文件状态，需要先同步并重新确认。", request.state.request_id,
+                                       {"reason_codes": validation["reason_codes"], "reconciliation": validation["reconciliation"]})
             result = post_execution.approve(conversation_id, version_id, **payload.model_dump(mode="python"))
         except KeyError:
             return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
@@ -533,6 +703,8 @@ def create_app(
             result = post_execution.prepare_refinement(
                 conversation_id, user_message=payload.user_message,
                 confirmed_global=payload.confirmed_global,
+                explicit_file_ids=payload.referenced_file_ids,
+                trigger_message_id=payload.trigger_message_id,
             )
         except KeyError:
             return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
@@ -549,6 +721,10 @@ def create_app(
                                         idempotency_key: str = Header(default="conversation-refinement-execute")):
         del idempotency_key
         try:
+            validation = session_recovery.revalidate_plan(conversation_id, version_id)
+            if not validation["valid"]:
+                return error_response(409, "PLAN_REVALIDATION_REQUIRED", "方案执行前发现文件状态变化，需要重新确认。", request.state.request_id,
+                                       {"reason_codes": validation["reason_codes"], "reconciliation": validation["reconciliation"]})
             result = post_execution.execute(conversation_id, version_id, **payload.model_dump(mode="python"))
         except KeyError:
             return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
@@ -588,6 +764,78 @@ def create_app(
             result = conversations.list_execution_rounds(conversation_id)
         except KeyError:
             return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/reversible-executions")
+    def list_reversible_executions(conversation_id: str, request: Request):
+        return envelope(conversational_undo.reversible_executions(conversation_id), request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/undo-plans")
+    def list_conversation_undo_plans(conversation_id: str, request: Request):
+        return envelope(conversational_undo.list(conversation_id), request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/undo-plans", status_code=201)
+    def request_conversation_undo(conversation_id: str, payload: ConversationUndoRequest, request: Request,
+                                  idempotency_key: str = Header(default="conversation-undo-preview")):
+        del idempotency_key
+        try:
+            result = conversational_undo.request(conversation_id, **payload.model_dump(mode="python"))
+        except KeyError:
+            return error_response(404, "UNDO_TARGET_NOT_FOUND", "没有找到可撤销的执行记录。", request.state.request_id)
+        except UndoError as exc:
+            return error_response(409, exc.code, "当前操作无法安全撤销。", request.state.request_id, exc.details)
+        return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/undo-plans/{undo_plan_id}")
+    def get_conversation_undo_plan(conversation_id: str, undo_plan_id: str, request: Request):
+        try:
+            result = conversational_undo.get(undo_plan_id)
+            if result["conversation_id"] != conversation_id:
+                raise KeyError(undo_plan_id)
+        except KeyError:
+            return error_response(404, "UNDO_PLAN_NOT_FOUND", "撤销预览不存在。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/undo-plans/{undo_plan_id}/approve")
+    def approve_conversation_undo(conversation_id: str, undo_plan_id: str,
+                                  payload: ConversationUndoApprovalRequest, request: Request,
+                                  idempotency_key: str = Header(default="conversation-undo-approve")):
+        del idempotency_key
+        try:
+            result = conversational_undo.approve(conversation_id, undo_plan_id, payload.plan_hash, payload.authorization)
+        except KeyError:
+            return error_response(404, "UNDO_PLAN_NOT_FOUND", "撤销预览不存在。", request.state.request_id)
+        except UndoError as exc:
+            return error_response(409, exc.code, "撤销预览已过期或存在冲突。", request.state.request_id, exc.details)
+        except ValueError as exc:
+            return error_response(409, str(exc), "撤销计划批准失败。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/undo-plans/{undo_plan_id}/execute", status_code=202)
+    def execute_conversation_undo(conversation_id: str, undo_plan_id: str,
+                                  payload: ConversationUndoExecuteRequest, request: Request,
+                                  idempotency_key: str = Header(default="conversation-undo-execute")):
+        del idempotency_key
+        try:
+            result = conversational_undo.execute(conversation_id, undo_plan_id, payload.plan_hash)
+        except KeyError:
+            return error_response(404, "UNDO_PLAN_NOT_FOUND", "撤销预览不存在。", request.state.request_id)
+        except UndoError as exc:
+            return error_response(409, exc.code, "撤销执行被安全检查阻止。", request.state.request_id, exc.details)
+        except ValueError as exc:
+            return error_response(409, str(exc), "撤销执行条件发生变化。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/undo-plans/{undo_plan_id}/cancel")
+    def cancel_conversation_undo(conversation_id: str, undo_plan_id: str, request: Request,
+                                 idempotency_key: str = Header(default="conversation-undo-cancel")):
+        del idempotency_key
+        try:
+            result = conversational_undo.cancel(conversation_id, undo_plan_id)
+        except KeyError:
+            return error_response(404, "UNDO_PLAN_NOT_FOUND", "撤销预览不存在。", request.state.request_id)
+        except UndoError as exc:
+            return error_response(409, exc.code, "撤销预览当前不能取消。", request.state.request_id, exc.details)
         return envelope(result, request.state.request_id)
 
     @app.post("/api/v1/conversations/{conversation_id}/executions", status_code=201)
@@ -861,12 +1109,33 @@ def create_app(
         del idempotency_key
         try:
             repository.assert_revision(task_id, payload.expected_revision)
+            if payload.force_refresh:
+                from guixu.application.semantic_cache import fingerprint_for_path
+                for file_id in payload.file_ids:
+                    file = repository.get_file(task_id, file_id)
+                    path = Path(file["current_path"])
+                    if path.is_file():
+                        evidence_cache.force_refresh(file_id, fingerprint_for_path(path))
             outcomes = [parsing.parse(task_id, file_id) for file_id in payload.file_ids]
         except KeyError:
             return error_response(404, "FILE_NOT_FOUND", "任务或文件不存在。", request.state.request_id)
         except ValueError as exc:
             return error_response(409, str(exc), "文件无法按当前状态重新解析。", request.state.request_id)
         return envelope({"command_id": str(uuid.uuid4()), "status": "completed", "profiles": [item.profile.model_dump(mode="json") for item in outcomes]}, request.state.request_id)
+
+    @app.get("/api/v1/cache/status")
+    def cache_status(request: Request, file_id: str | None = Query(default=None)):
+        return envelope(evidence_cache.get_cache_status(file_id=file_id), request.state.request_id)
+
+    @app.post("/api/v1/cache/cleanup")
+    def cache_cleanup(request: Request, older_than_days: int = Query(default=30, ge=0, le=3650)):
+        return envelope({"cleared": evidence_cache.cleanup_invalid_cache(older_than_days=older_than_days)}, request.state.request_id)
+
+    @app.post("/api/v1/cache/clear")
+    def cache_clear(request: Request, file_id: str | None = Query(default=None)):
+        # The API only deletes local evidence rows.  It never touches source
+        # files, conversations, plans, executions, journals, or undo records.
+        return envelope({"cleared": evidence_cache.clear(file_id=file_id)}, request.state.request_id)
 
     @app.get("/api/v1/tasks/{task_id}/taxonomies")
     def list_task_taxonomies(task_id: str, request: Request):

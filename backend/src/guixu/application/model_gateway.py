@@ -73,16 +73,28 @@ class ModelGateway:
             except ValueError as exc: raise ModelTransportError("MODEL_OUTPUT_INVALID") from exc
 
     def plan_taxonomy(self, *, task_id: str, profile_id: str,
-                      profiles: list[tuple[FileProfile, list[str]]], request: dict[str, Any]) -> dict[str, Any]:
-        modalities = {profile.modality for profile, _ in profiles}
+                      profiles: list[tuple[FileProfile, list[str]]], request: dict[str, Any],
+                      vision_refresh_file_ids: set[str] | None = None) -> dict[str, Any]:
+        vision_refresh_file_ids = set(vision_refresh_file_ids or {profile.file_id for profile, _ in profiles if profile.modality == "image"})
+        modalities = {
+            (profile.modality if profile.modality != "image" or profile.file_id in vision_refresh_file_ids else "text")
+            for profile, _ in profiles
+        }
         model = self.profiles.require_capabilities(profile_id, modalities)
         requested: set[str] = set()
+        needs_derivative = False
         for profile, paths in profiles:
             requested.update(self._requested_types(profile))
-            if profile.modality == "image":
+            if profile.modality == "image" and profile.file_id in vision_refresh_file_ids:
                 if not paths:
                     raise ModelTransportError("VISION_DERIVATIVE_MISSING")
-                requested.add("derivative_images")
+                needs_derivative = True
+            elif profile.modality == "image":
+                requested.add("extracted_text")
+        if needs_derivative:
+            requested.add("derivative_images")
+        else:
+            requested.discard("derivative_images")
         consent = self.privacy.require(task_id, profile_id, requested)
         budget = self._strict_budget(self._task_budget(task_id), consent["budget"])
         usage = self.privacy.usage(task_id)
@@ -97,7 +109,7 @@ class ModelGateway:
                        "selectable": True}], "rationale": "short explanation"}}
         image_parts: list[dict[str, Any]] = []
         for profile, paths in profiles:
-            if profile.modality == "image":
+            if profile.modality == "image" and profile.file_id in vision_refresh_file_ids:
                 image_parts.extend(self._image_parts(paths[:1]))
             if len(image_parts) >= 12:
                 break
@@ -122,18 +134,31 @@ class ModelGateway:
 
     def classify_batch(self, *, task_id: str, profile_id: str,
                        items: list[tuple[FileProfile, list[str]]], taxonomy: dict[str, Any],
-                       policy: dict[str, Any]) -> list[dict[str, Any]]:
+                       policy: dict[str, Any], vision_refresh_file_ids: set[str] | None = None) -> list[dict[str, Any]]:
         if not items:
             return []
-        modalities = {profile.modality for profile, _ in items}
+        vision_refresh_file_ids = set(vision_refresh_file_ids or {profile.file_id for profile, _ in items if profile.modality == "image"})
+        modalities = {
+            (profile.modality if profile.modality != "image" or profile.file_id in vision_refresh_file_ids else "text")
+            for profile, _ in items
+        }
         model = self.profiles.require_capabilities(profile_id, modalities)
         requested: set[str] = set()
+        needs_derivative = False
         for profile, paths in items:
             requested.update(self._requested_types(profile))
-            if profile.modality == "image":
+            if profile.modality == "image" and profile.file_id in vision_refresh_file_ids:
                 if not paths:
                     raise ModelTransportError("VISION_DERIVATIVE_MISSING")
-                requested.add("derivative_images")
+                needs_derivative = True
+            elif profile.modality == "image":
+                # A valid cached visual description is sufficient for text-only
+                # classification; do not force a new image upload.
+                requested.add("extracted_text")
+        if needs_derivative:
+            requested.add("derivative_images")
+        else:
+            requested.discard("derivative_images")
         consent = self.privacy.require(task_id, profile_id, requested)
         budget = self._strict_budget(self._task_budget(task_id), consent["budget"])
         usage = self.privacy.usage(task_id)
@@ -151,11 +176,11 @@ class ModelGateway:
             "output_contract": {"results": [{"file_id": "input file id", "taxonomy_id": taxonomy["taxonomy_id"],
                 "category_id": "one allowed id or null", "abstain": False, "model_score": 0.0,
                 "evidence_ids": ["only supplied evidence ids"], "reason": "content-based reason",
-                "visual_description": "required for image inputs only", "tags": [], "warnings": []}]},
+                "visual_description": "required only when a controlled derivative is supplied", "tags": [], "warnings": []}]},
         }
         content: list[dict[str, Any]] = [{"type": "text", "text": canonical_json(payload)}]
         for profile, paths in items:
-            if profile.modality != "image":
+            if profile.modality != "image" or profile.file_id not in vision_refresh_file_ids:
                 continue
             content.append({"type": "text", "text": f"Controlled derivative for file_id={profile.file_id}"})
             content.extend(self._image_parts(paths[:1]))
@@ -164,7 +189,7 @@ class ModelGateway:
         if usage["input_tokens"] + estimated_input > budget["max_input_tokens"] or usage["output_tokens"] + 512 * len(items) > budget["max_output_tokens"]:
             raise BudgetError("BUDGET_EXCEEDED")
         response = self._call(task_id, model, "classification_batch", [
-            {"role":"system","content":"Classify every file by semantic content into exactly one approved category or abstain. For each image, inspect the associated derivative and return visual_description. Never classify by extension alone. Return JSON only; never return paths, commands, code, or tool calls."},
+            {"role":"system","content":"Classify every file by semantic content into exactly one approved category or abstain. Inspect a controlled image derivative only when supplied; otherwise use the supplied cached visual evidence. Never classify by extension alone. Return JSON only; never return paths, commands, code, or tool calls."},
             {"role":"user","content":content},
         ], json_mode=True, max_attempts=min(3, remaining_calls))
         try:

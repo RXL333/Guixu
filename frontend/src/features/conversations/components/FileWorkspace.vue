@@ -1,17 +1,33 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { FileImage, FileText, Folder, Grid2X2, List, SlidersHorizontal, Video, X } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
+import { Check, FileImage, FileText, Folder, Grid2X2, List, SlidersHorizontal, Video, X } from 'lucide-vue-next'
 import type { ConversationExecutionRound, ConversationFile, ConversationPlanDiff, ConversationPlanVersion } from '../../../services/api'
 import { useConversationStore } from '../store'
 import PlanPreviewCard from './PlanPreviewCard.vue'
 import ExecutionResultCard from './ExecutionResultCard.vue'
 
 const props = defineProps<{ plans: ConversationPlanVersion[]; executions: ConversationExecutionRound[]; currentPlanVersion?: ConversationPlanVersion | null; viewingPlanVersion?: ConversationPlanVersion | null; planDiff?: ConversationPlanDiff | null; versionLoading?: boolean; collapsed?: boolean }>()
-const emit = defineEmits<{ collapse: []; expand: []; viewHistory: [id: string]; restoreVersion: [id: string]; approvePlan: [plan: ConversationPlanVersion] }>()
+const emit = defineEmits<{ collapse: []; expand: []; viewHistory: [id: string]; restoreVersion: [id: string]; approvePlan: [plan: ConversationPlanVersion]; undo: [round: ConversationExecutionRound] }>()
 const store = useConversationStore()
 const tab = ref<'files' | 'plans' | 'history'>('files')
+function showTab(value: 'files' | 'plans' | 'history') { tab.value = value }
+defineExpose({ showTab })
 const query = ref('')
 const view = ref<'list' | 'grid'>('list')
+const panel = ref<HTMLElement | null>(null)
+const scrollOffset = ref(0)
+const columns = computed(() => view.value === 'grid' ? 2 : 1)
+const rowHeight = computed(() => view.value === 'grid' ? 96 : 56)
+const windowStart = computed(() => Math.max(0, Math.floor((scrollOffset.value - 160) / rowHeight.value) - 4) * columns.value)
+const windowFiles = computed(() => filteredFiles.value.slice(windowStart.value, windowStart.value + 48))
+const beforeHeight = computed(() => Math.floor(windowStart.value / columns.value) * rowHeight.value)
+const afterHeight = computed(() => Math.ceil(Math.max(0, filteredFiles.value.length - windowStart.value - windowFiles.value.length) / columns.value) * rowHeight.value)
+watch([query, view, () => store.currentConversation?.id], () => {
+  scrollOffset.value = 0
+  if (panel.value) panel.value.scrollTop = 0
+})
+const selectedIds = computed(() => new Set(store.selectedFileIds))
+function onPanelScroll(event: Event) { scrollOffset.value = (event.target as HTMLElement).scrollTop }
 
 const filteredFiles = computed(() => store.files.filter(file => {
   const haystack = `${file.current_known_path} ${file.core_current_path || ''} ${file.file_id}`.toLowerCase()
@@ -51,18 +67,20 @@ function fileChangeLabel(type: string) {
       <button type="button" role="tab" :aria-selected="tab === 'history'" :class="{ active: tab === 'history' }" @click="tab = 'history'"><List :size="16" />变更记录</button>
     </div>
 
-    <section v-if="tab === 'files'" class="file-panel-body">
+    <section v-if="tab === 'files'" ref="panel" class="file-panel-body" @scroll="onPanelScroll">
       <div class="file-panel-heading"><h2>当前目录的文件 <span>({{ store.files.length }})</span></h2><button type="button" class="panel-icon-button" aria-label="收起文件区" @click="emit('collapse')"><X :size="17" /></button></div>
       <div class="file-toolbar"><label class="file-search"><span class="sr-only">搜索文件</span><input v-model="query" type="search" placeholder="搜索文件…" /></label><div class="view-switch" role="group" aria-label="文件显示方式"><button type="button" :class="{ active: view === 'list' }" aria-label="列表视图" @click="view = 'list'"><List :size="17" /></button><button type="button" :class="{ active: view === 'grid' }" aria-label="网格视图" @click="view = 'grid'"><Grid2X2 :size="17" /></button></div></div>
       <div v-if="!filteredFiles.length" class="file-empty"><FileText :size="22" /><strong>{{ store.files.length ? '没有匹配的文件' : '当前目录还没有文件记录' }}</strong><p>绑定目录后，文件会显示在这里。</p></div>
       <div v-else class="file-list" :class="{ 'grid-view': view === 'grid' }">
-        <button v-for="file in filteredFiles" :key="file.file_id" type="button" class="file-item" :class="{ selected: store.selectedFileIds.includes(file.file_id) }" @click="store.toggleFile(file.file_id)">
-          <span class="file-icon"><component :is="FileIcon(file)" :size="18" /></span>
+        <div v-if="beforeHeight" aria-hidden="true" class="file-spacer" :style="{ height: `${beforeHeight}px` }" />
+        <button v-for="file in windowFiles" :key="file.file_id" type="button" class="file-item" :class="{ selected: selectedIds.has(file.file_id) }" :aria-pressed="selectedIds.has(file.file_id)" :title="file.current_known_path" @click="store.toggleFile(file.file_id)">
+          <span class="file-icon"><Check v-if="selectedIds.has(file.file_id)" :size="18" /><component v-else :is="FileIcon(file)" :size="18" /></span>
           <span class="file-copy"><strong>{{ basename(file) }}</strong><small>{{ relativePath(file) }}</small></span>
           <span class="file-meta"><small>{{ new Date(file.current_mtime_ns ? file.current_mtime_ns / 1_000_000 : file.added_at).toLocaleDateString('zh-CN') }}</small><small>{{ size(file) }}</small></span>
           <span v-if="statusLabel(file)" class="file-state" :data-state="file.state">{{ statusLabel(file) }}</span>
           <span v-else class="file-location"><Folder :size="14" />{{ relativePath(file).split(/[\\/]/)[0] || '当前目录' }}</span>
         </button>
+        <div v-if="afterHeight" aria-hidden="true" class="file-spacer" :style="{ height: `${afterHeight}px` }" />
       </div>
     </section>
 
@@ -70,16 +88,16 @@ function fileChangeLabel(type: string) {
       <div class="file-panel-heading"><h2>{{ props.viewingPlanVersion && props.viewingPlanVersion.id !== props.currentPlanVersion?.id ? `历史方案预览 · v${props.viewingPlanVersion.version_number}` : `整理预览${props.currentPlanVersion ? ` · v${props.currentPlanVersion.version_number}` : ''}` }}</h2><button type="button" class="panel-icon-button" aria-label="收起文件区" @click="emit('collapse')"><X :size="17" /></button></div>
       <div v-if="props.viewingPlanVersion && props.viewingPlanVersion.id !== props.currentPlanVersion?.id" class="historical-plan-banner">这是历史方案，不代表当前整理状态。</div>
       <div v-if="store.affectedScope" class="affected-scope-panel">
-        <strong>本轮影响范围 · {{ store.affectedScope.scope_type }}</strong>
+        <strong>本轮影响范围 · {{ ({ LOCAL: '局部调整', PARTIAL: '选中文件', GLOBAL: '整个目录' } as Record<string, string>)[store.affectedScope.scope_type] || '选定范围' }}</strong>
         <span>{{ store.refinementMetrics?.affected_files || store.affectedScope.candidate_file_ids.length }} 个候选文件</span>
         <span v-if="store.refinementMetrics?.delta_plan_count">其中 {{ store.refinementMetrics.delta_plan_count }} 个建议调整</span>
       </div>
       <div v-if="!props.plans.length" class="file-empty"><SlidersHorizontal :size="22" /><strong>还没有整理方案</strong><p>AI 生成整理方案后，会在这里预览新的目录结构。</p></div>
       <template v-else>
         <div v-if="props.currentPlanVersion?.status === 'EXECUTED' && (!props.viewingPlanVersion || props.viewingPlanVersion.id === props.currentPlanVersion.id)" class="historical-plan-banner current-clean">当前没有待执行的调整。</div>
-        <div class="version-switcher" aria-label="方案版本历史">
+        <details class="version-history"><summary>方案版本历史 · {{ props.plans.length }} 个版本</summary><div class="version-switcher" aria-label="方案版本历史">
           <button v-for="plan in props.plans" :key="plan.id" type="button" :class="{ active: plan.id === (props.viewingPlanVersion?.id || props.currentPlanVersion?.id) }" @click="emit('viewHistory', plan.id)">v{{ plan.version_number }}<small v-if="plan.id === props.currentPlanVersion?.id">当前</small></button>
-        </div>
+        </div></details>
         <div v-if="props.viewingPlanVersion" class="business-card-stack">
           <PlanPreviewCard :plan="props.viewingPlanVersion" :current="props.viewingPlanVersion.id === props.currentPlanVersion?.id" :viewing="true" :execution-busy="store.executionBusy" @view-history="emit('viewHistory', $event)" @approve="emit('approvePlan', $event)" />
           <div v-if="props.planDiff" class="plan-diff-panel">
@@ -98,7 +116,7 @@ function fileChangeLabel(type: string) {
     <section v-else class="file-panel-body alternate-panel">
       <div class="file-panel-heading"><h2>变更记录</h2><button type="button" class="panel-icon-button" aria-label="收起文件区" @click="emit('collapse')"><X :size="17" /></button></div>
       <div v-if="!props.executions.length" class="file-empty"><List :size="22" /><strong>还没有执行记录</strong><p>执行后的整理记录会显示在这里。</p></div>
-      <div v-else class="business-card-stack"><ExecutionResultCard v-for="round in props.executions" :key="round.id" :round="round" /></div>
+      <div v-else class="business-card-stack"><ExecutionResultCard v-for="round in props.executions" :key="round.id" :round="round" :undo-busy="store.undoBusy" @undo="emit('undo', $event)" /></div>
     </section>
 
     <footer class="file-panel-footer"><span>已选择 {{ store.selectedFileIds.length }} 个文件</span><button type="button" class="open-folder-button" disabled><Folder :size="15" />打开所在目录</button></footer>

@@ -26,6 +26,9 @@ def digest_json(value: object) -> str:
 class TaskRepository:
     def __init__(self, database: Database) -> None:
         self.database = database
+        # Set by the application composition root.  Keeping this optional keeps
+        # the repository usable by legacy/unit callers during migration.
+        self.evidence_cache = None
 
     def create(self, name: str, settings: TaskSettings, classification_request: dict[str, Any], model_profile_id: str | None = None, model_snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
         task_id = str(uuid.uuid4())
@@ -342,9 +345,13 @@ class TaskRepository:
                               prompt_version: str) -> tuple[object, str]:
         with self.database.engine.connect() as connection:
             row = connection.execute(text("""
-                SELECT status,profile_json,cache_key,options_hash FROM file_profiles
-                WHERE file_id=:file ORDER BY created_at DESC LIMIT 1
-            """), {"file": file_id}).mappings().first()
+                SELECT fp.status,fp.profile_json,fp.cache_key,fp.options_hash,
+                       f.current_path,f.sha256,f.modality,
+                       mp.provider,mp.model_id
+                  FROM file_profiles fp JOIN files f ON f.id=fp.file_id
+                  LEFT JOIN model_profiles mp ON mp.id=:model_profile
+                 WHERE fp.file_id=:file ORDER BY fp.created_at DESC LIMIT 1
+            """), {"file": file_id, "model_profile": model_profile_id}).mappings().first()
         if row is None:
             raise KeyError(file_id)
         from guixu.domain.profiles import FileProfile
@@ -359,6 +366,26 @@ class TaskRepository:
             })
         cache_key = f"{row['cache_key']}-vision-{digest[:16]}"
         self.store_profile(ParseOutcome(status=row["status"], profile=profile), cache_key, row["options_hash"])
+        if self.evidence_cache is not None:
+            from guixu.infrastructure.filesystem.identity import sha256_file
+            from pathlib import Path
+            fingerprint = row["sha256"]
+            try:
+                if not fingerprint and Path(row["current_path"]).is_file():
+                    fingerprint = sha256_file(Path(row["current_path"]))
+            except OSError:
+                fingerprint = None
+            if fingerprint:
+                producer_type = "CLOUD_MODEL" if row.get("provider") == "deepseek" else "LOCAL_MODEL"
+                self.evidence_cache.store_evidence(
+                    file_id=file_id, content_fingerprint=fingerprint, evidence_kind="VISUAL_DESCRIPTION",
+                    payload={"description": text_value[:12_000], "raw_version": 1},
+                    normalized_content=text_value[:12_000], producer_type=producer_type,
+                    producer_name=str(row.get("provider") or "model")[:100],
+                    producer_version=str(row.get("model_id") or "unknown")[:100],
+                    model_profile_id=model_profile_id, model_id=str(row.get("model_id") or "") or None,
+                    prompt_version=prompt_version, quality="high",
+                )
         return profile, evidence_id
 
     def file_detail(self, task_id: str, file_id: str) -> dict[str, Any]:

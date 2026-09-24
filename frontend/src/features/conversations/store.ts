@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { api, type AffectedScope, type Conversation, type ConversationContext, type ConversationExecutionRound, type ConversationFile, type ConversationMessage, type ConversationPlanDiff, type ConversationPlanVersion, type ModelProfile, type RefinementMetrics } from '../../services/api'
+import { api, type AffectedScope, type Conversation, type ConversationContext, type ConversationExecutionRound, type ConversationFile, type ConversationMessage, type ConversationPlanDiff, type ConversationPlanVersion, type ConversationRecoveryStatus, type ConversationUndoPlan, type ModelProfile, type RefinementMetrics } from '../../services/api'
 
 export const useConversationStore = defineStore('conversations', () => {
   const conversations = ref<Conversation[]>([])
@@ -24,6 +24,13 @@ export const useConversationStore = defineStore('conversations', () => {
   const error = ref('')
   const notice = ref('')
   const selectedFileIds = ref<string[]>([])
+  const focusedFileId = ref<string | null>(null)
+  const activeCategoryId = ref<string | null>(null)
+  const recovery = ref<ConversationRecoveryStatus | null>(null)
+  const recoveryBusy = ref(false)
+  const undoPlans = ref<ConversationUndoPlan[]>([])
+  const pendingUndoPlan = ref<ConversationUndoPlan | null>(null)
+  const undoBusy = ref(false)
 
   const activeScope = computed(() => currentConversation.value?.scopes?.[0] ?? null)
   const activeModel = computed(() => {
@@ -62,13 +69,21 @@ export const useConversationStore = defineStore('conversations', () => {
     error.value = ''
     notice.value = ''
     try {
-      const [conversation, nextMessages, nextContext, nextFiles, nextPlans, nextExecutions] = await Promise.all([
+      // Recovery status is an optional enhancement for older embedded shells
+      // that may not expose a session token until after the first view loads.
+      // Keep the core Conversation workspace load independent from it.
+      const sessionReady = typeof window !== 'undefined' && Boolean(
+        window.__GUIXU_SESSION__ || import.meta.env.VITE_GUIXU_SESSION,
+      )
+      const [conversation, nextMessages, nextContext, nextFiles, nextPlans, nextExecutions, nextRecovery, nextUndoPlans] = await Promise.all([
         api.conversation(id),
         api.conversationMessages(id),
         api.conversationContext(id),
         api.conversationFiles(id),
         api.conversationPlans(id),
         api.conversationExecutions(id),
+        sessionReady ? api.conversationRecoveryStatus(id, true) : Promise.resolve(null),
+        sessionReady ? api.conversationUndoPlans(id) : Promise.resolve([]),
       ])
       currentConversation.value = conversation
       messages.value = nextMessages
@@ -78,10 +93,19 @@ export const useConversationStore = defineStore('conversations', () => {
       viewingPlanVersion.value = null
       planDiff.value = null
       executionRounds.value = nextExecutions
+      recovery.value = nextRecovery
+      undoPlans.value = nextUndoPlans
+      pendingUndoPlan.value = nextUndoPlans.find(item => ['WAITING_FOR_APPROVAL', 'APPROVED', 'BLOCKED', 'RECOVERY_REQUIRED'].includes(item.status)) ?? null
+      if (nextRecovery?.reconciliation?.workspace_changed) {
+        files.value = await api.conversationFiles(id)
+        context.value = await api.conversationContext(id)
+      }
       affectedScope.value = null
       refinementMetrics.value = null
       pendingGlobalMessage.value = ''
       selectedFileIds.value = []
+      focusedFileId.value = null
+      activeCategoryId.value = null
       if (!models.value.length) await loadModels()
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause)
@@ -91,9 +115,47 @@ export const useConversationStore = defineStore('conversations', () => {
       files.value = []
       planVersions.value = []
       executionRounds.value = []
+      recovery.value = null
+      undoPlans.value = []
+      pendingUndoPlan.value = null
     } finally {
       loading.value = false
     }
+  }
+
+  async function reconcileConversation() {
+    const conversationId = currentConversation.value?.id
+    if (!conversationId || recoveryBusy.value) return null
+    recoveryBusy.value = true
+    try {
+      const summary = await api.reconcileConversation(conversationId)
+      recovery.value = { ...(recovery.value || { conversation_id: conversationId, conversation_status: currentConversation.value?.status ?? 'ACTIVE', agent_turns: [], model_available: true, requires_user_action: false }), reconciliation: summary, requires_user_action: summary.requires_user_action }
+      context.value = await api.conversationContext(conversationId)
+      return summary
+    } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return null }
+    finally { recoveryBusy.value = false }
+  }
+
+  async function resumeAnalysis() {
+    const conversationId = currentConversation.value?.id
+    if (!conversationId) return false
+    try {
+      const turn = await api.resumeConversationAnalysis(conversationId)
+      recovery.value = { ...(recovery.value || { conversation_id: conversationId, conversation_status: currentConversation.value?.status ?? 'ACTIVE', reconciliation: null, model_available: true, requires_user_action: false }), agent_turns: [turn, ...(recovery.value?.agent_turns || [])] }
+      notice.value = '已创建新的分析任务；不会自动重放上一次模型请求。'
+      return true
+    } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return false }
+  }
+
+  async function retryAgentTurn(turnId: string) {
+    const conversationId = currentConversation.value?.id
+    if (!conversationId) return false
+    try {
+      const turn = await api.retryConversationAgentTurn(conversationId, turnId)
+      recovery.value = { ...(recovery.value || { conversation_id: conversationId, conversation_status: currentConversation.value?.status ?? 'ACTIVE', reconciliation: null, model_available: true, requires_user_action: false }), agent_turns: [turn, ...(recovery.value?.agent_turns || [])] }
+      notice.value = '已创建新的分析尝试。'
+      return true
+    } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return false }
   }
 
   async function createConversation(scopeGrant: string, title = '未命名整理', modelProfileId?: string | null) {
@@ -140,10 +202,31 @@ export const useConversationStore = defineStore('conversations', () => {
     const conversationId = currentConversation.value?.id
     if (!conversationId || !content.trim()) return false
     try {
-      const message = await api.appendConversationMessage(conversationId, { role: 'USER', content: content.trim() })
+      const explicitSelection = [...selectedFileIds.value]
+      const message = await api.appendConversationMessage(conversationId, {
+        role: 'USER', content: content.trim(), selected_file_ids: explicitSelection,
+        focused_file_id: explicitSelection.length ? null : focusedFileId.value,
+        active_category_id: activeCategoryId.value,
+        expected_context_revision: context.value?.context_revision,
+      })
       messages.value = [...messages.value, message]
-      if (executionRounds.value.some(round => round.status === 'COMPLETED')) {
-        await prepareRefinement(content.trim())
+      selectedFileIds.value = []
+      focusedFileId.value = null
+      if (/撤销|恢复回去|放回去|恢复原位/.test(content.trim())) {
+        const result = await api.requestConversationUndo(conversationId, {
+          user_message: content.trim(), referenced_file_ids: message.referenced_file_ids || explicitSelection,
+        })
+        if (result.undo_plan) {
+          pendingUndoPlan.value = result.undo_plan
+          undoPlans.value = [result.undo_plan, ...undoPlans.value.filter(item => item.id !== result.undo_plan!.id)]
+          notice.value = result.undo_plan.status === 'BLOCKED'
+            ? '这次整理目前存在冲突，不能安全直接撤销。'
+            : `已生成第 ${result.undo_plan.summary.target_round_number || ''} 次整理的撤销预览，确认前不会修改文件。`
+        } else {
+          notice.value = result.query?.message || '当前没有需要撤销的文件操作。'
+        }
+      } else if (executionRounds.value.some(round => round.status === 'COMPLETED')) {
+        await prepareRefinement(content.trim(), false, message.referenced_file_ids || [], message.id)
       } else {
         notice.value = '消息已保存。首次整理分析能力尚未接入当前工作区。'
       }
@@ -153,14 +236,17 @@ export const useConversationStore = defineStore('conversations', () => {
     } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return false }
   }
 
-  async function prepareRefinement(content: string, confirmedGlobal = false) {
+  async function prepareRefinement(content: string, confirmedGlobal = false, referencedFileIds: string[] = [], triggerMessageId?: string) {
     const conversationId = currentConversation.value?.id
     if (!conversationId || refinementBusy.value) return false
     refinementBusy.value = true
     error.value = ''
     notice.value = '正在核对当前文件状态和本轮影响范围…'
     try {
-      const result = await api.prepareConversationRefinement(conversationId, { user_message: content, confirmed_global: confirmedGlobal })
+      const result = await api.prepareConversationRefinement(conversationId, {
+        user_message: content, confirmed_global: confirmedGlobal,
+        referenced_file_ids: referencedFileIds, trigger_message_id: triggerMessageId,
+      })
       affectedScope.value = result.affected_scope
       refinementMetrics.value = result.metrics
       if (result.status === 'GLOBAL_REPLAN_CONFIRMATION_REQUIRED') {
@@ -222,6 +308,51 @@ export const useConversationStore = defineStore('conversations', () => {
     } finally { executionBusy.value = false }
   }
 
+  async function requestUndo(round?: ConversationExecutionRound) {
+    const conversationId = currentConversation.value?.id
+    if (!conversationId || undoBusy.value) return false
+    undoBusy.value = true; error.value = ''
+    try {
+      const result = await api.requestConversationUndo(conversationId, {
+        execution_round_id: round?.id, referenced_file_ids: selectedFileIds.value,
+      })
+      if (!result.undo_plan) { notice.value = result.query?.message || '没有可撤销的文件操作。'; return true }
+      pendingUndoPlan.value = result.undo_plan
+      undoPlans.value = [result.undo_plan, ...undoPlans.value.filter(item => item.id !== result.undo_plan!.id)]
+      notice.value = result.undo_plan.status === 'BLOCKED' ? '撤销预览包含冲突，请先查看详情。' : '撤销预览已生成，确认前磁盘不会变化。'
+      return true
+    } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return false }
+    finally { undoBusy.value = false }
+  }
+
+  async function confirmUndo() {
+    const conversationId = currentConversation.value?.id
+    const plan = pendingUndoPlan.value
+    if (!conversationId || !plan || undoBusy.value) return false
+    undoBusy.value = true; error.value = ''
+    try {
+      await api.approveConversationUndo(conversationId, plan.id, plan.plan_hash)
+      pendingUndoPlan.value = await api.executeConversationUndo(conversationId, plan.id, plan.plan_hash)
+      await loadConversation(conversationId)
+      notice.value = '撤销完成。会话和原执行记录仍然保留。'
+      return true
+    } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return false }
+    finally { undoBusy.value = false }
+  }
+
+  async function cancelUndo() {
+    const conversationId = currentConversation.value?.id
+    const plan = pendingUndoPlan.value
+    if (!conversationId || !plan || undoBusy.value) return false
+    undoBusy.value = true
+    try {
+      const cancelled = await api.cancelConversationUndo(conversationId, plan.id)
+      undoPlans.value = undoPlans.value.map(item => item.id === cancelled.id ? cancelled : item)
+      pendingUndoPlan.value = null; notice.value = '已取消撤销，磁盘文件没有变化。'; return true
+    } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return false }
+    finally { undoBusy.value = false }
+  }
+
   async function viewPlanVersion(id: string | null) {
     if (!id) {
       viewingPlanVersion.value = null
@@ -255,17 +386,27 @@ export const useConversationStore = defineStore('conversations', () => {
   }
 
   function toggleFile(fileId: string) {
+    focusedFileId.value = fileId
     selectedFileIds.value = selectedFileIds.value.includes(fileId)
       ? selectedFileIds.value.filter(id => id !== fileId)
       : [...selectedFileIds.value, fileId]
   }
 
+  function removeFileReference(fileId: string) { selectedFileIds.value = selectedFileIds.value.filter(id => id !== fileId) }
+  function clearFileReferences() { selectedFileIds.value = []; focusedFileId.value = null }
+  function selectReferencedFiles(fileIds: string[]) {
+    const available = new Set(files.value.map(file => file.file_id))
+    selectedFileIds.value = fileIds.filter(id => available.has(id))
+    focusedFileId.value = selectedFileIds.value.length === 1 ? selectedFileIds.value[0] : null
+  }
+
   return {
     conversations, currentConversation, messages, context, files, planVersions, currentPlanVersion, viewingPlanVersion, planDiff, versionLoading, executionRounds, models,
     refinementBusy, executionBusy, affectedScope, refinementMetrics, pendingGlobalMessage,
-    loading, loadingConversations, error, notice, selectedFileIds, activeScope, activeModel,
+    loading, loadingConversations, error, notice, selectedFileIds, focusedFileId, activeCategoryId, activeScope, activeModel, recovery, recoveryBusy,
+    undoPlans, pendingUndoPlan, undoBusy,
     clearError, clearNotice, loadConversations, loadConversation, loadModels, createConversation,
-    renameConversation, deleteConversation, appendMessage, prepareRefinement, confirmGlobalRefinement, cancelGlobalRefinement,
-    approveAndExecute, viewPlanVersion, restorePlanVersion, toggleFile,
+    renameConversation, deleteConversation, appendMessage, prepareRefinement, confirmGlobalRefinement, cancelGlobalRefinement, reconcileConversation, resumeAnalysis, retryAgentTurn,
+    approveAndExecute, requestUndo, confirmUndo, cancelUndo, viewPlanVersion, restorePlanVersion, toggleFile, removeFileReference, clearFileReferences, selectReferencedFiles,
   }
 })

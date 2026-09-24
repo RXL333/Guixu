@@ -8,6 +8,7 @@ import FileWorkspace from '../src/features/conversations/components/FileWorkspac
 import ConversationWorkspacePage from '../src/pages/ConversationWorkspacePage.vue'
 import PlanPreviewCard from '../src/features/conversations/components/PlanPreviewCard.vue'
 import ExecutionResultCard from '../src/features/conversations/components/ExecutionResultCard.vue'
+import UndoPreviewCard from '../src/features/conversations/components/UndoPreviewCard.vue'
 import { api } from '../src/services/api'
 import { useConversationStore } from '../src/features/conversations/store'
 
@@ -37,7 +38,10 @@ describe('phase E Conversation Workspace', () => {
     const view = render(ChatComposer, { global: { plugins: [pinia] } })
     await fireEvent.update(view.getByRole('textbox', { name: '整理要求' }), '按照内容整理')
     await fireEvent.keyDown(view.getByRole('textbox', { name: '整理要求' }), { key: 'Enter' })
-    await waitFor(() => expect(api.appendConversationMessage).toHaveBeenCalledWith('c1', { role: 'USER', content: '按照内容整理' }))
+    await waitFor(() => expect(api.appendConversationMessage).toHaveBeenCalledWith('c1', {
+      role: 'USER', content: '按照内容整理', selected_file_ids: [], focused_file_id: null,
+      active_category_id: null, expected_context_revision: undefined,
+    }))
     expect(view.queryByText('好的，我来帮你整理。')).toBeNull()
   })
 
@@ -63,8 +67,8 @@ describe('phase E Conversation Workspace', () => {
     await testRouter.isReady()
     vi.spyOn(api, 'conversations').mockResolvedValue([])
     const view = render(ConversationWorkspacePage, { global: { plugins: [pinia, testRouter] } })
-    await waitFor(() => expect(view.getByText('选择一个文件夹，然后告诉我你想怎么整理。')).toBeTruthy())
-    expect(view.getByText(/下一阶段接入/)).toBeTruthy()
+    await waitFor(() => expect(view.getByText(/归序只会处理你授权的目录/)).toBeTruthy())
+    expect(view.getByRole('button', { name: '选择文件夹' })).toBeTruthy()
     expect(view.queryByText('好的，我来帮你整理。')).toBeNull()
   })
 
@@ -107,7 +111,10 @@ describe('phase E Conversation Workspace', () => {
     })
     vi.spyOn(api, 'conversationContext').mockResolvedValue({ ...store.context, context_revision: 7, current_plan_version_id: 'p2' } as any)
     expect(await store.appendMessage('建筑里的夜景放到风景，其他不要动。')).toBe(true)
-    expect(api.prepareConversationRefinement).toHaveBeenCalledWith('c1', { user_message: '建筑里的夜景放到风景，其他不要动。', confirmed_global: false })
+    expect(api.prepareConversationRefinement).toHaveBeenCalledWith('c1', {
+      user_message: '建筑里的夜景放到风景，其他不要动。', confirmed_global: false,
+      referenced_file_ids: [], trigger_message_id: 'm-2',
+    })
     expect(store.affectedScope?.scope_type).toBe('LOCAL')
     expect(store.refinementMetrics?.delta_plan_count).toBe(3)
     expect(store.planVersions.at(-1)?.plan_kind).toBe('DELTA')
@@ -151,5 +158,97 @@ describe('phase E Conversation Workspace', () => {
     expect(await store.approveAndExecute(plan)).toBe(true)
     expect(store.files[0].current_known_path).toContain('/风景/')
     expect(store.executionRounds.at(-1)?.round_number).toBe(2)
+  })
+
+  it('renders removable reference chips, batches selection into one message, then clears it', async () => {
+    const pinia = createPinia()
+    const store = useConversationStore(pinia)
+    store.currentConversation = { id: 'c1', title: '引用测试', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' } as any
+    store.context = { id: 'ctx', conversation_id: 'c1', context_revision: 4, max_directory_depth: 2, file_state_revision: 1, created_at: 'now', updated_at: 'now' } as any
+    store.files = Array.from({ length: 500 }, (_, index) => ({ id: `cf${index}`, conversation_id: 'c1', file_id: `f${index}`, first_seen_path: `D:/Photos/${index}.jpg`, current_known_path: `D:/Photos/${index}.jpg`, state: 'ACTIVE', added_at: 'now' })) as any
+    store.selectedFileIds = Array.from({ length: 500 }, (_, index) => `f${index}`)
+    vi.spyOn(api, 'appendConversationMessage').mockResolvedValue({ ...message('USER', '这些放到旅行', 1), referenced_file_ids: Array.from({ length: 499 }, (_, index) => `f${index + 1}`), reference_source: 'UI_SELECTION' } as any)
+    const view = render(ChatComposer, { global: { plugins: [pinia] } })
+    expect(view.getByText('已引用 500 个文件')).toBeTruthy()
+    expect(view.getByText('+497')).toBeTruthy()
+    await fireEvent.click(view.getByRole('button', { name: /0.jpg/ }))
+    expect(store.selectedFileIds).toHaveLength(499)
+    await fireEvent.update(view.getByRole('textbox', { name: '整理要求' }), '这些放到旅行')
+    await fireEvent.click(view.getByRole('button', { name: '发送消息' }))
+    await waitFor(() => expect(api.appendConversationMessage).toHaveBeenCalledWith('c1', expect.objectContaining({ selected_file_ids: expect.arrayContaining(['f1', 'f499']), expected_context_revision: 4 })))
+    expect(store.selectedFileIds).toEqual([])
+  })
+
+  it('shows immutable message reference badges and emits ids for FileWorkspace highlighting', async () => {
+    const referenced = { ...message('ASSISTANT', '我找到 3 个文件', 2), referenced_file_ids: ['f1', 'f2', 'f3'], file_references: [{ file_id: 'f1', reference_source: 'RECENT_MESSAGE_REFERENCE', reference_role: 'RESULT', state: 'MISSING', basename: 'a.jpg' }] } as any
+    const view = render(ConversationMessage, { props: { message: referenced } })
+    const badge = view.getByRole('button', { name: /引用 · 3 个文件/ })
+    expect(view.getByText(/含不可见文件/)).toBeTruthy()
+    await fireEvent.click(badge)
+    expect(view.emitted('references')?.[0]).toEqual([['f1', 'f2', 'f3']])
+  })
+
+  it('clears ephemeral selection when switching conversations', async () => {
+    const pinia = createPinia()
+    const store = useConversationStore(pinia)
+    store.selectedFileIds = ['a1', 'a2']
+    const conversation = { id: 'b', title: 'B', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' } as any
+    vi.spyOn(api, 'conversation').mockResolvedValue(conversation)
+    vi.spyOn(api, 'conversationMessages').mockResolvedValue([])
+    vi.spyOn(api, 'conversationContext').mockResolvedValue({ id: 'ctx-b', conversation_id: 'b', context_revision: 1, max_directory_depth: 2, file_state_revision: 1, created_at: 'now', updated_at: 'now' } as any)
+    vi.spyOn(api, 'conversationFiles').mockResolvedValue([])
+    vi.spyOn(api, 'conversationPlans').mockResolvedValue([])
+    vi.spyOn(api, 'conversationExecutions').mockResolvedValue([])
+    vi.spyOn(api, 'models').mockResolvedValue([])
+    await store.loadConversation('b')
+    expect(store.selectedFileIds).toEqual([])
+    expect(store.focusedFileId).toBeNull()
+  })
+
+  it('renders UndoPreviewCard and requires explicit confirmation', async () => {
+    const plan = {
+      id: 'u1', conversation_id: 'c1', target_execution_round_id: 'r2', status: 'WAITING_FOR_APPROVAL',
+      basis_file_state_revision: 4, plan_hash: 'a'.repeat(64), requested_file_ids: [], approval: {}, created_at: 'now',
+      summary: { target_round_number: 2, total: 2, ready: 2, blocked: 0, partial: false },
+      items: [
+        { id: 'ui1', file_id: 'f1', original_operation_id: 'o1', operation_kind: 'MOVE', ordinal: 0, current_source: 'D:/Photos/风景/a.jpg', restore_target: 'D:/Photos/建筑/a.jpg', expected_fingerprint: 'a'.repeat(64), status: 'READY' },
+        { id: 'ui2', file_id: 'f2', original_operation_id: 'o2', operation_kind: 'MOVE', ordinal: 1, current_source: 'D:/Photos/风景/b.jpg', restore_target: 'D:/Photos/建筑/b.jpg', expected_fingerprint: 'b'.repeat(64), status: 'READY' },
+      ],
+    } as any
+    const view = render(UndoPreviewCard, { props: { plan } })
+    expect(view.getByText('撤销第 2 次整理')).toBeTruthy()
+    expect(view.getByText('2', { selector: 'strong' })).toBeTruthy()
+    await fireEvent.click(view.getByRole('button', { name: '确认撤销' }))
+    expect(view.emitted('confirm')).toHaveLength(1)
+    await fireEvent.click(view.getByRole('button', { name: '取消' }))
+    expect(view.emitted('cancel')).toHaveLength(1)
+  })
+
+  it('routes conversational undo to preview without refinement or direct execution', async () => {
+    const pinia = createPinia()
+    const store = useConversationStore(pinia)
+    store.currentConversation = { id: 'c1', title: '撤销测试', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' } as any
+    store.context = { id: 'ctx', conversation_id: 'c1', context_revision: 5, max_directory_depth: 2, file_state_revision: 4, created_at: 'now', updated_at: 'now' } as any
+    store.executionRounds = [{ id: 'r2', conversation_id: 'c1', round_number: 2, plan_version_id: 'p2', execution_plan_id: 'core2', status: 'COMPLETED', affected_file_count: 1, created_at: 'now', round_kind: 'FORWARD' }] as any
+    vi.spyOn(api, 'appendConversationMessage').mockResolvedValue({ ...message('USER', '撤销刚才那次调整。', 3), referenced_file_ids: [] } as any)
+    vi.spyOn(api, 'requestConversationUndo').mockResolvedValue({
+      target: { execution_round_id: 'r2' },
+      undo_plan: { id: 'u1', conversation_id: 'c1', target_execution_round_id: 'r2', status: 'WAITING_FOR_APPROVAL', basis_file_state_revision: 4, plan_hash: 'a'.repeat(64), requested_file_ids: [], approval: {}, created_at: 'now', summary: { target_round_number: 2, total: 1, ready: 1, blocked: 0 }, items: [] } as any,
+    })
+    const refinement = vi.spyOn(api, 'prepareConversationRefinement')
+    const execute = vi.spyOn(api, 'executeConversationUndo')
+    expect(await store.appendMessage('撤销刚才那次调整。')).toBe(true)
+    expect(api.requestConversationUndo).toHaveBeenCalledWith('c1', { user_message: '撤销刚才那次调整。', referenced_file_ids: [] })
+    expect(store.pendingUndoPlan?.id).toBe('u1')
+    expect(refinement).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('shows partial undo history and emits the shared quick-undo action', async () => {
+    const round = { id: 'r2', conversation_id: 'c1', round_number: 2, plan_version_id: 'p2', execution_plan_id: 'core2', status: 'COMPLETED', affected_file_count: 10, created_at: 'now', round_kind: 'FORWARD', undo_state: 'PARTIALLY_UNDONE', undone_file_count: 3, reversible_file_count: 10 } as any
+    const view = render(ExecutionResultCard, { props: { round } })
+    expect(view.getByText('部分撤销 · 3 / 10')).toBeTruthy()
+    await fireEvent.click(view.getByRole('button', { name: '撤销' }))
+    expect(view.emitted('undo')?.[0]).toEqual([round])
   })
 })

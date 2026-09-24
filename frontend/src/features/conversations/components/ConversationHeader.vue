@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { confirmAction, promptAction } from '../../../components/dialogState'
 import { ChevronDown, Folder, MoreHorizontal, Pencil, Sparkles } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -15,20 +16,20 @@ const scopeName = computed(() => props.conversation?.scopes?.[0]?.display_name |
 
 async function rename() {
   menuOpen.value = false
-  const next = window.prompt('重命名对话', title.value)?.trim()
+  const next = (await promptAction('重命名对话', title.value))?.trim()
   if (next && props.conversation) await store.renameConversation(props.conversation.id, next)
 }
 async function remove() {
   menuOpen.value = false
   if (!props.conversation) return
-  if (!window.confirm('只删除归序中的会话记录，不会删除或移动磁盘上的文件。是否继续？')) return
+  if (!await confirmAction('只删除归序中的会话记录，不会删除或移动磁盘上的文件。是否继续？')) return
   await store.deleteConversation(props.conversation.id)
   await router.push('/')
 }
 </script>
 
 <template>
-  <header class="conversation-header">
+  <header class="conversation-header" @keydown.esc="menuOpen = false; modelOpen = false">
     <div class="conversation-heading">
       <div class="conversation-title-row">
         <h1>{{ title }}</h1>
@@ -43,7 +44,8 @@ async function remove() {
         </button>
         <div v-if="modelOpen" class="model-selector-menu">
           <p v-if="!store.models.length">暂无已配置模型</p>
-          <button v-for="model in store.models" :key="model.id" type="button" @click="modelOpen = false">{{ model.name }}</button>
+          <p v-if="store.activeModel">当前会话使用：{{ store.activeModel.name }}</p>
+          <p v-if="store.models.length">模型连接可在设置中管理；此处不会切换当前会话的分析模型。</p>
           <RouterLink to="/models">管理模型连接</RouterLink>
         </div>
       </div>

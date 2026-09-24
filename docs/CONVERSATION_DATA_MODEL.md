@@ -1,6 +1,6 @@
 # Guixu Conversation Data Model
 
-版本：PHASE D 基础 + PHASE G Plan Versioning，2026-09-20  
+版本：PHASE D 基础 + PHASE G Plan Versioning + PHASE I File References，2026-09-21
 范围：持久化数据基础；本文件不定义 Chat UI、Agent loop 或 Tool Calling 实现。
 
 ## 1. Conversation ≠ Task
@@ -15,6 +15,7 @@
 Conversation
 ├── ConversationScope *       (授权 scope 快照，不是路径执行器)
 ├── ConversationMessage *     (append-only 用户可见历史)
+│     └── MessageFileReference * ──> ConversationFile / files.id
 ├── ConversationContext 1     (结构化 current state + revision)
 ├── ConversationFile * ───────> files.id
 │                               └── file_profiles.file_id / embedded Evidence
@@ -30,7 +31,7 @@ tasks.conversation_id ───────────────> Conversatio
 tasks.conversation_plan_version_id ──> ConversationPlanVersion.id (nullable)
 ```
 
-实现表名：`conversations`、`conversation_scopes`、`conversation_messages`、`conversation_contexts`、`conversation_plan_versions`、`conversation_plan_approvals`、`conversation_execution_rounds`、`conversation_files`。现有核心表保持不变，只给 `tasks` 添加两个 nullable 映射列。
+实现表名：`conversations`、`conversation_scopes`、`conversation_messages`、`conversation_message_file_references`、`conversation_contexts`、`conversation_plan_versions`、`conversation_plan_approvals`、`conversation_execution_rounds`、`conversation_files`。现有核心表保持不变，只给 `tasks` 添加两个 nullable 映射列。
 
 ## 3. Conversation
 
@@ -51,6 +52,8 @@ scope 快照不是运行时授权本身。未来 Agent 工具必须重新通过�
 `conversation_messages` 支持 `USER`、`ASSISTANT`、`SYSTEM_EVENT`，消息类型为 `TEXT`、`STATUS`、`PLAN_PROPOSAL`、`EXECUTION_RESULT`、`ERROR`、`SYSTEM_EVENT`。`sequence_number` 在会话内唯一，消息只追加，不提供静默编辑接口；可见性可通过 `status=REDACTED` 扩展。
 
 消息可以引用 `PlanVersion` 或 `ExecutionRound`，但聊天内容不是系统状态真相。用户要求、当前方案、授权和文件选择必须同步保存到 Context 或其他结构化表。
+
+PHASE I 新增 `conversation_message_file_references`，用复合主键 `(message_id, file_id)` 保存消息发送时实际引用的稳定文件、来源、角色和路径快照。读取消息时同时 JOIN `conversation_files` 返回当前路径与状态；后续 selection 或路径变化不会改写历史引用。详细解析和安全规则见 [FILE_REFERENCES](FILE_REFERENCES.md)。
 
 系统 Prompt 不作为消息 role；模型运行时配置仍属于 ModelProfile/adapter。
 
@@ -162,3 +165,26 @@ v3→v4 迁移先使用现有 SQLite backup API，再创建新表和 `tasks` nul
 ## 19. PHASE H：执行后继续对话扩展
 
 schema v6 在既有关系上做非破坏性扩展：`conversation_plan_versions.baseline_execution_round_id` 固定后续方案的执行基线，`plan_kind` 区分 `FULL/DELTA`；`conversation_files.current_category_id` 保存执行后的当前分类投影。ExecutionRound 完成后同步 current path/fingerprint/category，并推进 Context revision/file revision，但 Conversation 保持 `ACTIVE`。完整行为、安全校验与 API 见 [POST_EXECUTION_CONVERSATION](POST_EXECUTION_CONVERSATION.md)。
+
+## 20. PHASE J：Semantic Cache 关系
+
+Conversation 只引用 `ConversationFile -> files.id`；文件语义证据由同一数据库的 `file_evidence` ledger 按 `file_id + content_fingerprint + evidence_kind + evidence_schema_version` 复用。它不属于某个 Conversation 私有聊天状态，也不复制 FileProfile；`file_profiles.profile_json` 仍是完整 parser snapshot，解析后由 `EvidenceCacheService` 投影为可审计 evidence。路径变化不改变 cache key，内容 fingerprint 变化会使旧 evidence 失效。分类 decision cache 不在 PHASE J 实现。
+
+## 21. PHASE K：Session Recovery 关系
+
+schema v9 增加两个 Conversation 辅助实体：
+
+```text
+Conversation
+├── AgentTurn *
+│     ├── optional Task / PlanVersion / ExecutionRound
+│     └── retry_of_turn_id ──> AgentTurn
+└── Reconciliation *
+      └── file_state_revision + scope status + event summary
+
+PlanVersion.basis_file_state_revision ──> Context.file_state_revision
+```
+
+`AgentTurn` 是分析、重规划和执行尝试的持久化 ledger；`INTERRUPTED` 只表示上次进程未完成，不表示可以自动重放。重试与继续分析都创建新行，旧 turn 保持不可变。`Reconciliation` 记录授权 scope 是否可用，以及 stable `files.id` 对应文件的路径、指纹、缺失、冲突和新文件观察。它不复制文件内容，不改变 OperationJournal 的事实，也不操作磁盘。
+
+`ConversationContext.file_state_revision` 表示最近一次工作区事实版本；PlanVersion 保存创建时的 `basis_file_state_revision`。批准/执行前如果 scope 不可用、受影响文件指纹改变、操作日志未收敛或 plan hash 不匹配，必须返回 revalidation required。移动/重命名只更新路径 projection；内容变化通过 Phase J `file_evidence` ledger 失效旧证据。完整启动顺序和 API 见 [SESSION_RECOVERY](SESSION_RECOVERY.md)。

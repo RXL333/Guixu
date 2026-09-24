@@ -267,6 +267,9 @@ class ConversationRepository:
         metadata: dict[str, Any] | None = None,
         referenced_plan_version_id: str | None = None,
         referenced_execution_round_id: str | None = None,
+        referenced_file_ids: list[str] | None = None,
+        reference_source: str | None = None,
+        reference_role: str = "SUBJECT",
     ) -> dict[str, Any]:
         if not content.strip():
             raise ValueError("MESSAGE_CONTENT_REQUIRED")
@@ -287,27 +290,79 @@ class ConversationRepository:
             """), {"id": message_id, "conversation": conversation_id, "role": role, "content": content,
                     "sequence": sequence, "type": message_type, "plan": referenced_plan_version_id,
                     "round": referenced_execution_round_id, "metadata": canonical_json(metadata or {}), "now": now})
+            file_ids = list(dict.fromkeys(referenced_file_ids or []))
+            if file_ids:
+                if not reference_source:
+                    raise ValueError("REFERENCE_SOURCE_REQUIRED")
+                placeholders = ",".join(f":f{i}" for i in range(len(file_ids)))
+                params = {"conversation": conversation_id, **{f"f{i}": value for i, value in enumerate(file_ids)}}
+                rows = list(connection.execute(text(f"""
+                    SELECT file_id,current_known_path FROM conversation_files
+                    WHERE conversation_id=:conversation AND removed_from_scope_at IS NULL
+                      AND file_id IN ({placeholders})
+                """), params).mappings())
+                if {str(row["file_id"]) for row in rows} != set(file_ids):
+                    raise ValueError("REFERENCE_SCOPE_VIOLATION")
+                paths = {str(row["file_id"]): row["current_known_path"] for row in rows}
+                for file_id in file_ids:
+                    connection.execute(text("""
+                        INSERT INTO conversation_message_file_references(
+                          message_id,conversation_id,file_id,reference_source,reference_role,path_snapshot,created_at
+                        ) VALUES(:message,:conversation,:file,:source,:role,:path,:now)
+                    """), {"message": message_id, "conversation": conversation_id, "file": file_id,
+                            "source": reference_source, "role": reference_role, "path": paths[file_id], "now": now})
             connection.execute(text("UPDATE conversations SET last_message_at=:now,updated_at=:now WHERE id=:id"), {"id": conversation_id, "now": now})
         return self.get_message(message_id)
 
     def get_message(self, message_id: str) -> dict[str, Any]:
         with self.database.engine.connect() as connection:
             row = connection.execute(text("SELECT * FROM conversation_messages WHERE id=:id"), {"id": message_id}).mappings().first()
+            refs = self._load_message_file_references(connection, [message_id]).get(message_id, [])
         if row is None:
             raise KeyError(message_id)
-        return _decode_json(dict(row), ("metadata_json",))
+        return self._message_from_row(row, refs)
 
     def list_messages(self, conversation_id: str, *, include_redacted: bool = False) -> list[dict[str, Any]]:
         clause = "" if include_redacted else " AND status='ACTIVE'"
         with self.database.engine.connect() as connection:
             rows = connection.execute(text(f"SELECT * FROM conversation_messages WHERE conversation_id=:id{clause} ORDER BY sequence_number"), {"id": conversation_id}).mappings().all()
-        return [_decode_json(dict(row), ("metadata_json",)) for row in rows]
+            refs_by_message = self._load_message_file_references(connection, [str(row["id"]) for row in rows])
+        return [self._message_from_row(row, refs_by_message.get(str(row["id"]), [])) for row in rows]
+
+    @staticmethod
+    def _load_message_file_references(connection, message_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+        if not message_ids:
+            return {}
+        placeholders = ",".join(f":m{i}" for i in range(len(message_ids)))
+        params = {f"m{i}": value for i, value in enumerate(message_ids)}
+        rows = connection.execute(text(f"""
+            SELECT r.message_id,r.file_id,r.reference_source,r.reference_role,r.path_snapshot,
+                   cf.current_known_path,cf.state,f.basename
+            FROM conversation_message_file_references r
+            JOIN conversation_files cf ON cf.conversation_id=r.conversation_id AND cf.file_id=r.file_id
+            JOIN files f ON f.id=r.file_id
+            WHERE r.message_id IN ({placeholders}) ORDER BY r.rowid
+        """), params).mappings()
+        refs_by_message: dict[str, list[dict[str, Any]]] = {}
+        for item in rows:
+            payload = dict(item)
+            refs_by_message.setdefault(str(payload.pop("message_id")), []).append(payload)
+        return refs_by_message
+
+    @staticmethod
+    def _message_from_row(row, refs: list[dict[str, Any]]) -> dict[str, Any]:
+        result = _decode_json(dict(row), ("metadata_json",))
+        result["file_references"] = refs
+        result["referenced_file_ids"] = [str(item["file_id"]) for item in refs]
+        result["reference_source"] = refs[0]["reference_source"] if refs else None
+        return result
 
     def create_plan_version(
         self,
         conversation_id: str,
         *,
         basis_context_revision: int | None = None,
+        basis_file_state_revision: int | None = None,
         expected_context_revision: int | None = None,
         parent_plan_version_id: str | None = None,
         baseline_execution_round_id: str | None = None,
@@ -339,7 +394,7 @@ class ConversationRepository:
             now = utc_now()
             try:
                 with self.database.begin() as connection:
-                    context = connection.execute(text("SELECT context_revision,current_plan_version_id FROM conversation_contexts WHERE conversation_id=:id"), {"id": conversation_id}).first()
+                    context = connection.execute(text("SELECT context_revision,current_plan_version_id,file_state_revision FROM conversation_contexts WHERE conversation_id=:id"), {"id": conversation_id}).first()
                     if context is None:
                         raise KeyError(conversation_id)
                     current_revision = int(context[0])
@@ -348,6 +403,9 @@ class ConversationRepository:
                     basis = int(basis_context_revision or current_revision)
                     if basis > current_revision:
                         raise ValueError("PLAN_CONTEXT_STALE")
+                    file_state_basis = int(basis_file_state_revision or context[2])
+                    if file_state_basis > int(context[2]):
+                        raise ValueError("PLAN_FILE_STATE_STALE")
                     if parent_plan_version_id:
                         parent = connection.execute(text("SELECT conversation_id,version_number FROM conversation_plan_versions WHERE id=:id"), {"id": parent_plan_version_id}).first()
                         if parent is None or parent[0] != conversation_id:
@@ -384,13 +442,13 @@ class ConversationRepository:
                     connection.execute(text("""
                         INSERT INTO conversation_plan_versions(
                           id,conversation_id,version_number,parent_plan_version_id,baseline_execution_round_id,
-                          basis_context_revision,source,plan_kind,status,taxonomy_id,taxonomy_snapshot_json,plan_id,plan_hash,summary,
+                          basis_context_revision,basis_file_state_revision,source,plan_kind,status,taxonomy_id,taxonomy_snapshot_json,plan_id,plan_hash,summary,
                           change_summary_json,affected_file_count,kept_file_count,conflict_count,
                           created_by_message_id,restored_from_version_id,created_at
-                        ) VALUES(:id,:conversation,:number,:parent,:baseline,:basis,:source,:plan_kind,:status,:taxonomy,:snapshot,
+                        ) VALUES(:id,:conversation,:number,:parent,:baseline,:basis,:file_state_basis,:source,:plan_kind,:status,:taxonomy,:snapshot,
                                  :plan,:hash,:summary,:changes,:affected,:kept,:conflicts,:message,:restored,:now)
                     """), {"id": plan_version_id, "conversation": conversation_id, "number": number,
-                            "parent": parent_plan_version_id, "basis": basis, "source": source, "status": status,
+                            "parent": parent_plan_version_id, "basis": basis, "file_state_basis": file_state_basis, "source": source, "status": status,
                             "baseline": baseline_execution_round_id, "plan_kind": plan_kind,
                             "taxonomy": taxonomy_id, "snapshot": canonical_json(taxonomy_snapshot or {}),
                             "plan": plan_id, "hash": plan_hash, "summary": summary,
@@ -780,3 +838,63 @@ class ConversationRepository:
             connection.execute(text("UPDATE tasks SET conversation_id=:conversation,conversation_plan_version_id=:version WHERE id=:task"), {"conversation": conversation_id, "version": plan_version_id, "task": task_id})
             linked = connection.execute(text("SELECT id,name,status,phase,revision,conversation_plan_version_id FROM tasks WHERE id=:id"), {"id": task_id}).mappings().first()
         return dict(linked)
+
+    def relink_scope(self, conversation_id: str, scope: dict[str, Any]) -> dict[str, Any]:
+        """Replace the authorized scope only after a new explicit grant.
+
+        Matching is fingerprint based and limited to the newly authorized root;
+        the old grant is revoked rather than silently reused.
+        """
+        root = Path(str(scope["source_root"]))
+        if not root.is_dir():
+            raise ValueError("SCOPE_UNAVAILABLE")
+        now = utc_now()
+        with self.database.begin() as connection:
+            if connection.execute(text("SELECT 1 FROM conversations WHERE id=:id"), {"id": conversation_id}).first() is None:
+                raise KeyError(conversation_id)
+            connection.execute(text("""
+                UPDATE conversation_scopes SET revoked_at=:now
+                WHERE conversation_id=:conversation AND revoked_at IS NULL
+            """), {"conversation": conversation_id, "now": now})
+            self._insert_scope(connection, conversation_id, scope, now)
+            rows = list(connection.execute(text("""
+                SELECT file_id,current_fingerprint,current_known_path
+                FROM conversation_files
+                WHERE conversation_id=:conversation AND removed_from_scope_at IS NULL
+            """), {"conversation": conversation_id}).mappings())
+            candidates: dict[str, list[tuple[Path, str, int, int]]] = {}
+            if rows:
+                for path in root.rglob("*"):
+                    if not path.is_file():
+                        continue
+                    try:
+                        identity = read_identity(path)
+                    except OSError:
+                        continue
+                    candidates.setdefault(identity.sha256, []).append((path, identity.sha256, identity.size_bytes, identity.mtime_ns))
+                for row in rows:
+                    matches = candidates.get(str(row["current_fingerprint"]), [])
+                    if len(matches) != 1:
+                        connection.execute(text("""
+                            UPDATE conversation_files SET state='MISSING',last_verified_at=:now
+                            WHERE conversation_id=:conversation AND file_id=:file
+                        """), {"conversation": conversation_id, "file": row["file_id"], "now": now})
+                        continue
+                    path, fingerprint, size, mtime = matches[0]
+                    connection.execute(text("""
+                        UPDATE conversation_files SET current_known_path=:path,current_fingerprint=:fingerprint,
+                          current_size_bytes=:size,current_mtime_ns=:mtime,last_verified_at=:now,state='ACTIVE'
+                        WHERE conversation_id=:conversation AND file_id=:file
+                    """), {"conversation": conversation_id, "file": row["file_id"], "path": str(path),
+                            "fingerprint": fingerprint, "size": size, "mtime": mtime, "now": now})
+                    connection.execute(text("""
+                        UPDATE files SET current_path=:path,path_key=:key,size_bytes=:size,mtime_ns=:mtime,sha256=:fingerprint,updated_at=:now
+                        WHERE id=:file
+                    """), {"file": row["file_id"], "path": str(path), "key": str(path).casefold(),
+                            "size": size, "mtime": mtime, "fingerprint": fingerprint, "now": now})
+            connection.execute(text("""
+                UPDATE conversation_contexts SET file_state_revision=file_state_revision+1,
+                  context_revision=context_revision+1,privacy_scope_json=:privacy,updated_at=:now
+                WHERE conversation_id=:conversation
+            """), {"conversation": conversation_id, "privacy": canonical_json(scope.get("authorization", {})), "now": now})
+        return self.get(conversation_id)
