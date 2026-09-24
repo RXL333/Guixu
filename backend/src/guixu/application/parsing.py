@@ -41,6 +41,16 @@ class ParsingService:
         cached = self.repository.load_profile(file_id, cache_key)
         if cached is not None:
             cached = with_file_context(cached, path)
+            # `file_profiles` intentionally stores the normalized profile, not
+            # the parser's derivative paths.  A profile may therefore be
+            # reused across tasks through the content-addressed cache while
+            # its image thumbnail list is empty.  Rehydrate only the
+            # app-owned derivative paths from ParserRunner's disk cache; do
+            # not replace the profile or run any semantic fallback.
+            if cached.profile.modality == "image" and not cached.cache_artifacts:
+                hydrated = self.runner.parse(path, file_id, preset)
+                if hydrated.cache_artifacts:
+                    cached = cached.model_copy(update={"cache_artifacts": hydrated.cache_artifacts})
             self.repository.store_profile(cached, cache_key, option_digest)
             if self.evidence_cache is not None:
                 self.evidence_cache.sync_profile(file_id=file_id, content_fingerprint=content_hash,

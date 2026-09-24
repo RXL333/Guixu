@@ -583,12 +583,25 @@ def create_app(
         if not payload.acknowledge_privacy:
             return error_response(409, "PRIVACY_CONSENT_REQUIRED", "首次分析前需要确认内容授权。", request.state.request_id)
         try:
-            resolved = reference_resolver.resolve(
-                conversation_id, payload.content,
-                selected_file_ids=payload.selected_file_ids,
-                focused_file_id=payload.focused_file_id,
-                active_category_id=payload.active_category_id,
-            )
+            # In a brand-new Conversation, phrases such as “这些照片” refer
+            # to the newly authorized folder, not to a prior message's file
+            # set. Keep deterministic file-reference validation for explicit
+            # selections/focus/filenames, while allowing the first organize
+            # request to establish the initial scope through the scanner.
+            first_context = conversations.get_context(conversation_id)
+            is_first_organization = not first_context.get("current_plan_version_id") and not first_context.get("current_execution_round_id")
+            try:
+                resolved = reference_resolver.resolve(
+                    conversation_id, payload.content,
+                    selected_file_ids=payload.selected_file_ids,
+                    focused_file_id=payload.focused_file_id,
+                    active_category_id=payload.active_category_id,
+                )
+            except ReferenceResolutionError as exc:
+                if not (is_first_organization and exc.code == "REFERENCE_AMBIGUOUS" and
+                        not payload.selected_file_ids and not payload.focused_file_id):
+                    raise
+                resolved = {"source": "NONE", "file_ids": [], "missing": [], "changed": []}
             if resolved.get("missing"):
                 raise ReferenceResolutionError("REFERENCE_FILE_MISSING", details={"missing": resolved["missing"]})
             if resolved.get("changed"):

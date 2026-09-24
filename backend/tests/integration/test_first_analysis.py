@@ -70,7 +70,7 @@ def test_first_turn_scans_real_evidence_and_only_creates_full_preview(project_ro
         }).json()["data"]
         response = client.post(f"/api/v1/conversations/{conversation['id']}/turns",
                                headers=_headers(token), json={
-                                   "content": "按照文件内容整理", "acknowledge_privacy": True,
+                                   "content": "帮我按照内容整理这些文件，不要分得太细。", "acknowledge_privacy": True,
                                })
         assert response.status_code == 200, response.text
         result = response.json()["data"]

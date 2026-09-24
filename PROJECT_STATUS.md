@@ -6,6 +6,8 @@
 
 - 已修复“发送消息无反应”：此前前端只调用 Message API 保存用户消息，后端明确不触发分析；现在首次发送会调用真实 `POST /api/v1/conversations/{id}/turns`，执行扫描、内容证据解析、AI 规划、AI 分类和只读方案编译。
 - 首次分析生成 `PlanVersion v1`（`FULL / PROPOSED`，无 baseline execution），助手回复包含实际文件数量、分类数量和保留/冲突计数；不会移动或修改磁盘文件。
+- 已用本机启用的 DeepSeek profile 在隔离目录完成真实 smoke：5 个 JPG → 真实视觉 planner/classifier → 4 个类别、5 个受影响文件、唯一 v1 预览；`model_calls` 为 planning/classification 各 1 次，5 条云端视觉 evidence，磁盘 SHA-256/路径不变，无 ExecutionRound。
+- 修复了首次自然语言“这些文件”的旧引用歧义、旧 `model_calls.purpose` CHECK 兼容映射，以及跨任务画像复用时图片缩略图路径水合。
 - 首次流程需要有效目录授权、已启用模型和隐私确认；无能力或授权时返回明确错误，不使用本地语义 fallback。已有方案/执行记录继续走后续 refinement。
 - 专项验证：后端首次分析 + AI-only 闭环 3 passed；前端 Conversation Workspace 14 passed；typecheck/build 均 exit 0。报告：[phase-f-first-analysis-audit](artifacts/reports/phase-f-first-analysis-audit.md)、[real-phase-f-first-analysis-smoke](artifacts/reports/real-phase-f-first-analysis-smoke.md)。
 

@@ -289,12 +289,19 @@ class ModelGateway:
 
     def _record_attempts(self, task_id: str, model: dict[str, Any], purpose: str, status: str, response: ModelResponse | None, attempts: int, latency: int, error: str | None) -> None:
         request_hash = response.request_hash if response else hashlib.sha256(f"{task_id}:{purpose}:{uuid.uuid4()}".encode()).hexdigest()
+        # `model_calls.purpose` is a deliberately small, legacy-compatible
+        # audit enum.  Keep the richer runtime operation names in code while
+        # recording them under the existing database vocabulary.
+        db_purpose = {
+            "taxonomy_planner": "planning",
+            "classification_batch": "classification",
+        }.get(purpose, purpose)
         with self.database.begin() as connection:
             for index in range(attempts):
                 final = index == attempts - 1
                 connection.execute(text("""INSERT INTO model_calls(id,task_id,provider_profile_id,purpose,model_id,request_hash,response_status,input_tokens,output_tokens,estimated_cost_micros,currency,latency_ms,error_code,created_at)
                   VALUES(:id,:task,:profile,:purpose,:model,:hash,:status,:input,:output,NULL,NULL,:latency,:error,:now)"""),
-                  {"id":str(uuid.uuid4()),"task":task_id,"profile":model["id"],"purpose":purpose,"model":model["model_id"],"hash":request_hash,
+                  {"id":str(uuid.uuid4()),"task":task_id,"profile":model["id"],"purpose":db_purpose,"model":model["model_id"],"hash":request_hash,
                    "status":status if final else "error","input":response.input_tokens if final and response else None,"output":response.output_tokens if final and response else None,
                    "latency":latency if final else 0,"error":error if final else "RETRY","now":utc_now()})
 
