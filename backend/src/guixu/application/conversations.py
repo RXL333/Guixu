@@ -85,6 +85,9 @@ class ConversationService:
     def attach_file_to_conversation(self, conversation_id: str, file_id: str) -> dict[str, Any]:
         return self.repository.attach_file(conversation_id, file_id)
 
+    def attach_files_to_conversation(self, conversation_id: str, file_ids: list[str]) -> list[dict[str, Any]]:
+        return self.repository.attach_files(conversation_id, file_ids)
+
     def list_conversation_files(self, conversation_id: str, *, include_removed: bool = False) -> list[dict[str, Any]]:
         self.repository.get(conversation_id)
         return self.repository.list_conversation_files(conversation_id, include_removed=include_removed)

@@ -10,9 +10,11 @@ output/playwright/
 .playwright-cli/
 artifacts/release/
 artifacts/release-phase-m/
+artifacts/release-*/
 artifacts/build/
 artifacts/runtime-ui-qa/
 artifacts/runtime-undo-ui/
 *.sqlite3
 *.sqlite3-shm
 *.sqlite3-wal
+scripts/__pycache__/

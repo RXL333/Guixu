@@ -71,13 +71,13 @@ def test_dt07_database_version_and_consistent_backup(project_root: Path, tmp_pat
     database = Database(tmp_path / "data" / "app.sqlite3", project_root / "contracts" / "database.sql")
     database.initialize()
     with database.engine.connect() as connection:
-        assert connection.exec_driver_sql("SELECT version FROM schema_metadata WHERE singleton=1").scalar_one() == 10
+        assert connection.exec_driver_sql("SELECT version FROM schema_metadata WHERE singleton=1").scalar_one() == 11
     backup = database.backup_for_migration()
     assert backup.is_file() and backup.parent.name == "backups"
     copy = sqlite3.connect(backup)
     try:
         assert copy.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-        assert copy.execute("SELECT version FROM schema_metadata WHERE singleton=1").fetchone()[0] == 10
+        assert copy.execute("SELECT version FROM schema_metadata WHERE singleton=1").fetchone()[0] == 11
     finally:
         copy.close()
         database.close()

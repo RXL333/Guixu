@@ -77,17 +77,18 @@ function useExample(prompt: string) {
   else store.notice = '选择文件夹后，这条整理要求会填入输入框。'
 }
 function statusText() {
+  if (store.chatBusy) return 'AI 正在回复当前问题…'
   if (store.analysisBusy) return '正在扫描文件、分析内容并生成整理预览…'
   if (store.executionBusy) return '正在整理文件…'
   if (store.refinementBusy) return `正在检查${store.affectedScope?.affected_category_ids?.length ? '本轮影响范围' : '当前文件状态'}…`
   if (store.notice) return store.notice
   if (store.loading) return '正在读取会话状态…'
-  if (store.currentConversation && !store.messages.length) return '已准备好记录你的整理要求。'
+  if (store.currentConversation && !store.messages.length) return '可以先和 AI 讨论需求；说“开始整理”后再生成方案。'
   return '消息、方案和执行记录都会保存在当前会话中。'
 }
 function statusTone(): 'idle' | 'loading' | 'success' | 'error' {
   if (store.error) return 'error'
-  if (store.loading || store.analysisBusy || store.refinementBusy || store.executionBusy) return 'loading'
+  if (store.loading || store.chatBusy || store.analysisBusy || store.refinementBusy || store.executionBusy) return 'loading'
   if (store.notice) return 'success'
   return 'idle'
 }
@@ -126,8 +127,8 @@ watch(() => route.params.id, loadForRoute)
         <template v-else-if="store.currentConversation">
           <div v-if="!store.messages.length" class="conversation-empty-state">
             <div class="empty-state-icon"><Bot :size="22" /></div>
-            <h2>告诉归序，你希望怎样整理这个文件夹。</h2>
-            <p>描述你的整理要求。文件移动前，你可以先查看并确认方案。</p>
+            <h2>先和归序聊聊你希望怎样整理。</h2>
+            <p>它会回答问题并记住讨论。你说“开始整理”后生成方案；文件移动前还需你确认。</p>
           </div>
           <div v-else class="message-list" aria-live="polite">
             <div class="message-date-label">当前会话</div>

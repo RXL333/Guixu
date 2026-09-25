@@ -55,9 +55,9 @@ class SqliteOperationJournal:
                     INSERT INTO operations(
                       id,plan_id,file_id,ordinal,action,source_path,target_path,target_key,
                       source_snapshot_json,expected_sha256,state,reverses_operation_id,
-                      companion_group_id,updated_at
+                      companion_group_id,reason,updated_at
                     ) VALUES(:id,:plan,:file,:ordinal,:action,:source,:target,:target_key,
-                      :snapshot,:sha,'PLANNED',:reverses,:group_id,:now)
+                      :snapshot,:sha,'PLANNED',:reverses,:group_id,:reason,:now)
                     """),
                     {
                         "id": operation.operation_id, "plan": plan.plan_id, "file": operation.file_id,
@@ -67,7 +67,7 @@ class SqliteOperationJournal:
                         "snapshot": canonical_json(asdict(operation.source_identity)),
                         "sha": operation.expected_sha256,
                         "reverses": operation.reverses_operation_id,
-                        "group_id": operation.companion_group_id, "now": utc_now(),
+                        "group_id": operation.companion_group_id, "reason": operation.reason, "now": utc_now(),
                     },
                 )
 
@@ -281,7 +281,8 @@ class SqliteOperationJournal:
                 operation_id=row["id"], file_id=row["file_id"], ordinal=row["ordinal"], action=row["action"],
                 source_path=row["source_path"], target_path=row["target_path"], target_key=row["target_key"],
                 source_identity=identity, expected_sha256=row["expected_sha256"] or identity.sha256,
-                companion_group_id=row["companion_group_id"], reverses_operation_id=row["reverses_operation_id"],
+                companion_group_id=row["companion_group_id"], reason=row["reason"],
+                reverses_operation_id=row["reverses_operation_id"],
             ))
         return ExecutionPlan(
             plan_id=plan["id"], task_id=plan["task_id"], version=plan["version"],

@@ -11,7 +11,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import Connection
 
 
-CURRENT_SCHEMA_VERSION = 10
+CURRENT_SCHEMA_VERSION = 11
 
 
 def utc_now() -> str:
@@ -63,7 +63,7 @@ class Database:
             self._migrate(int(version))
 
     def _migrate(self, version: int) -> None:
-        if version not in {1, 2, 3, 4, 5, 6, 7, 8, 9}:
+        if version not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}:
             raise RuntimeError("DATABASE_MIGRATION_REQUIRED")
         self.backup_for_migration()
         with self.engine.begin() as connection:
@@ -133,6 +133,30 @@ class Database:
             if version <= 9:
                 self._ensure_conversational_undo_schema(connection)
                 connection.exec_driver_sql("UPDATE schema_metadata SET version=10,updated_at=? WHERE singleton=1", (utc_now(),))
+            if version <= 10:
+                self._ensure_operation_reason_schema(connection)
+                connection.exec_driver_sql("UPDATE schema_metadata SET version=11,updated_at=? WHERE singleton=1", (utc_now(),))
+
+    @staticmethod
+    def _ensure_operation_reason_schema(connection: Connection) -> None:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(operations)")}
+        if "reason" not in columns:
+            connection.exec_driver_sql("ALTER TABLE operations ADD COLUMN reason TEXT")
+            # Older skip/noop reasons were omitted from the journal. Recover only
+            # deterministic cases. The plan hash still rejects any wrong guess.
+            connection.exec_driver_sql("""
+                UPDATE operations SET reason='UNSUPPORTED_OR_UNDECIDED'
+                WHERE action='skip' AND target_path IS NULL
+            """)
+            connection.exec_driver_sql("""
+                UPDATE operations SET reason='REPORT_ONLY'
+                WHERE action='noop' AND plan_id IN
+                  (SELECT id FROM plans WHERE operation_mode='report_only')
+            """)
+            connection.exec_driver_sql("""
+                UPDATE operations SET reason='SOURCE_EQUALS_TARGET'
+                WHERE action='noop' AND reason IS NULL
+            """)
 
     @staticmethod
     def _ensure_conversational_undo_schema(connection: Connection) -> None:

@@ -309,6 +309,8 @@ export interface ConversationFile {
   current_category_id?: string | null
 }
 
+export interface SourceFile { path: string; size_bytes: number; mtime_ns: number }
+
 export interface AffectedScope {
   scope_type: 'LOCAL'|'PARTIAL'|'GLOBAL'
   affected_category_ids: string[]
@@ -552,6 +554,9 @@ export const api = {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
   }),
   conversationMessages: (id: string) => request<ConversationMessage[]>(`/api/v1/conversations/${id}/messages`),
+  chatConversation: (id: string, content: string, selected_file_ids: string[] = []) => request<{ user_message: ConversationMessage; assistant_message: ConversationMessage }>(`/api/v1/conversations/${id}/chat`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ content, selected_file_ids }),
+  }),
   appendConversationMessage: (id: string, payload: { role: ConversationMessageRole; content: string; message_type?: ConversationMessageType; metadata?: Record<string, unknown>; referenced_plan_version_id?: string | null; referenced_execution_round_id?: string | null; selected_file_ids?: string[]; focused_file_id?: string | null; active_category_id?: string | null; expected_context_revision?: number; reference_role?: 'SUBJECT'|'RESULT'|'CONTEXT' }) =>
     request<ConversationMessage>(`/api/v1/conversations/${id}/messages`, {
       method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
@@ -565,6 +570,7 @@ export const api = {
     method: 'PATCH', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ expected_revision, changes }),
   }),
   conversationFiles: (id: string) => request<ConversationFile[]>(`/api/v1/conversations/${id}/files`),
+  sourceFiles: (id: string) => request<{ files: SourceFile[]; truncated: boolean }>(`/api/v1/conversations/${id}/source-files`),
   conversationPlans: (id: string) => request<ConversationPlanVersion[]>(`/api/v1/conversations/${id}/plans`),
   conversationPlanVersions: (id: string, limit = 20) => request<ConversationPlanVersion[]>(`/api/v1/conversations/${id}/plan-versions?limit=${limit}`),
   conversationPlanVersion: (id: string, versionId: string) => request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/${versionId}`),

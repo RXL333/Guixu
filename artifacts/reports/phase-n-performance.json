@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "test_type": "REAL_FILESYSTEM_PERFORMANCE",
+  "environment": {
+    "platform": "Windows",
+    "logical_cpu_count": 32,
+    "memory_total_bytes": 34024747008
+  },
+  "results": [
+    {
+      "requested_files": 500,
+      "observed_files": 501,
+      "scan_seconds": 0.09417699999175966,
+      "db_persist_seconds": 0.040918300044722855,
+      "conversation_attach_seconds": 0.13114790001418442,
+      "conversation_open_seconds": 0.0026582999853417277,
+      "workspace_projection_seconds": 0.031041799928061664,
+      "workspace_reconcile_seconds": 0.320104599930346,
+      "cache_lookup_total_seconds": 0.02906009997241199,
+      "cache_lookup_median_ms": 0.05609996151179075,
+      "rss_before_bytes": 87109632,
+      "rss_after_bytes": 99209216,
+      "rss_delta_bytes": 12099584,
+      "sqlite_integrity_check": "ok"
+    },
+    {
+      "requested_files": 1000,
+      "observed_files": 1001,
+      "scan_seconds": 0.21685909992083907,
+      "db_persist_seconds": 0.07918050000444055,
+      "conversation_attach_seconds": 0.2559981000376865,
+      "conversation_open_seconds": 0.004855399951338768,
+      "workspace_projection_seconds": 0.061300600063987076,
+      "workspace_reconcile_seconds": 0.6443242999957874,
+      "cache_lookup_total_seconds": 0.05742630024906248,
+      "cache_lookup_median_ms": 0.055699958465993404,
+      "rss_before_bytes": 100343808,
+      "rss_after_bytes": 108560384,
+      "rss_delta_bytes": 8216576,
+      "sqlite_integrity_check": "ok"
+    },
+    {
+      "requested_files": 5000,
+      "observed_files": 5001,
+      "scan_seconds": 0.9329336999217048,
+      "db_persist_seconds": 0.41108340001665056,
+      "conversation_attach_seconds": 1.2980001999530941,
+      "conversation_open_seconds": 0.041638200054876506,
+      "workspace_projection_seconds": 0.31955299992114305,
+      "workspace_reconcile_seconds": 3.4093449999345466,
+      "cache_lookup_total_seconds": 0.283560200012289,
+      "cache_lookup_median_ms": 0.05549995694309473,
+      "rss_before_bytes": 106758144,
+      "rss_after_bytes": 150302720,
+      "rss_delta_bytes": 43544576,
+      "sqlite_integrity_check": "ok"
+    }
+  ],
+  "limitations": [
+    "Backend storage and reconciliation benchmark; desktop WebView render/FPS is not measured.",
+    "Generated small text fixtures do not represent large-media decode cost."
+  ]
+}

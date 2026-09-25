@@ -8,7 +8,7 @@ CREATE TABLE schema_metadata (
  version INTEGER NOT NULL CHECK(version>=1),
  updated_at TEXT NOT NULL
 );
-INSERT INTO schema_metadata(singleton,version,updated_at) VALUES(1,10,datetime('now'));
+INSERT INTO schema_metadata(singleton,version,updated_at) VALUES(1,11,datetime('now'));
 CREATE TABLE settings (
  key TEXT PRIMARY KEY,
  value_json TEXT NOT NULL CHECK(json_valid(value_json)),
@@ -207,7 +207,7 @@ CREATE TABLE operations (
  state TEXT NOT NULL CHECK(state IN ('PLANNED','PREPARED','COPYING','TEMP_WRITTEN','VERIFIED','PUBLISHED','SOURCE_REMOVED','COMMITTED','SKIPPED','FAILED','CONFLICT','UNDO_PREPARED','UNDONE','UNDO_CONFLICT')),
  reverses_operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,
  actual_target_path TEXT, result_sha256 TEXT CHECK(result_sha256 IS NULL OR length(result_sha256)=64),
- error_code TEXT, companion_group_id TEXT, updated_at TEXT NOT NULL,
+ error_code TEXT, companion_group_id TEXT, reason TEXT, updated_at TEXT NOT NULL,
  CHECK(action <> 'recycle_copy' OR (reverses_operation_id IS NOT NULL AND expected_sha256 IS NOT NULL)),
  CHECK(action NOT IN ('move','copy') OR (target_path IS NOT NULL AND target_key IS NOT NULL AND expected_sha256 IS NOT NULL)),
  UNIQUE(plan_id,file_id), UNIQUE(plan_id,target_key), UNIQUE(plan_id,ordinal)

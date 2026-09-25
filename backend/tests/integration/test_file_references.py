@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import uuid
 from pathlib import Path
 
 import pytest
@@ -9,9 +10,11 @@ from sqlalchemy import text
 
 from guixu.application.file_references import ReferenceResolutionError, ReferenceResolver
 from guixu.application.post_execution import AffectedScopeResolver, WorkspaceStateService
+from guixu.domain.settings import TaskSettings
 from guixu.infrastructure.db.conversation_repository import ConversationRepository
-from guixu.infrastructure.db.database import Database
-from guixu.infrastructure.db.repository import canonical_json
+from guixu.infrastructure.db.database import Database, utc_now
+from guixu.infrastructure.db.repository import TaskRepository, canonical_json
+from guixu.infrastructure.filesystem.identity import read_identity
 
 
 def fixture_service(project_root: Path, tmp_path: Path):
@@ -29,6 +32,20 @@ def test_ui_selection_focus_snapshot_and_conversation_isolation(project_root: Pa
     selected = [file_ids["building-0.jpg"], file_ids["building-1.jpg"]]
     result = resolver.resolve(conversation_id, "这些放到风景", selected_file_ids=selected)
     assert result["source"] == "UI_SELECTION" and result["file_ids"] == selected
+    selected_five = [
+        file_ids["building-0.jpg"], file_ids["building-1.jpg"], file_ids["building-2.jpg"],
+        file_ids["landscape-0.jpg"], file_ids["landscape-1.jpg"],
+    ]
+    five_result = resolver.resolve(
+        conversation_id, "这些放到毕业旅行，其他不要动", selected_file_ids=selected_five,
+    )
+    assert five_result["source"] == "UI_SELECTION" and five_result["file_ids"] == selected_five
+    workspace = WorkspaceStateService(database, repository).current_state(conversation_id)
+    five_scope = AffectedScopeResolver().resolve(
+        "这些放到毕业旅行，其他不要动", workspace, explicit_file_ids=selected_five,
+    )
+    assert five_scope["scope_type"] == "EXPLICIT"
+    assert five_scope["candidate_file_ids"] == selected_five
     focused = resolver.resolve(conversation_id, "这个别动", focused_file_id=selected[0])
     assert focused["source"] == "FOCUSED_FILE" and focused["file_ids"] == selected[:1]
 
@@ -81,6 +98,45 @@ def test_recent_message_exact_duplicate_ambiguity_and_priority(project_root: Pat
         connection.execute(text("DELETE FROM conversation_message_file_references"))
     with pytest.raises(ReferenceResolutionError, match="REFERENCE_AMBIGUOUS"):
         resolver.resolve(conversation_id, "这些都放旅行")
+    database.close()
+
+
+def test_bulk_file_attachment_is_atomic_and_rejects_out_of_scope_ids(project_root: Path, tmp_path: Path):
+    database, repository, _, conversation_id, _, _, file_ids, root, _ = fixture_service(project_root, tmp_path)
+    outside_root = tmp_path / "other-conversation"
+    outside_root.mkdir()
+    outside_file = outside_root / "private.txt"
+    outside_file.write_text("not authorized by this conversation", encoding="utf-8")
+    identity = read_identity(outside_file)
+    other_task = TaskRepository(database).create(
+        "outside scope fixture", TaskSettings(operation_mode="report_only"), {}
+    )
+    scope_id = str(uuid.uuid4())
+    now = utc_now()
+    with database.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO task_scopes(id,task_id,kind,source_root,destination_root,display_name,settings_json)
+            VALUES(:id,:task,'whole_tree',:root,:root,'outside','{}')
+        """), {"id": scope_id, "task": other_task["id"], "root": str(outside_root)})
+        connection.execute(text("""
+            INSERT INTO files(id,task_id,scope_id,original_path,current_path,path_key,relative_path,basename,
+              extension,modality,mime,size_bytes,mtime_ns,volume_id,filesystem_file_id,sha256,scan_status,
+              metadata_json,created_at,updated_at)
+            VALUES('outside-file',:task,:scope,:path,:path,:key,'private.txt','private.txt','.txt','text',
+              'text/plain',:size,:mtime,:volume,:fsid,:sha,'eligible','{}',:now,:now)
+        """), {"task": other_task["id"], "scope": scope_id, "path": str(outside_file),
+                "key": str(outside_file).casefold(), "size": identity.size_bytes, "mtime": identity.mtime_ns,
+                "volume": identity.volume_id, "fsid": identity.file_id, "sha": identity.sha256, "now": now})
+
+    before_ids = {item["file_id"] for item in repository.list_conversation_files(conversation_id)}
+    with pytest.raises(ValueError, match="REFERENCE_SCOPE_VIOLATION"):
+        repository.attach_files(conversation_id, [file_ids["building-0.jpg"], "outside-file"])
+    after_ids = {item["file_id"] for item in repository.list_conversation_files(conversation_id)}
+    assert after_ids == before_ids
+    assert "outside-file" not in after_ids
+    attached = repository.attach_files(conversation_id, [file_ids["building-0.jpg"], file_ids["building-0.jpg"]])
+    assert len(attached) == 1 and attached[0]["file_id"] == file_ids["building-0.jpg"]
+    assert outside_file.read_text(encoding="utf-8") == "not authorized by this conversation"
     database.close()
 
 

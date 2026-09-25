@@ -47,6 +47,11 @@ class WorkspaceReconciliationService:
                 ORDER BY cf.added_at,cf.id
             """), {"conversation": conversation_id}).mappings())
 
+        # Only an entirely unindexed conversation lacks a baseline. A partially
+        # indexed task must still detect files added outside the application.
+        if not known and not context.get("current_plan_version_id") and not context.get("current_execution_round_id"):
+            detect_new = False
+
         roots = [Path(str(item["source_root"])) for item in scopes]
         available_roots = [root for root in roots if root.is_dir()]
         scope_status = "AVAILABLE" if roots and len(available_roots) == len(roots) else "SCOPE_UNAVAILABLE"
@@ -365,6 +370,9 @@ class SessionRecoveryService:
         self.validation = RecoveryValidationService(database, repository, self.workspace)
 
     def audit_startup(self) -> dict[str, int]:
+        from guixu.application.pre_execution_replan_guard import recover_interrupted_pre_execution_replans
+
+        restored_replans = recover_interrupted_pre_execution_replans(self.database)
         now = utc_now()
         with self.database.begin() as connection:
             turns = connection.execute(text("""
@@ -396,7 +404,8 @@ class SessionRecoveryService:
                   SELECT id FROM conversation_execution_rounds WHERE status='RECOVERY_REQUIRED'
                 )
             """))
-        return {"agent_turns_interrupted": int(turns or 0), "execution_rounds_recovery_required": rounds}
+        return {"agent_turns_interrupted": int(turns or 0), "execution_rounds_recovery_required": rounds,
+                "pre_execution_replans_rolled_back": restored_replans}
 
     def status(self, conversation_id: str, *, reconcile: bool = False) -> dict[str, Any]:
         conversation = self.repository.get(conversation_id)

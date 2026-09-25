@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -8,6 +10,8 @@ from sqlalchemy import text
 
 from guixu.application.conversational_undo import ConversationalUndoService, UndoError
 from guixu.application.plan_compiler import PlanCompiler
+from guixu.application.recovery import RecoveryService
+from guixu.application.session_recovery import SessionRecoveryService
 from guixu.domain.plans import PlanCandidate
 from guixu.domain.settings import TaskSettings
 from guixu.infrastructure.db.conversation_repository import ConversationRepository
@@ -97,6 +101,54 @@ def test_latest_undo_requires_preview_and_preserves_history(project_root: Path, 
     assert conversations.get_context(conversation_id)["file_state_revision"] == before_revision + 1
     for file_id in file_ids:
         assert Path(conversations.get_conversation_file(conversation_id, file_id)["current_known_path"]).parent == source
+    database.close()
+
+
+def test_conversation_soft_delete_preserves_disk_journal_and_undo(project_root: Path, tmp_path: Path):
+    database, _, conversations, journal, undo_service, conversation_id, execution, _, source, output = _environment(
+        project_root, tmp_path, count=2
+    )
+    workspace = source.parent
+
+    def disk_snapshot():
+        return sorted(
+            (path.relative_to(workspace).as_posix(), read_identity(path).sha256)
+            for path in workspace.rglob("*")
+            if path.is_file()
+        )
+
+    before_disk = disk_snapshot()
+    with database.engine.connect() as connection:
+        before_journal = connection.execute(text("""
+            SELECT COUNT(*), SUM(CASE WHEN state='COMMITTED' THEN 1 ELSE 0 END)
+            FROM operations
+        """)).one()
+        before_events = connection.execute(text("SELECT COUNT(*) FROM operation_events")).scalar_one()
+    assert before_disk and before_journal[0] == before_journal[1] > 0 and before_events > 0
+
+    deleted = conversations.soft_delete(conversation_id)
+    assert deleted["status"] == "DELETED" and deleted["deleted_at"]
+    assert conversations.list("active") == []
+    assert [item["id"] for item in conversations.list("deleted")] == [conversation_id]
+    assert disk_snapshot() == before_disk
+    with database.engine.connect() as connection:
+        after_journal = connection.execute(text("""
+            SELECT COUNT(*), SUM(CASE WHEN state='COMMITTED' THEN 1 ELSE 0 END)
+            FROM operations
+        """)).one()
+        after_events = connection.execute(text("SELECT COUNT(*) FROM operation_events")).scalar_one()
+        retained_round = connection.execute(text(
+            "SELECT COUNT(*) FROM conversation_execution_rounds WHERE id=:id"
+        ), {"id": execution["id"]}).scalar_one()
+    assert tuple(after_journal) == tuple(before_journal)
+    assert after_events == before_events and retained_round == 1
+
+    restored = conversations.restore(conversation_id)
+    assert restored["status"] == "ACTIVE"
+    preview = undo_service.request(conversation_id, user_message="撤销刚才那次整理。")["undo_plan"]
+    assert preview["status"] == "WAITING_FOR_APPROVAL"
+    assert disk_snapshot() == before_disk
+    assert output.exists()
     database.close()
 
 
@@ -210,3 +262,123 @@ def test_real_twenty_file_conversational_undo_smoke(project_root: Path, tmp_path
     assert len(list((root / "新分类").glob("*.txt"))) == 2
     assert len(conversations.list_execution_rounds(conversation_id)) == 4
     database.close()
+
+
+def test_undo_process_crash_after_four_restores_resumes_six_without_replay(project_root: Path, tmp_path: Path):
+    database, _, conversations, journal, service, conversation_id, forward_round, _, source, output = _environment(
+        project_root, tmp_path, 10
+    )
+    preview = service.request(conversation_id, user_message="撤销刚才那次整理。")["undo_plan"]
+    service.approve(conversation_id, preview["id"], preview["plan_hash"])
+    database_path = tmp_path / "data" / "app.sqlite3"
+    helper = project_root / "backend" / "tests" / "helpers" / "crash_conversation_undo.py"
+    database.close()
+
+    crashed = subprocess.run(
+        [sys.executable, str(helper), str(project_root), str(database_path), conversation_id,
+         preview["id"], preview["plan_hash"], "4"],
+        cwd=project_root / "backend", check=False, timeout=30,
+    )
+    assert crashed.returncode == 91
+
+    reopened = Database(database_path, project_root / "contracts" / "database.sql")
+    conversations = ConversationRepository(reopened)
+    journal = SqliteOperationJournal(reopened)
+    recovery = SessionRecoveryService(reopened, conversations, journal)
+    startup = recovery.audit_startup()
+    interrupted = ConversationalUndoService(reopened, journal).get(preview["id"])
+    assert startup["execution_rounds_recovery_required"] == 1
+    assert interrupted["status"] == "RECOVERY_REQUIRED"
+    undo_round = conversations.get_execution_round(interrupted["execution_round_id"])
+    assert undo_round["status"] == "RECOVERY_REQUIRED"
+    states = [row["state"] for row in journal.operation_results(interrupted["core_plan_id"])]
+    assert states.count("UNDONE") == 4
+    assert states.count("PLANNED") == 6
+    assert len(list(source.iterdir())) == 4
+    assert len(list(output.iterdir())) == 6
+
+    resumed = ConversationalUndoService(reopened, journal).execute(
+        conversation_id, preview["id"], preview["plan_hash"]
+    )
+    assert resumed["status"] == "COMPLETED"
+    assert len(list(source.iterdir())) == 10
+    assert not any(output.iterdir())
+    final_states = [row["state"] for row in journal.operation_results(interrupted["core_plan_id"])]
+    assert final_states.count("UNDONE") == 10
+    assert conversations.get_execution_round(forward_round["id"])["undo_state"] == "FULLY_UNDONE"
+    assert len(conversations.list_execution_rounds(conversation_id)) == 2
+    reopened.close()
+
+
+def test_execution_process_crash_after_eight_moves_recovers_remaining_twelve(project_root: Path, tmp_path: Path):
+    database, tasks, conversations, journal, _, conversation_id, first_round, file_ids, _, output = _environment(
+        project_root, tmp_path, 20
+    )
+    root = output.parent
+    task_id = journal.load_plan(first_round["execution_plan_id"]).task_id
+    task = tasks.get(task_id)
+    candidates = [
+        PlanCandidate(file_id, Path(tasks.get_file(task_id, file_id)["current_path"]), root, root,
+                      "再次整理", ("再次整理",), "text")
+        for file_id in file_ids
+    ]
+    plan = PlanCompiler().compile(task_id=task_id, version=2, operation_mode="preview_move",
+                                  settings_hash=task["settings_hash"], taxonomy_hashes=("b" * 64,),
+                                  candidates=candidates, max_depth=2)
+    journal.persist_plan(plan, task["revision"])
+    journal.approve(plan.plan_id, plan.plan_hash, task["revision"])
+    context = conversations.get_context(conversation_id)
+    current_version = conversations.get_current_plan_version(conversation_id)
+    version = conversations.create_plan_version(
+        conversation_id, expected_context_revision=context["context_revision"],
+        basis_context_revision=context["context_revision"], basis_file_state_revision=context["file_state_revision"],
+        parent_plan_version_id=current_version["id"], baseline_execution_round_id=first_round["id"],
+        plan_kind="DELTA", plan_id=plan.plan_id, plan_hash=plan.plan_hash,
+        status="PROPOSED", summary="第二轮整理", affected_file_count=20,
+    )
+    context = conversations.get_context(conversation_id)
+    conversations.approve_plan_version(
+        conversation_id, version["id"], expected_context_revision=context["context_revision"],
+        plan_hash=plan.plan_hash, authorization={"surface": "test"},
+    )
+    context = conversations.get_context(conversation_id)
+    execution_round = conversations.request_execution(
+        conversation_id, version["id"], expected_context_revision=context["context_revision"],
+        plan_hash=plan.plan_hash, status="RUNNING", affected_file_count=20,
+    )
+    database_path = tmp_path / "data" / "app.sqlite3"
+    helper = project_root / "backend" / "tests" / "helpers" / "crash_operation.py"
+    database.close()
+
+    crashed = subprocess.run(
+        [sys.executable, str(helper), str(project_root), str(database_path), plan.plan_id, "COMMITTED", "8"],
+        cwd=project_root / "backend", check=False, timeout=30,
+    )
+    assert crashed.returncode == 91
+
+    reopened = Database(database_path, project_root / "contracts" / "database.sql")
+    conversations = ConversationRepository(reopened)
+    journal = SqliteOperationJournal(reopened)
+    startup = SessionRecoveryService(reopened, conversations, journal).audit_startup()
+    assert startup["execution_rounds_recovery_required"] == 1
+    interrupted = conversations.get_execution_round(execution_round["id"])
+    assert interrupted["status"] == "RECOVERY_REQUIRED"
+    operations = journal.operation_results(plan.plan_id)
+    assert sum(row["state"] == "COMMITTED" for row in operations) == 8
+    assert sum(row["state"] == "PLANNED" for row in operations) == 12
+    assert len(list((root / "再次整理").glob("*.txt"))) == 8
+    assert len(list(output.glob("*.txt"))) == 12
+
+    recovered = RecoveryService(journal).recover(journal.load_plan(plan.plan_id))
+    assert recovered["retried"] == 12
+    states = [row["state"] for row in journal.operation_results(plan.plan_id)]
+    assert states.count("COMMITTED") == 20
+    assert len(list((root / "再次整理").glob("*.txt"))) == 20
+    assert not any(output.iterdir())
+    completed = conversations.complete_execution_round(execution_round["id"], summary={"recovered": True})
+    assert completed["status"] == "COMPLETED"
+    assert conversations.get_execution_round(first_round["id"])["status"] == "COMPLETED"
+    assert conversations.get_context(conversation_id)["current_execution_round_id"] == execution_round["id"]
+    for file_id in file_ids:
+        assert Path(conversations.get_conversation_file(conversation_id, file_id)["current_known_path"]).parent == root / "再次整理"
+    reopened.close()

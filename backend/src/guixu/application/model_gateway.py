@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import uuid
 import base64
 from pathlib import Path
@@ -15,6 +16,7 @@ from guixu.application.models import ModelProfileService
 from guixu.application.privacy import PrivacyService
 from guixu.domain.privacy import build_outbound
 from guixu.domain.profiles import FileProfile
+from guixu.domain.path_policy import PathPolicyError, validate_category_segment
 from guixu.infrastructure.db.database import Database, utc_now
 from guixu.infrastructure.db.repository import canonical_json
 from guixu.infrastructure.models.transport import DeepSeekAdapter, ModelResponse, ModelTransportError, QwenLocalAdapter
@@ -125,12 +127,57 @@ class ModelGateway:
             {"role": "user", "content": content},
         ], json_mode=True, max_attempts=min(3, remaining_calls))
         try:
-            result = json.loads(response.content)
+            return self._parse_taxonomy_response(response.content)
+        except ModelTransportError as exc:
+            if budget["max_calls"] - self.privacy.usage(task_id)["calls"] <= 0:
+                raise BudgetError("BUDGET_EXCEEDED")
+            if exc.provider_code == "CATEGORIES_MISSING":
+                # An empty JSON object/array contains no taxonomy to repair.
+                # Re-ask once with the same authorized evidence, using an
+                # explicit non-empty contract instead of asking the model to
+                # invent categories from an empty previous answer.
+                retried = self._call(task_id, model, "repair", [
+                    {"role": "system", "content": "Return one JSON object with a nonempty categories array. Each category must have category_id (lowercase letters, digits, dot, underscore or hyphen), a Windows-safe folder name, description, selection_criteria, parent_id (null for roots), and selectable (boolean). Base categories only on supplied content evidence and instructions. Never return paths, commands, code, or tool calls."},
+                    {"role": "user", "content": content},
+                ], json_mode=True, max_attempts=1)
+                return self._parse_taxonomy_response(retried.content)
+            repair = {
+                "request_kind": "taxonomy_planner",
+                "original_response": response.content[:24_000],
+                "validation_error": exc.provider_code,
+                "output_contract": payload["output_contract"],
+                "constraints": payload["constraints"],
+                "rule": "Return a nonempty categories array; each item needs a stable lowercase category_id, a folder-safe name, and semantic description. Do not invent file content, paths, commands, or tool calls.",
+            }
+            fixed = self._call(task_id, model, "repair", [
+                {"role": "system", "content": "Repair the supplied taxonomy into the exact JSON contract. Return JSON only. Do not add facts, paths, code, commands, or tool calls."},
+                {"role": "user", "content": canonical_json(repair)},
+            ], json_mode=True, max_attempts=1)
+            return self._parse_taxonomy_response(fixed.content)
+
+    @staticmethod
+    def _parse_taxonomy_response(content: str) -> dict[str, Any]:
+        try:
+            document = json.loads(content)
         except ValueError as exc:
-            raise ModelTransportError("MODEL_OUTPUT_INVALID") from exc
-        if not isinstance(result, dict):
-            raise ModelTransportError("MODEL_OUTPUT_INVALID")
-        return result
+            raise ModelTransportError("PLANNER_SCHEMA_INVALID", provider_code="JSON_INVALID") from exc
+        categories = document.get("categories") if isinstance(document, dict) else None
+        if not isinstance(categories, list) or not categories:
+            raise ModelTransportError("PLANNER_SCHEMA_INVALID", provider_code="CATEGORIES_MISSING")
+        for item in categories:
+            if not isinstance(item, dict):
+                raise ModelTransportError("PLANNER_SCHEMA_INVALID", provider_code="CATEGORY_NOT_OBJECT")
+            category_id = item.get("category_id")
+            name = item.get("name")
+            if not isinstance(category_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,95}", category_id):
+                raise ModelTransportError("PLANNER_SCHEMA_INVALID", provider_code="CATEGORY_ID_INVALID")
+            if not isinstance(name, str) or not 1 <= len(name) <= 60:
+                raise ModelTransportError("PLANNER_SCHEMA_INVALID", provider_code="CATEGORY_NAME_INVALID")
+            try:
+                validate_category_segment(name)
+            except PathPolicyError as exc:
+                raise ModelTransportError("PLANNER_SCHEMA_INVALID", provider_code="CATEGORY_PATH_UNSAFE") from exc
+        return document
 
     def classify_batch(self, *, task_id: str, profile_id: str,
                        items: list[tuple[FileProfile, list[str]]], taxonomy: dict[str, Any],
@@ -175,8 +222,9 @@ class ModelGateway:
             "files": profiles,
             "output_contract": {"results": [{"file_id": "input file id", "taxonomy_id": taxonomy["taxonomy_id"],
                 "category_id": "one allowed id or null", "abstain": False, "model_score": 0.0,
-                "evidence_ids": ["only supplied evidence ids"], "reason": "content-based reason",
-                "visual_description": "required only when a controlled derivative is supplied", "tags": [], "warnings": []}]},
+                "evidence_ids": ["only supplied evidence ids"], "reason": "content-based reason, max 160 characters",
+                "visual_description": "required only when a controlled derivative is supplied", "tags": [],
+                "warnings": ["only: insufficient_evidence, sampled_content, parser_partial, conflicting_signals, sensitive_content, no_speech, unknown_location, ambiguous_type"]}]},
         }
         content: list[dict[str, Any]] = [{"type": "text", "text": canonical_json(payload)}]
         for profile, paths in items:
@@ -193,13 +241,115 @@ class ModelGateway:
             {"role":"user","content":content},
         ], json_mode=True, max_attempts=min(3, remaining_calls))
         try:
-            result = json.loads(response.content)
+            return self._normalize_batch_results(
+                response.content, items, taxonomy, vision_refresh_file_ids,
+            )
+        except ModelTransportError as exc:
+            if budget["max_calls"] - self.privacy.usage(task_id)["calls"] <= 0:
+                raise BudgetError("BUDGET_EXCEEDED")
+            repair = {
+                "request_kind": "classification_batch",
+                "original_response": response.content[:24_000],
+                "validation_error": exc.provider_code or exc.code,
+                "expected_file_ids": [profile.file_id for profile, _ in items],
+                "taxonomy_id": taxonomy["taxonomy_id"],
+                "allowed_category_ids": [n["category_id"] for n in taxonomy["nodes"] if n["selectable"]],
+                "allowed_evidence_ids_by_file": {
+                    profile.file_id: [e.id for e in profile.evidence] for profile, _ in items
+                },
+                "vision_file_ids": sorted(vision_refresh_file_ids),
+                "required_shape": payload["output_contract"],
+            }
+            fixed = self._call(task_id, model, "repair", [
+                {"role": "system", "content": "Repair the supplied batch classification to the exact JSON contract. Preserve only supplied file, taxonomy, category and evidence IDs. Do not invent facts, paths, commands or tool calls."},
+                {"role": "user", "content": canonical_json(repair)},
+            ], json_mode=True, max_attempts=1)
+            return self._normalize_batch_results(
+                fixed.content, items, taxonomy, vision_refresh_file_ids,
+            )
+
+    @staticmethod
+    def _normalize_batch_results(
+        content: str,
+        items: list[tuple[FileProfile, list[str]]],
+        taxonomy: dict[str, Any],
+        vision_file_ids: set[str],
+    ) -> list[dict[str, Any]]:
+        try:
+            document = json.loads(content)
         except ValueError as exc:
-            raise ModelTransportError("MODEL_OUTPUT_INVALID") from exc
-        results = result.get("results") if isinstance(result, dict) else None
-        if not isinstance(results, list):
-            raise ModelTransportError("MODEL_OUTPUT_INVALID")
-        return results
+            raise ModelTransportError("MODEL_OUTPUT_INVALID", provider_code="JSON_INVALID") from exc
+        raw = document.get("results") if isinstance(document, dict) else None
+        if not isinstance(raw, list):
+            raise ModelTransportError("MODEL_OUTPUT_INVALID", provider_code="RESULTS_MISSING")
+        by_file = {item.get("file_id"): item for item in raw if isinstance(item, dict)}
+        expected = {profile.file_id for profile, _ in items}
+        if set(by_file) != expected:
+            raise ModelTransportError("MODEL_BATCH_CONTEXT_MISMATCH", provider_code="FILE_SET_MISMATCH")
+        allowed_categories = {node["category_id"] for node in taxonomy["nodes"] if node["selectable"]}
+        warning_values = {
+            "insufficient_evidence", "sampled_content", "parser_partial", "conflicting_signals",
+            "sensitive_content", "no_speech", "unknown_location", "ambiguous_type",
+        }
+        normalized: list[dict[str, Any]] = []
+        for profile, _ in items:
+            item = by_file[profile.file_id]
+            abstain = item.get("abstain")
+            category_id = item.get("category_id")
+            score = item.get("model_score")
+            evidence = item.get("evidence_ids")
+            reason = item.get("reason")
+            tags = item.get("tags")
+            warnings = item.get("warnings")
+            allowed_evidence = {entry.id for entry in profile.evidence}
+            if not isinstance(abstain, bool):
+                raise ModelTransportError("MODEL_OUTPUT_INVALID", provider_code="ABSTAIN_INVALID")
+            if (abstain and category_id is not None) or (not abstain and category_id not in allowed_categories):
+                raise ModelTransportError("MODEL_OUTPUT_INVALID", provider_code="CATEGORY_INVALID")
+            if score is not None and (isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 1):
+                raise ModelTransportError("MODEL_OUTPUT_INVALID", provider_code="SCORE_INVALID")
+            # A newly inspected image has no persisted visual evidence ID yet.
+            # Its validated visual_description is saved by AIFileClassifier
+            # immediately after this response and supplies that ID before the
+            # final classification validator runs. Other modalities must cite
+            # an already supplied evidence ID.
+            needs_existing_evidence = not abstain and profile.file_id not in vision_file_ids
+            if (not isinstance(evidence, list) or any(not isinstance(value, str) for value in evidence)
+                    or not set(evidence).issubset(allowed_evidence) or (needs_existing_evidence and not evidence)):
+                raise ModelTransportError("MODEL_OUTPUT_INVALID", provider_code="EVIDENCE_INVALID")
+            # These are explanatory fields rather than routing authority. Be
+            # tolerant of models omitting them, but make uncertainty explicit
+            # so a malformed/missing warning can never increase review score.
+            safe_tags = (
+                list(dict.fromkeys(value for value in tags
+                                   if isinstance(value, str) and value and len(value) <= 24))[:5]
+                if isinstance(tags, list) else []
+            )
+            safe_warnings = (
+                list(dict.fromkeys(value for value in warnings if isinstance(value, str) and value in warning_values))
+                if isinstance(warnings, list) else []
+            )
+            if not isinstance(warnings, list) or len(safe_warnings) != len(warnings):
+                safe_warnings = list(dict.fromkeys([*safe_warnings, "insufficient_evidence"]))
+            safe_reason = reason[:160] if isinstance(reason, str) and reason.strip() else "模型未提供分类说明，请人工核对。"
+            visual = item.get("visual_description")
+            if profile.file_id in vision_file_ids and (not isinstance(visual, str) or not visual.strip()):
+                raise ModelTransportError("VISION_DESCRIPTION_MISSING", provider_code="VISUAL_DESCRIPTION_MISSING")
+            result = {
+                "file_id": profile.file_id,
+                "taxonomy_id": taxonomy["taxonomy_id"],
+                "category_id": category_id,
+                "abstain": abstain,
+                "model_score": score,
+                "evidence_ids": list(dict.fromkeys(evidence))[:12],
+                "reason": safe_reason,
+                "tags": safe_tags,
+                "warnings": safe_warnings,
+            }
+            if isinstance(visual, str) and visual.strip():
+                result["visual_description"] = visual.strip()
+            normalized.append(result)
+        return normalized
 
     def evaluate_refinement(self, *, task_id: str, profile_id: str,
                             items: list[tuple[FileProfile, list[str], bool]],

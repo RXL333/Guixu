@@ -2,7 +2,7 @@
 
 归序是一个 local-first 的 Windows AI 文件整理器：只读扫描并提取内容证据，由 AI 生成受限的“类别 ID + 证据”，经人工审阅和计划 hash 批准后，才由安全执行器复制或移动。目标冲突永不覆盖，操作持久记录并可在磁盘事实允许时撤销。
 
-当前版本：`0.1.0 dev`。源码闭环和 Windows onedir 构建已实现；是否具备发布条件以 [release-readiness](artifacts/reports/release-readiness.md) 为准。请勿因生成了 EXE 就直接对唯一副本或个人根目录试用。
+当前版本：`0.1.0 dev`。源码闭环和 Windows onedir 构建已实现；1.0 最终验收仍为 **NOT RELEASE READY**，以 [当前验收矩阵](docs/RELEASE_ACCEPTANCE.md) 和 [阶段报告](artifacts/reports/guixu-1.0-final-acceptance.md) 为准。请勿因生成了 EXE 就直接对唯一副本或个人根目录试用。
 
 ## 快速入口
 

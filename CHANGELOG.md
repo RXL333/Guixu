@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0 candidate — 未发布（2026-09-24）
+
+- PHASE N 开始 Feature Freeze 与真实模型/文件系统/Windows 发布矩阵验收。
+- 修复执行前方案调整入口和 Windows 打包失败传播；真实 DeepSeek 完整组合链及失败重规划原子性仍是发布阻断，**未形成 RC 或 stable release**。
+- 正式判定见 `docs/RELEASE_ACCEPTANCE.md`；本节不是发布记录。
+
 ## 0.1.0-dev — 2026-09-14
 
 - 实现 pywebview + FastAPI + Vue 3 单入口与随机本地会话。

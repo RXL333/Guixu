@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from guixu.application.plan_compiler import PlanCompiler
+from guixu.application.plan_compiler import PlanCompiler, verify_plan_hash
 from guixu.domain.plans import PlanCandidate
 from guixu.infrastructure.db.database import Database, utc_now
 from guixu.infrastructure.db.operation_journal import SqliteOperationJournal
@@ -78,6 +78,29 @@ def test_persistent_approval_events_and_repeat_execute(project_root: Path, tmp_p
     assert operation == "COMMITTED" and status == "finished"
     assert [event for _, event in events] == ["PREPARED", "COPYING", "TEMP_WRITTEN", "VERIFIED", "PUBLISHED", "COMMITTED"]
     assert [seq for seq, _ in events] == list(range(1, 7))
+    database.close()
+
+
+def test_reloaded_plan_retains_skip_reason_in_approved_hash(project_root: Path, tmp_path: Path):
+    source_dir, destination = tmp_path / "source", tmp_path / "destination"
+    source_dir.mkdir(); destination.mkdir()
+    source = source_dir / "uncertain.jpg"; source.write_bytes(b"sample")
+    database = make_database(project_root, tmp_path)
+    task_id, file_id = seed_task_and_file(database, source)
+    plan = PlanCompiler().compile(
+        task_id=task_id, version=1, operation_mode="preview_move", settings_hash="a" * 64,
+        taxonomy_hashes=("b" * 64,),
+        candidates=[PlanCandidate(file_id, source, source_dir, destination, None, (), "image")],
+        max_depth=2,
+    )
+    journal = SqliteOperationJournal(database)
+    journal.persist_plan(plan)
+    reloaded = journal.load_plan(plan.plan_id)
+    assert reloaded.operations[0].reason == "UNSUPPORTED_OR_UNDECIDED"
+    assert verify_plan_hash(reloaded)
+    journal.approve(plan.plan_id, plan.plan_hash)
+    assert FileOperationExecutor(journal).execute(reloaded, plan.plan_hash)
+    assert source.exists()
     database.close()
 
 

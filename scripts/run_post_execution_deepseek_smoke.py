@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -48,7 +49,10 @@ def enabled_deepseek() -> dict:
 
 
 def main() -> int:
-    output = ROOT / "artifacts" / "test-workspaces" / "post-execution-deepseek"
+    output = Path(os.environ.get(
+        "GUIXU_SMOKE_OUTPUT",
+        ROOT / "artifacts" / "test-workspaces" / "post-execution-deepseek",
+    ))
     output.mkdir(parents=True, exist_ok=True)
     make_service = load_fixture_builder()
     database, conversations, _, conversation_id, _, round1, file_ids, workspace, _ = make_service(
@@ -82,6 +86,12 @@ def main() -> int:
                   current_size_bytes=:size,current_mtime_ns=:mtime WHERE conversation_id=:conversation AND file_id=:file
             """), {"sha": identity.sha256, "size": identity.size_bytes, "mtime": identity.mtime_ns,
                     "conversation": conversation_id, "file": file_id})
+
+    file_snapshot = {
+        file_ids[path.name]: (path, read_identity(path).sha256)
+        for path in workspace.rglob("*.jpg")
+    }
+    disk_file_count_before = sum(1 for path in workspace.rglob("*.jpg") if path.is_file())
 
     columns = [
         "id", "name", "provider", "runtime", "base_url", "model_id", "secret_ref",
@@ -136,12 +146,21 @@ def main() -> int:
     instruction = "建筑里的夜景放到风景，其他不要动。"
     conversations.append_message(conversation_id, "USER", instruction)
     prepared = service.prepare_refinement(conversation_id, user_message=instruction)
+    candidate_file_ids = set(prepared["affected_scope"]["candidate_file_ids"])
     version = prepared["plan_version"]
     context = conversations.get_context(conversation_id)
     service.approve(conversation_id, version["id"], expected_context_revision=context["context_revision"],
                     plan_hash=version["plan_hash"], authorization={"kind": "real-smoke"})
     executed = service.execute(conversation_id, version["id"], expected_context_revision=context["context_revision"],
                                plan_hash=version["plan_hash"])
+    unaffected_file_ids = set(file_snapshot) - candidate_file_ids
+    for file_id in unaffected_file_ids:
+        original_path, original_sha256 = file_snapshot[file_id]
+        if not original_path.is_file() or read_identity(original_path).sha256 != original_sha256:
+            raise RuntimeError(f"UNRELATED_FILE_CHANGED:{file_id}")
+    disk_file_count_after = sum(1 for path in workspace.rglob("*.jpg") if path.is_file())
+    if disk_file_count_after != disk_file_count_before:
+        raise RuntimeError("DISK_FILE_COUNT_CHANGED")
     with database.engine.connect() as connection:
         calls = [dict(row) for row in connection.execute(text("""
             SELECT purpose,response_status,input_tokens,output_tokens,latency_ms,error_code
@@ -156,6 +175,9 @@ def main() -> int:
         "context_revision_before": original["context_revision"],
         "affected_scope": prepared["affected_scope"],
         "metrics": prepared["metrics"],
+        "unaffected_files_unchanged": len(unaffected_file_ids),
+        "disk_file_count_before": disk_file_count_before,
+        "disk_file_count_after": disk_file_count_after,
         "plan_kind": version["plan_kind"],
         "execution_round": executed["execution_round"]["round_number"],
         "execution_status": executed["execution_round"]["status"],

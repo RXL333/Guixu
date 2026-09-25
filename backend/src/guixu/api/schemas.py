@@ -77,6 +77,11 @@ class ConversationTurnRequest(BaseModel):
     reference_role: str = Field(default="SUBJECT", pattern="^(SUBJECT|RESULT|CONTEXT)$")
 
 
+class ConversationChatRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=12000)
+    selected_file_ids: list[str] = Field(default_factory=list, max_length=2000)
+
+
 class ConversationContextUpdateRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     changes: dict[str, Any] = Field(default_factory=dict)

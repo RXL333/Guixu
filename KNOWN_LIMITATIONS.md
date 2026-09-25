@@ -1,5 +1,7 @@
 # 已知限制（0.1.0 dev）
 
+- PHASE N 定向修复后，真实 DeepSeek 首轮→v2→审批→执行→重启读取已在隔离样本上通过一次；Undo 4/10 与 Execution 8/20 进程崩溃恢复也已通过临时目录测试。Analysis 31/50 崩溃续跑、发行包完整链、Clean Windows、桌面/DPI 与部分安全矩阵尚未验收。**当前版本不得视作 1.0 发布候选，也不建议用于唯一副本。**
+- 5000 文件附加到 Conversation 的本机后端实测已优化至约 1.30 秒；对应桌面 UI 大列表流畅度仍未验收。
 - 生产 `direct_move` 关闭；请先用 `report_only` 或备份副本上的 `copy`。
 - 未获授权的真实 DeepSeek Key 与 Qwen 服务，尚无现实语义准确率／公平对比结果。
 - 当前发行未捆绑 ffmpeg/ffprobe 或 ASR 模型；视频和语音内容分析会 `partial`/弃判。

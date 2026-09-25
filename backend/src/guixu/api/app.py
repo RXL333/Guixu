@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import hashlib
 import json
+import os
 import secrets
 import uuid
 from contextlib import asynccontextmanager
@@ -21,7 +22,7 @@ from guixu import __version__
 from guixu.api.schemas import (ApprovePlanRequest, ApproveTaxonomyRequest, BulkReviewRequest,
                                ComponentImportRequest, ConsentRequest, ConversationContextUpdateRequest,
                                ConversationExecutionRoundRequest, ConversationFileRequest,
-                               ConversationMessageRequest, ConversationPatchRequest, ConversationTurnRequest,
+                               ConversationMessageRequest, ConversationPatchRequest, ConversationTurnRequest, ConversationChatRequest,
                                ConversationPlanVersionApproveRequest, ConversationPlanVersionExecutionRequest,
                                ConversationPlanVersionRequest, ConversationPlanVersionRestoreRequest,
                                ConversationRefinementExecuteRequest, ConversationRefinementRequest,
@@ -64,6 +65,7 @@ from guixu.infrastructure.filesystem.grants import GrantError, SourceRegistry
 from guixu.infrastructure.resources.components import ComponentError, ComponentManager, status_dict
 from guixu.infrastructure.models.credentials import CredentialError, WindowsCredentialStore
 from guixu.infrastructure.models.transport import ModelTransportError
+from guixu.infrastructure.models.transport import DeepSeekAdapter, QwenLocalAdapter
 from guixu.domain.privacy import PrivacyError
 
 
@@ -538,6 +540,105 @@ def create_app(
             return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
         return envelope(result, request.state.request_id)
 
+    @app.post("/api/v1/conversations/{conversation_id}/chat")
+    def chat_conversation(conversation_id: str, payload: ConversationChatRequest, request: Request):
+        """Text-only discussion. This endpoint never scans, plans or executes files."""
+        try:
+            conversation = conversations.get_conversation(conversation_id)
+            profile_id = conversation.get("model_profile_id")
+            if not profile_id:
+                return error_response(409, "MODEL_NOT_SELECTED", "请先选择模型，再发送消息。", request.state.request_id)
+            profile = models.get(profile_id)
+            if not profile["enabled"] or profile["capabilities"].get("text", {}).get("status") != "supported":
+                return error_response(409, "AI_TEXT_UNAVAILABLE", "模型文本能力尚未验证，请在模型与设置中测试连接。", request.state.request_id)
+            if profile["provider"] == "deepseek" and not profile["has_secret"]:
+                return error_response(409, "MODEL_AUTH_REQUIRED", "云端模型缺少 API Key。", request.state.request_id)
+            history = [item for item in conversations.list_messages(conversation_id)
+                       if item["message_type"] == "TEXT" and item["role"] in {"USER", "ASSISTANT"}]
+            selected = list(dict.fromkeys(payload.selected_file_ids))
+            resolved = reference_resolver.resolve(conversation_id, payload.content, selected_file_ids=selected) if selected else {"source": "NONE", "file_ids": []}
+            if resolved.get("missing") or resolved.get("changed"):
+                return error_response(409, "REFERENCE_STALE", "选中的文件已经变化，请刷新后重试。", request.state.request_id)
+            selected_names = [Path(item["current_known_path"]).name for item in conversation_repository.list_conversation_files(conversation_id)
+                              if item["file_id"] in selected][:20] if selected else []
+            plan_versions = conversations.list_plan_versions(conversation_id)
+            execution_rounds = conversations.list_execution_rounds(conversation_id)
+            latest_plan = plan_versions[-1] if plan_versions else None
+            latest_round = execution_rounds[-1] if execution_rounds else None
+            state_hint = (f"当前整理状态：方案 v{latest_plan['version_number']}，状态 {latest_plan['status']}；"
+                          if latest_plan else "当前尚无整理方案；")
+            state_hint += (f"最近第 {latest_round['round_number']} 轮执行状态 {latest_round['status']}。"
+                           if latest_round else "尚未执行文件操作。")
+            messages = [{"role": "system", "content": (
+                "你是归序的文件整理需求顾问。自然回答用户的问题，帮助澄清分类规则、目录命名、保留原则与例外。"
+                "此轮仅讨论；你没有扫描目录或读取文件内容，不能声称已经分析、分类或移动文件。"
+                "只有用户点击生成整理方案后，应用才会分析文件并生成待确认方案；执行仍须用户再次确认。"
+                "不要编造具体文件内容。用简洁中文回答。" + state_hint)}]
+            messages.extend({"role": "user" if item["role"] == "USER" else "assistant", "content": item["content"][:4000]}
+                            for item in history[-16:])
+            model_input = payload.content.strip()
+            if selected:
+                model_input += f"\n[用户选中了 {len(selected)} 个文件；前 20 个文件名：{', '.join(selected_names)}。尚未提供文件内容。]"
+            messages.append({"role": "user", "content": model_input})
+            adapter = DeepSeekAdapter(models.transport) if profile["provider"] == "deepseek" else QwenLocalAdapter(models.transport)
+            result = adapter.chat(profile, messages, models.secrets.get(profile_id), max_attempts=1)
+            if not result.content.strip():
+                raise ModelTransportError("MODEL_EMPTY_RESPONSE")
+            user_message = conversations.append_message(conversation_id, "USER", payload.content.strip(),
+                                                        referenced_file_ids=selected,
+                                                        reference_source="UI_SELECTION" if selected else None)
+            assistant_message = conversations.append_message(conversation_id, "ASSISTANT", result.content.strip())
+            return envelope({"user_message": user_message, "assistant_message": assistant_message}, request.state.request_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话或模型不存在。", request.state.request_id)
+        except ModelTransportError as exc:
+            return error_response(409, exc.code, "模型回复失败，请检查模型连接后重试。", request.state.request_id)
+        except ReferenceResolutionError as exc:
+            return error_response(409, exc.code, reference_error_message(exc.code), request.state.request_id, exc.details)
+        except ValueError as exc:
+            return error_response(409, str(exc), "当前会话无法聊天。", request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/source-files")
+    def list_source_files(conversation_id: str, request: Request):
+        """Read-only directory inventory before the first analysis creates core file rows."""
+        try:
+            conversation = conversations.get_conversation(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        roots = [Path(str(scope["source_root"])) for scope in conversation.get("scopes", []) if not scope.get("revoked_at")]
+        items: list[dict[str, Any]] = []
+        def blocked_link(path: Path) -> bool:
+            try:
+                metadata = path.lstat()
+                return path.is_symlink() or bool(getattr(metadata, "st_file_attributes", 0) & 0x400)
+            except OSError:
+                return True
+
+        for root in roots:
+            if blocked_link(root) or not root.is_dir():
+                continue
+            for directory, child_dirs, filenames in os.walk(root, followlinks=False):
+                child_dirs[:] = [name for name in child_dirs if not blocked_link(Path(directory) / name)]
+                for name in filenames:
+                    path = Path(directory) / name
+                    if blocked_link(path):
+                        continue
+                    try:
+                        stat = path.stat()
+                    except OSError:
+                        continue
+                    if not path.is_file():
+                        continue
+                    items.append({"path": str(path), "size_bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+                    if len(items) >= 2000:
+                        break
+                if len(items) >= 2000:
+                    break
+            if len(items) >= 2000:
+                break
+        items.sort(key=lambda item: item["path"].casefold())
+        return envelope({"files": items, "truncated": len(items) >= 2000}, request.state.request_id)
+
     @app.post("/api/v1/conversations/{conversation_id}/messages", status_code=201)
     def append_conversation_message(conversation_id: str, payload: ConversationMessageRequest, request: Request,
                                     idempotency_key: str = Header(default="conversation-message")):
@@ -628,7 +729,13 @@ def create_app(
         except FirstAnalysisError as exc:
             return error_response(409, exc.code, str(exc), request.state.request_id, exc.details)
         except (BudgetError, ModelError, ModelTransportError, PrivacyError, TaxonomyPlanningError) as exc:
-            return error_response(409, getattr(exc, "code", str(exc)), "首次 AI 分析不可用或授权不足。", request.state.request_id)
+            details = {"validation_reason": exc.provider_code} if isinstance(exc, ModelTransportError) and exc.provider_code else None
+            code = getattr(exc, "code", str(exc))
+            contract_errors = {"PLANNER_SCHEMA_INVALID", "MODEL_OUTPUT_INVALID", "MODEL_BATCH_CONTEXT_MISMATCH",
+                               "VISION_DESCRIPTION_MISSING", "CLASSIFICATION_SCHEMA_INVALID"}
+            message = ("AI 返回的整理结果未通过安全校验，请查看错误详情。" if code in contract_errors
+                       else "首次 AI 分析未完成，请检查模型连接、能力和内容授权。")
+            return error_response(409, code, message, request.state.request_id, details)
         except ValueError as exc:
             return error_response(409, str(exc), "首次整理分析无法完成。", request.state.request_id)
         return envelope(result, request.state.request_id)
@@ -769,17 +876,28 @@ def create_app(
                                         idempotency_key: str = Header(default="conversation-refinement")):
         del idempotency_key
         try:
-            result = post_execution.prepare_refinement(
-                conversation_id, user_message=payload.user_message,
-                confirmed_global=payload.confirmed_global,
-                explicit_file_ids=payload.referenced_file_ids,
-                trigger_message_id=payload.trigger_message_id,
-            )
+            workspace = post_execution.workspace.current_state(conversation_id)
+            if workspace.get("current_plan_version_id") and not workspace.get("latest_execution_round"):
+                result = first_analysis.revise_before_execution(
+                    conversation_id,
+                    user_message=payload.user_message,
+                    trigger_message_id=payload.trigger_message_id,
+                )
+            else:
+                result = post_execution.prepare_refinement(
+                    conversation_id, user_message=payload.user_message,
+                    confirmed_global=payload.confirmed_global,
+                    explicit_file_ids=payload.referenced_file_ids,
+                    trigger_message_id=payload.trigger_message_id,
+                )
         except KeyError:
             return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
         except (BudgetError, ModelError, ModelTransportError, PrivacyError) as exc:
             code = getattr(exc, "code", str(exc))
-            return error_response(409, code, "本轮 AI 分析不可用或授权不足。", request.state.request_id)
+            details = {"validation_reason": exc.provider_code} if isinstance(exc, ModelTransportError) and exc.provider_code else None
+            return error_response(409, code, "本轮 AI 分析未完成；请查看错误码并检查模型输出或授权。", request.state.request_id, details)
+        except FirstAnalysisError as exc:
+            return error_response(409, exc.code, str(exc), request.state.request_id, exc.details)
         except ValueError as exc:
             return error_response(409, str(exc), "无法准备本轮整理调整。", request.state.request_id)
         return envelope(result, request.state.request_id)
@@ -938,6 +1056,8 @@ def create_app(
             result = conversations.attach_file_to_conversation(conversation_id, payload.file_id)
         except KeyError:
             return error_response(404, "CONVERSATION_OR_FILE_NOT_FOUND", "会话或文件不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "该文件不在当前会话授权目录内，无法加入会话。", request.state.request_id)
         return envelope(result, request.state.request_id)
 
     @app.post("/api/v1/conversations/{conversation_id}/files/{file_id}/verify")
@@ -1253,7 +1373,13 @@ def create_app(
         ai_classifier.classify_taxonomy(task_id, taxonomy)
         task = repository.advance_after_classification(task_id)
         repository.append_event(task_id, "AI_CLASSIFICATION_COMPLETED", {"taxonomy_id": taxonomy_id, "retry": True})
-        return envelope({"command_id": str(uuid.uuid4()), "status": "completed", "task": task}, request.state.request_id)
+        conversation_result = first_analysis.complete_interrupted_task(task_id)
+        conversation_plan_version_id = None
+        if conversation_result is not None:
+            task = conversation_result["task"]
+            conversation_plan_version_id = conversation_result["plan_version"]["id"]
+        return envelope({"command_id": str(uuid.uuid4()), "status": "completed", "task": task,
+                         "conversation_plan_version_id": conversation_plan_version_id}, request.state.request_id)
 
     @app.post("/api/v1/tasks/{task_id}/reviews/bulk")
     def bulk_reviews(task_id: str, payload: BulkReviewRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):

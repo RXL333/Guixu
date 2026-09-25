@@ -64,6 +64,9 @@ input, select, textarea { accent-color: var(--primary); }
 .reference-chip svg { opacity: 0; flex-shrink: 0; }
 .reference-chip:hover svg, .reference-chip:focus-visible svg { opacity: 1; }
 .composer-model { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.organize-button { min-height: 36px; padding: 0 11px; border: 1px solid var(--primary); border-radius: 8px; background: var(--bg-surface); color: var(--primary); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.organize-button:hover { background: var(--primary-soft); }
+.organize-button:disabled { opacity: .45; cursor: not-allowed; }
 .file-workspace { background: var(--bg-surface); min-width: 0; }
 .file-tabs { min-height: 64px; height: 64px; padding: 0 12px; }
 .file-tabs button { font-size: 12px; padding: 0 8px; gap: 6px; }
@@ -73,6 +76,8 @@ input, select, textarea { accent-color: var(--primary); }
 .file-search { min-height: 36px; height: 36px; background: var(--bg-subtle); }
 .file-item { min-height: 56px; height: 56px; grid-template-columns: 36px minmax(0,1fr) auto; gap: 8px; padding: 8px 4px; border-bottom-color: var(--bg-hover); }
 .file-item:hover { background: var(--bg-hover); }
+.file-item:disabled { cursor: default; opacity: 1; }
+.file-item:disabled:hover { background: transparent; }
 .file-item.selected { background: var(--primary-soft); }
 .file-icon { width: 36px; height: 36px; border-radius: 6px; color: var(--text-secondary); background: var(--bg-hover); }
 .file-copy strong { font-weight: 400; font-size: 13px; }

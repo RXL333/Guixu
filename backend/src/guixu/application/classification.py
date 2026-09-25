@@ -40,6 +40,13 @@ class ClassificationService:
         self._persist(task_id, file_id, taxonomy["taxonomy_id"], result, source, band, input_hash)
         return {**result, "source": source, "review_band": band, "needs_review": band != "high"}
 
+    def get_cached_classification(self, *, task_id: str, file_id: str, taxonomy: dict[str, Any],
+                                  profile: FileProfile) -> dict[str, Any] | None:
+        """Return an exact-input result so interrupted batches can skip model calls."""
+        context = self._file_context(task_id, file_id, profile)
+        input_hash = self._input_hash(task_id, context, taxonomy)
+        return self._cached(file_id, taxonomy["taxonomy_id"], input_hash)
+
     def review_bulk(self, task_id: str, reviews: list[dict[str, Any]], expected_revision: int) -> dict[str, Any]:
         if not 1 <= len(reviews) <= 500:
             raise ClassificationError("REVIEW_COUNT_INVALID")

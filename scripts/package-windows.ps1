@@ -1,11 +1,12 @@
 param(
     [switch]$SkipTests,
-    [switch]$SkipInstaller
+    [switch]$SkipInstaller,
+    [string]$ReleaseDirectory = 'artifacts\release'
 )
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$releaseRoot = Join-Path $projectRoot 'artifacts\release'
+$releaseRoot = Join-Path $projectRoot $ReleaseDirectory
 $workRoot = Join-Path $projectRoot 'artifacts\build\pyinstaller'
 $backendRoot = Join-Path $projectRoot 'backend'
 $frontendRoot = Join-Path $projectRoot 'frontend'
@@ -17,7 +18,10 @@ foreach ($target in @($releaseRoot, $workRoot)) {
     }
 }
 
-if (-not $IsWindows -or -not [Environment]::Is64BitOperatingSystem) {
+$runningOnWindows = [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+    [Runtime.InteropServices.OSPlatform]::Windows
+)
+if (-not $runningOnWindows -or -not [Environment]::Is64BitOperatingSystem) {
     throw 'Guixu Windows x64 packages must be built on Windows x64.'
 }
 
@@ -26,13 +30,16 @@ New-Item -ItemType Directory -Force -Path $releaseRoot, $workRoot | Out-Null
 Push-Location $frontendRoot
 try {
     npm.cmd ci
+    if ($LASTEXITCODE -ne 0) { throw "npm ci failed with exit code $LASTEXITCODE" }
     npm.cmd run build
+    if ($LASTEXITCODE -ne 0) { throw "frontend build failed with exit code $LASTEXITCODE" }
 } finally {
     Pop-Location
 }
 
 if (-not $SkipTests) {
     python (Join-Path $projectRoot 'scripts\verify.py') all
+    if ($LASTEXITCODE -ne 0) { throw "verification failed with exit code $LASTEXITCODE" }
 }
 
 Push-Location $backendRoot
@@ -41,6 +48,7 @@ try {
         --distpath $releaseRoot `
         --workpath $workRoot `
         (Join-Path $projectRoot 'packaging\Guixu.spec')
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
 } finally {
     Pop-Location
 }
@@ -98,6 +106,7 @@ if (-not $SkipInstaller) {
 Push-Location $backendRoot
 try {
     uv run python (Join-Path $projectRoot 'scripts\generate_release_metadata.py')
+    if ($LASTEXITCODE -ne 0) { throw "release metadata generation failed with exit code $LASTEXITCODE" }
 } finally {
     Pop-Location
 }

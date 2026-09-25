@@ -149,6 +149,56 @@ def test_transport_preserves_provider_error_details():
     assert exc.value.provider_message == "unsupported image"
 
 
+def test_transport_timeout_retries_with_a_bounded_clear_error():
+    calls = []
+
+    def handler(_: httpx.Request):
+        calls.append(1)
+        raise httpx.ReadTimeout("simulated provider timeout")
+
+    factory = lambda **kwargs: httpx.Client(transport=httpx.MockTransport(handler), timeout=kwargs["timeout"],
+                                             follow_redirects=False, trust_env=False)
+    with pytest.raises(ModelTransportError) as exc:
+        OpenAICompatibleTransport(client_factory=factory, sleeper=lambda _delay: None).chat(
+            base_url="http://127.0.0.1:1", model_id="m", messages=[], secret=None,
+            timeout_seconds=1, max_attempts=3)
+    assert exc.value.code == "MODEL_NETWORK_ERROR"
+    assert exc.value.retryable is True and exc.value.attempts == 3
+    assert len(calls) == 3
+
+
+def test_transport_retries_5xx_and_reports_exhaustion():
+    calls = []
+
+    def recovered(_: httpx.Request):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(503, json={"error": {"code": "busy", "message": "try again"}})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    factory = lambda **kwargs: httpx.Client(transport=httpx.MockTransport(recovered), timeout=kwargs["timeout"],
+                                             follow_redirects=False, trust_env=False)
+    result = OpenAICompatibleTransport(client_factory=factory, sleeper=lambda _delay: None).chat(
+        base_url="http://127.0.0.1:1", model_id="m", messages=[], secret=None,
+        timeout_seconds=1, max_attempts=3)
+    assert result.content == "ok" and result.attempts == 2 and len(calls) == 2
+
+    calls.clear()
+
+    def unavailable(_: httpx.Request):
+        calls.append(1)
+        return httpx.Response(503, json={"error": {"code": "busy"}})
+
+    failing_factory = lambda **kwargs: httpx.Client(transport=httpx.MockTransport(unavailable), timeout=kwargs["timeout"],
+                                                     follow_redirects=False, trust_env=False)
+    with pytest.raises(ModelTransportError) as exc:
+        OpenAICompatibleTransport(client_factory=failing_factory, sleeper=lambda _delay: None).chat(
+            base_url="http://127.0.0.1:1", model_id="m", messages=[], secret=None,
+            timeout_seconds=1, max_attempts=3)
+    assert exc.value.code == "MODEL_SERVER_ERROR" and exc.value.status == 503
+    assert exc.value.retryable is True and exc.value.attempts == 3 and len(calls) == 3
+
+
 def test_ai07_probe_each_capability_and_ai08_invalidation(services):
     db, task, models, privacy, secrets = services
     def qwen(_, body):
@@ -200,6 +250,103 @@ def test_ai04_single_repair_ai09_budget_counts_attempts(services):
         assert result["abstain"] is True and len(calls)==2 and privacy.usage(task["id"])["calls"]==2
 
 
+def test_batch_classification_repairs_invalid_contract_once(services):
+    db, task, models, privacy, secrets = services
+    p = profile()
+
+    def responder(n, body):
+        evidence_ids = ["invented"] if n == 1 else ["e1"]
+        content = json.dumps({"results": [{
+            "file_id": p.file_id, "taxonomy_id": "tax", "category_id": "course",
+            "abstain": False, "model_score": 0.9, "evidence_ids": evidence_ids,
+            "reason": "基于正文内容分类", "tags": [], "warnings": [],
+        }]})
+        return 200, {}, {"choices": [{"message": {"content": content}}],
+                         "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+
+    with fake_service(responder) as (url, calls):
+        model = models.create(model_input(url))
+        mark_supported(models, model["id"])
+        budget = {"max_calls": 3, "max_input_tokens": 100_000, "max_output_tokens": 10_000,
+                  "max_cost_micros": None, "currency": None}
+        privacy.grant(task["id"], model["id"], ["extracted_text"], budget,
+                      scope_hash(model["id"], ["extracted_text"], budget), task["revision"], True)
+        result = ModelGateway(db, models, privacy).classify_batch(
+            task_id=task["id"], profile_id=model["id"], items=[(p, [])],
+            taxonomy={"taxonomy_id": "tax", "nodes": [{"category_id": "course", "selectable": True}]},
+            policy={},
+        )
+        assert result[0]["evidence_ids"] == ["e1"]
+        assert len(calls) == 2
+        assert privacy.usage(task["id"])["calls"] == 2
+
+
+def test_taxonomy_response_rejects_windows_invalid_category_names():
+    with pytest.raises(ModelTransportError, match="PLANNER_SCHEMA_INVALID") as raised:
+        ModelGateway._parse_taxonomy_response(json.dumps({"categories": [{
+            "category_id": "course.notes", "name": "课程资料. ",
+        }]}))
+    assert raised.value.provider_code == "CATEGORY_PATH_UNSAFE"
+
+
+def test_first_image_batch_accepts_new_visual_evidence_but_not_invented_ids():
+    image = profile().model_copy(update={"modality": "image", "evidence": []})
+    taxonomy = {"taxonomy_id": "tax", "nodes": [{"category_id": "scene", "selectable": True}]}
+    result = {"file_id": image.file_id, "taxonomy_id": "tax", "category_id": "scene",
+              "abstain": False, "model_score": 0.9, "evidence_ids": [],
+              "reason": "图中有海边日落", "visual_description": "海边日落与橙色天空",
+              "tags": [], "warnings": []}
+    normalized = ModelGateway._normalize_batch_results(
+        json.dumps({"results": [result]}), [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+    assert normalized[0]["visual_description"] == "海边日落与橙色天空"
+    with pytest.raises(ModelTransportError) as raised:
+        ModelGateway._normalize_batch_results(
+            json.dumps({"results": [{**result, "evidence_ids": ["invented"]}]}),
+            [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+    assert raised.value.provider_code == "EVIDENCE_INVALID"
+    with pytest.raises(ModelTransportError, match="VISION_DESCRIPTION_MISSING"):
+        ModelGateway._normalize_batch_results(
+            json.dumps({"results": [{**result, "visual_description": ""}]}),
+            [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+
+
+def test_empty_taxonomy_response_reasks_once_with_original_evidence(services):
+    db, task, models, privacy, _secrets = services
+    item = profile()
+    def responder(number, body):
+        answer = {} if number == 1 else {"categories": [{
+            "category_id": "course.network", "name": "网络课程", "description": "网络学习内容",
+            "selection_criteria": "基于正文", "parent_id": None, "selectable": True,
+        }]}
+        return 200, {}, {"choices": [{"message": {"content": json.dumps(answer)}}],
+                         "usage": {"prompt_tokens": 10, "completion_tokens": 10}}
+    with fake_service(responder) as (url, calls):
+        model = models.create(model_input(url)); mark_supported(models, model["id"])
+        budget = {"max_calls": 3, "max_input_tokens": 100_000, "max_output_tokens": 10_000,
+                  "max_cost_micros": None, "currency": None}
+        privacy.grant(task["id"], model["id"], ["extracted_text"], budget,
+                      scope_hash(model["id"], ["extracted_text"], budget), task["revision"], True)
+        result = ModelGateway(db, models, privacy).plan_taxonomy(
+            task_id=task["id"], profile_id=model["id"], profiles=[(item, [])],
+            request={"constraints": {"max_depth": 2}, "user_instructions": "按课程整理"})
+        assert result["categories"][0]["category_id"] == "course.network"
+        assert len(calls) == 2
+        assert "representative_file_profiles" in calls[1]["body"]["messages"][1]["content"]
+
+
+def test_batch_classifier_defaults_missing_explanatory_fields_to_review():
+    item = profile()
+    taxonomy = {"taxonomy_id": "tax", "nodes": [{"category_id": "course", "selectable": True}]}
+    output = {"file_id": item.file_id, "taxonomy_id": "tax", "category_id": "course",
+              "abstain": False, "model_score": 0.95, "evidence_ids": ["e1"],
+              "warnings": [{"unexpected": "shape"}]}
+    normalized = ModelGateway._normalize_batch_results(
+        json.dumps({"results": [output]}), [(item, [])], taxonomy, set())[0]
+    assert normalized["reason"] == "模型未提供分类说明，请人工核对。"
+    assert normalized["tags"] == []
+    assert normalized["warnings"] == ["insufficient_evidence"]
+
+
 def test_image_classification_requires_vision_and_sends_only_controlled_derivative(services, tmp_path: Path):
     db, task, models, privacy, secrets = services
     image = tmp_path / "derivative.jpg"
@@ -229,7 +376,7 @@ def test_image_classification_requires_vision_and_sends_only_controlled_derivati
         assert str(image) not in json.dumps(seen)
 
 
-def test_ai06_ai10_ai11_ai12_privacy_and_no_secret_leak(services):
+def test_ai06_ai10_ai11_ai12_privacy_and_no_secret_leak(services, caplog):
     db, task, models, privacy, secrets = services
     assert validate_endpoint("http://127.0.0.1:8000/v1","loopback","qwen_local")
     with pytest.raises(ModelTransportError): validate_endpoint("http://192.168.1.9:8000/v1","loopback","qwen_local")
@@ -242,6 +389,8 @@ def test_ai06_ai10_ai11_ai12_privacy_and_no_secret_leak(services):
     raw=json.dumps(envelope.as_dict()); assert "absolute" not in raw and "private body" in raw
     disk=(db.path.read_bytes()).decode("utf-8",errors="ignore")
     assert "super-secret-key" not in disk and "private body" not in disk and "base64" not in disk
+    for sensitive_value in ("super-secret-key", "Authorization", "Bearer", "private body", "data:image/", "base64"):
+        assert sensitive_value not in caplog.text
 
 
 def test_deleted_profile_is_hidden_but_retained_for_audit(services):

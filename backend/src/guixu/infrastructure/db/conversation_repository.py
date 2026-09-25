@@ -410,6 +410,7 @@ class ConversationRepository:
         conflict_count: int = 0,
         created_by_message_id: str | None = None,
         restored_from_version_id: str | None = None,
+        commit_agent_turn_id: str | None = None,
     ) -> dict[str, Any]:
         if affected_file_count < 0 or kept_file_count < 0 or conflict_count < 0:
             raise ValueError("PLAN_VERSION_COUNTS_INVALID")
@@ -501,6 +502,17 @@ class ConversationRepository:
                         UPDATE conversation_plan_approvals SET status='STALE',superseded_at=:now
                         WHERE conversation_id=:conversation AND status='ACTIVE'
                     """), {"conversation": conversation_id, "now": now})
+                    if commit_agent_turn_id:
+                        committed = connection.execute(text("""
+                            UPDATE conversation_agent_turns
+                            SET status='COMPLETED',checkpoint_json='{}',completed_at=:now,
+                                result_json=:result
+                            WHERE id=:id AND conversation_id=:conversation
+                              AND turn_kind='REPLANNING' AND status='RUNNING'
+                        """), {"id": commit_agent_turn_id, "conversation": conversation_id,
+                               "now": now, "result": canonical_json({"plan_version_id": plan_version_id})})
+                        if committed.rowcount != 1:
+                            raise ValueError("REPLAN_CHECKPOINT_STALE")
                 return self.get_plan_version(plan_version_id)
             except IntegrityError as exc:
                 if "conversation_plan_versions" not in str(exc).lower() or attempt == 2:
@@ -538,6 +550,11 @@ class ConversationRepository:
         approval_id = str(uuid.uuid4())
         idempotent = False
         with self.database.begin() as connection:
+            if connection.execute(text("""
+                SELECT 1 FROM conversation_agent_turns WHERE conversation_id=:conversation
+                  AND turn_kind='REPLANNING' AND status='RUNNING' LIMIT 1
+            """), {"conversation": conversation_id}).first():
+                raise ValueError("REPLAN_IN_PROGRESS")
             version = connection.execute(text("""
                 SELECT p.*,c.current_plan_version_id,c.context_revision
                 FROM conversation_plan_versions p
@@ -567,7 +584,10 @@ class ConversationRepository:
             """), {"version": plan_version_id}).mappings().first()
             if existing is not None:
                 if (existing["status"] == "ACTIVE" and existing["plan_hash"] == version["plan_hash"]
-                        and int(existing["context_revision"]) == int(version["context_revision"])):
+                        and (int(existing["context_revision"]) == int(version["context_revision"])
+                             or self._failed_noop_round(connection, conversation_id, plan_version_id,
+                                                        version["plan_id"], int(existing["context_revision"]),
+                                                        int(version["context_revision"])))):
                     approval_id = existing["id"]
                     idempotent = True
                 else:
@@ -623,12 +643,42 @@ class ConversationRepository:
             if plan_hash is not None and approval["plan_hash"] != plan_hash:
                 raise ValueError("PLAN_HASH_MISMATCH")
             if int(approval["context_revision"]) != int(context[0]):
-                raise ValueError("PLAN_CONTEXT_STALE")
+                failed_round_id = self._failed_noop_round(
+                    connection, conversation_id, plan_version_id, approval["plan_id"],
+                    int(approval["context_revision"]), int(context[0]),
+                )
+                if not failed_round_id:
+                    raise ValueError("PLAN_CONTEXT_STALE")
+                with self.database.begin() as retry_connection:
+                    retry_connection.execute(text("""
+                        UPDATE conversation_execution_rounds
+                        SET status='RUNNING',started_at=COALESCE(started_at,:now),completed_at=NULL
+                        WHERE id=:id AND status='FAILED'
+                    """), {"id": failed_round_id, "now": utc_now()})
+                return self.get_execution_round(failed_round_id)
             execution_plan_id = approval["plan_id"]
         return self.create_execution_round(conversation_id, plan_version_id, execution_plan_id,
                                            expected_context_revision=expected_context_revision,
                                            status=status, affected_file_count=affected_file_count,
                                            summary=summary, require_approval=True)
+
+    @staticmethod
+    def _failed_noop_round(connection, conversation_id: str, plan_version_id: str,
+                           plan_id: str, approval_revision: int, current_revision: int) -> str | None:
+        if current_revision != approval_revision + 1:
+            return None
+        row = connection.execute(text("""
+            SELECT er.id FROM conversation_contexts c
+            JOIN conversation_execution_rounds er ON er.id=c.current_execution_round_id
+            JOIN plans p ON p.id=er.execution_plan_id
+            JOIN tasks t ON t.id=p.task_id
+            WHERE c.conversation_id=:conversation AND er.conversation_id=:conversation
+              AND er.plan_version_id=:version AND er.execution_plan_id=:plan
+              AND er.status='FAILED' AND p.status='approved'
+              AND p.approved_task_revision=t.revision
+              AND NOT EXISTS (SELECT 1 FROM operations o WHERE o.plan_id=:plan AND o.state<>'PLANNED')
+        """), {"conversation": conversation_id, "version": plan_version_id, "plan": plan_id}).first()
+        return str(row[0]) if row else None
 
     def create_execution_round(
         self,
@@ -645,6 +695,11 @@ class ConversationRepository:
         round_id = str(uuid.uuid4())
         now = utc_now()
         with self.database.begin() as connection:
+            if require_approval and connection.execute(text("""
+                SELECT 1 FROM conversation_agent_turns WHERE conversation_id=:conversation
+                  AND turn_kind='REPLANNING' AND status='RUNNING' LIMIT 1
+            """), {"conversation": conversation_id}).first():
+                raise ValueError("REPLAN_IN_PROGRESS")
             context = connection.execute(text("SELECT context_revision FROM conversation_contexts WHERE conversation_id=:id"), {"id": conversation_id}).first()
             if context is None:
                 raise KeyError(conversation_id)
@@ -774,14 +829,71 @@ class ConversationRepository:
         return self.get_execution_round(round_id)
 
     def attach_file(self, conversation_id: str, file_id: str) -> dict[str, Any]:
-        now = utc_now()
-        with self.database.begin() as connection:
-            if connection.execute(text("SELECT 1 FROM conversations WHERE id=:id AND deleted_at IS NULL"), {"id": conversation_id}).first() is None:
+        return self.attach_files(conversation_id, [file_id])[0]
+
+    def attach_files(self, conversation_id: str, file_ids: list[str], *,
+                     use_scanned_identity: bool = False) -> list[dict[str, Any]]:
+        """Attach a set of stable file IDs atomically and only inside live scope.
+
+        Batching avoids one transaction and one result query per file when the
+        first scan discovers thousands of entries. Scope checks resolve paths
+        before persistence so an API caller cannot add another Conversation's
+        out-of-scope file by guessing its stable ID.
+        """
+        ids = list(dict.fromkeys(str(file_id) for file_id in file_ids))
+        if not ids:
+            return []
+        with self.database.engine.connect() as connection:
+            if connection.execute(text(
+                "SELECT 1 FROM conversations WHERE id=:id AND deleted_at IS NULL"
+            ), {"id": conversation_id}).first() is None:
                 raise KeyError(conversation_id)
-            row = connection.execute(text("SELECT id,current_path,size_bytes,mtime_ns,sha256 FROM files WHERE id=:id"), {"id": file_id}).mappings().first()
-            if row is None:
-                raise KeyError(file_id)
-            fingerprint, size, mtime = self._observe(row)
+            roots = self._active_conversation_roots(connection, conversation_id)
+            files_by_id = self._files_by_ids(connection, ids)
+        missing = [file_id for file_id in ids if file_id not in files_by_id]
+        if missing:
+            raise KeyError(missing[0])
+        if not roots:
+            raise ValueError("CONVERSATION_SCOPE_REQUIRED")
+
+        now = utc_now()
+        insert_rows: list[dict[str, Any]] = []
+        for file_id in ids:
+            row = files_by_id[file_id]
+            if not self._path_is_within_roots(str(row["current_path"]), roots):
+                raise ValueError("REFERENCE_SCOPE_VIOLATION")
+            if use_scanned_identity and row["sha256"]:
+                # First analysis can reuse a full content fingerprint already
+                # persisted by the Task scan/parser, avoiding duplicate reads.
+                fingerprint, size, mtime = row["sha256"], row["size_bytes"], row["mtime_ns"]
+            else:
+                # Some parsers/scanners do not persist a content hash. Never
+                # attach a file with an unknown fingerprint: plan revalidation
+                # and no-clobber execution depend on this stable snapshot.
+                fingerprint, size, mtime = self._observe(row)
+            insert_rows.append({
+                "id": str(uuid.uuid4()), "conversation": conversation_id, "file": file_id,
+                "path": row["current_path"], "fingerprint": fingerprint,
+                "size": size or row["size_bytes"], "mtime": mtime or row["mtime_ns"], "now": now,
+            })
+
+        with self.database.begin() as connection:
+            if connection.execute(text(
+                "SELECT 1 FROM conversations WHERE id=:id AND deleted_at IS NULL"
+            ), {"id": conversation_id}).first() is None:
+                raise KeyError(conversation_id)
+            current_roots = self._active_conversation_roots(connection, conversation_id)
+            if not current_roots:
+                raise ValueError("CONVERSATION_SCOPE_REQUIRED")
+            if set(current_roots) != set(roots):
+                raise ValueError("CONVERSATION_SCOPE_CHANGED")
+            current_files = self._files_by_ids(connection, ids)
+            for item in insert_rows:
+                current = current_files.get(item["file"])
+                if current is None:
+                    raise KeyError(item["file"])
+                if str(current["current_path"]) != str(item["path"]):
+                    raise ValueError("FILE_STATE_CHANGED")
             connection.execute(text("""
                 INSERT INTO conversation_files(
                   id,conversation_id,file_id,first_seen_path,current_known_path,first_seen_fingerprint,current_fingerprint,
@@ -791,10 +903,71 @@ class ConversationRepository:
                   current_known_path=excluded.current_known_path,current_fingerprint=excluded.current_fingerprint,
                   current_size_bytes=excluded.current_size_bytes,current_mtime_ns=excluded.current_mtime_ns,
                   last_verified_at=excluded.last_verified_at,state='ACTIVE',removed_from_scope_at=NULL
-            """), {"id": str(uuid.uuid4()), "conversation": conversation_id, "file": file_id,
-                    "path": row["current_path"], "fingerprint": fingerprint, "size": size or row["size_bytes"],
-                    "mtime": mtime or row["mtime_ns"], "now": now})
-        return self.get_conversation_file(conversation_id, file_id)
+            """), insert_rows)
+        return self._conversation_files_by_ids(conversation_id, ids)
+
+    @staticmethod
+    def _active_conversation_roots(connection, conversation_id: str) -> list[Path]:
+        rows = connection.execute(text("""
+            SELECT source_root FROM conversation_scopes
+            WHERE conversation_id=:conversation AND revoked_at IS NULL
+        """), {"conversation": conversation_id}).all()
+        roots: list[Path] = []
+        for row in rows:
+            try:
+                root = Path(str(row[0])).resolve(strict=True)
+            except (OSError, RuntimeError):
+                continue
+            if root.is_dir():
+                roots.append(root)
+        return roots
+
+    @staticmethod
+    def _path_is_within_roots(raw_path: str, roots: list[Path]) -> bool:
+        try:
+            candidate = Path(raw_path).resolve(strict=False)
+        except (OSError, RuntimeError):
+            return False
+        candidate_text = str(candidate)
+        if candidate_text.startswith(("\\\\", "\\\\?\\", "\\\\.\\")):
+            return False
+        for root in roots:
+            try:
+                candidate.relative_to(root)
+                return True
+            except ValueError:
+                continue
+        return False
+
+    @staticmethod
+    def _files_by_ids(connection, file_ids: list[str]) -> dict[str, Any]:
+        found: dict[str, Any] = {}
+        for start in range(0, len(file_ids), 900):
+            batch = file_ids[start:start + 900]
+            placeholders = ",".join(f":f{i}" for i in range(len(batch)))
+            params = {f"f{i}": value for i, value in enumerate(batch)}
+            rows = connection.execute(text(f"""
+                SELECT id,current_path,size_bytes,mtime_ns,sha256 FROM files
+                WHERE id IN ({placeholders})
+            """), params).mappings()
+            found.update({str(row["id"]): row for row in rows})
+        return found
+
+    def _conversation_files_by_ids(self, conversation_id: str, file_ids: list[str]) -> list[dict[str, Any]]:
+        found: dict[str, dict[str, Any]] = {}
+        with self.database.engine.connect() as connection:
+            for start in range(0, len(file_ids), 900):
+                batch = file_ids[start:start + 900]
+                placeholders = ",".join(f":f{i}" for i in range(len(batch)))
+                params = {"conversation": conversation_id, **{f"f{i}": value for i, value in enumerate(batch)}}
+                rows = connection.execute(text(f"""
+                    SELECT cf.*,f.current_path AS core_current_path,f.size_bytes AS core_size_bytes,
+                           f.mtime_ns AS core_mtime_ns,f.sha256 AS core_sha256
+                    FROM conversation_files cf JOIN files f ON f.id=cf.file_id
+                    WHERE cf.conversation_id=:conversation AND cf.file_id IN ({placeholders})
+                """), params).mappings()
+                found.update({str(row["file_id"]): dict(row) for row in rows})
+        return [found[file_id] for file_id in file_ids if file_id in found]
 
     @staticmethod
     def _observe(row) -> tuple[str | None, int | None, int | None]:

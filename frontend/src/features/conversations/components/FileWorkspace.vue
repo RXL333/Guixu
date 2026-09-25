@@ -27,9 +27,16 @@ watch([query, view, () => store.currentConversation?.id], () => {
   if (panel.value) panel.value.scrollTop = 0
 })
 const selectedIds = computed(() => new Set(store.selectedFileIds))
+const inventoryOnly = computed(() => store.files.length === 0)
+const displayFiles = computed<ConversationFile[]>(() => inventoryOnly.value ? store.sourceFiles.map(item => ({
+  id: item.path, conversation_id: store.currentConversation?.id || '', file_id: item.path,
+  first_seen_path: item.path, current_known_path: item.path,
+  current_size_bytes: item.size_bytes, current_mtime_ns: item.mtime_ns,
+  added_at: new Date(item.mtime_ns / 1_000_000).toISOString(), state: 'ACTIVE' as const,
+})) : store.files)
 function onPanelScroll(event: Event) { scrollOffset.value = (event.target as HTMLElement).scrollTop }
 
-const filteredFiles = computed(() => store.files.filter(file => {
+const filteredFiles = computed(() => displayFiles.value.filter(file => {
   const haystack = `${file.current_known_path} ${file.core_current_path || ''} ${file.file_id}`.toLowerCase()
   return haystack.includes(query.value.trim().toLowerCase())
 }))
@@ -68,12 +75,13 @@ function fileChangeLabel(type: string) {
     </div>
 
     <section v-if="tab === 'files'" ref="panel" class="file-panel-body" @scroll="onPanelScroll">
-      <div class="file-panel-heading"><h2>当前目录的文件 <span>({{ store.files.length }})</span></h2><button type="button" class="panel-icon-button" aria-label="收起文件区" @click="emit('collapse')"><X :size="17" /></button></div>
+      <div class="file-panel-heading"><h2>当前目录的文件 <span>({{ displayFiles.length }}{{ store.sourceFilesTruncated && inventoryOnly ? '+' : '' }})</span></h2><button type="button" class="panel-icon-button" aria-label="收起文件区" @click="emit('collapse')"><X :size="17" /></button></div>
+      <div v-if="inventoryOnly && displayFiles.length" class="historical-plan-banner">当前显示目录清单。生成方案后可选择和引用文件。</div>
       <div class="file-toolbar"><label class="file-search"><span class="sr-only">搜索文件</span><input v-model="query" type="search" placeholder="搜索文件…" /></label><div class="view-switch" role="group" aria-label="文件显示方式"><button type="button" :class="{ active: view === 'list' }" aria-label="列表视图" @click="view = 'list'"><List :size="17" /></button><button type="button" :class="{ active: view === 'grid' }" aria-label="网格视图" @click="view = 'grid'"><Grid2X2 :size="17" /></button></div></div>
-      <div v-if="!filteredFiles.length" class="file-empty"><FileText :size="22" /><strong>{{ store.files.length ? '没有匹配的文件' : '当前目录还没有文件记录' }}</strong><p>绑定目录后，文件会显示在这里。</p></div>
+      <div v-if="!filteredFiles.length" class="file-empty"><FileText :size="22" /><strong>{{ displayFiles.length ? '没有匹配的文件' : '当前目录没有可显示的文件' }}</strong><p>检查所选目录，或生成整理方案后重试。</p></div>
       <div v-else class="file-list" :class="{ 'grid-view': view === 'grid' }">
         <div v-if="beforeHeight" aria-hidden="true" class="file-spacer" :style="{ height: `${beforeHeight}px` }" />
-        <button v-for="file in windowFiles" :key="file.file_id" type="button" class="file-item" :class="{ selected: selectedIds.has(file.file_id) }" :aria-pressed="selectedIds.has(file.file_id)" :title="file.current_known_path" @click="store.toggleFile(file.file_id)">
+        <button v-for="file in windowFiles" :key="file.file_id" type="button" class="file-item" :class="{ selected: selectedIds.has(file.file_id) }" :aria-pressed="selectedIds.has(file.file_id)" :title="file.current_known_path" :disabled="inventoryOnly" @click="store.toggleFile(file.file_id)">
           <span class="file-icon"><Check v-if="selectedIds.has(file.file_id)" :size="18" /><component v-else :is="FileIcon(file)" :size="18" /></span>
           <span class="file-copy"><strong>{{ basename(file) }}</strong><small>{{ relativePath(file) }}</small></span>
           <span class="file-meta"><small>{{ new Date(file.current_mtime_ns ? file.current_mtime_ns / 1_000_000 : file.added_at).toLocaleDateString('zh-CN') }}</small><small>{{ size(file) }}</small></span>

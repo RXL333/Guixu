@@ -19,6 +19,13 @@ async function send() {
   if (accepted) { draft.value = ''; emit('sent'); await nextTick(); textarea.value?.focus() }
   sending.value = false
 }
+async function organize() {
+  if (sending.value || props.disabled || store.chatBusy) return
+  sending.value = true
+  const accepted = await store.startOrganization(draft.value.trim() || '开始整理')
+  if (accepted) { draft.value = ''; emit('sent') }
+  sending.value = false
+}
 function keydown(event: KeyboardEvent) {
   if (event.isComposing) return
   if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() }
@@ -45,13 +52,14 @@ defineExpose({ fill })
       </template>
 
     </div>
-    <textarea ref="textarea" v-model="draft" rows="2" :disabled="disabled || sending" aria-label="整理要求" placeholder="告诉归序你希望怎样整理这些文件……" @keydown="keydown" />
+    <textarea ref="textarea" v-model="draft" rows="2" :disabled="disabled || sending || store.chatBusy" aria-label="整理要求" placeholder="先聊聊你的整理需求；说“开始整理”后生成方案……" @keydown="keydown" />
     <div class="composer-toolbar">
       <button class="composer-icon-button" type="button" aria-label="添加文件引用" :disabled="disabled" @click="emit('references')"><Paperclip :size="18" /></button>
       <span class="composer-hint">Enter 发送，Shift + Enter 换行</span>
       <div class="composer-actions">
         <span class="composer-model"><Sparkles :size="15" />{{ store.activeModel?.name || '未选择模型' }}</span>
-        <button class="send-button" type="button" :disabled="disabled || sending || !draft.trim()" aria-label="发送消息" @click="send"><Send :size="17" /></button>
+        <button class="organize-button" type="button" :disabled="disabled || sending || store.chatBusy || !store.activeModel" @click="organize">{{ store.currentPlanVersion ? '更新整理方案' : '生成整理方案' }}</button>
+        <button class="send-button" type="button" :disabled="disabled || sending || store.chatBusy || !draft.trim()" aria-label="发送消息" @click="send"><Send :size="17" /></button>
       </div>
     </div>
   </section>

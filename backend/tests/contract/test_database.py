@@ -31,7 +31,7 @@ def test_alembic_initial_migration_creates_contract_schema(project_root: Path, t
     try:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"alembic_version", "tasks", "files", "operations", "conversations", "conversation_messages", "conversation_contexts"} <= tables
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0010"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0011"
         plan_columns = {row[1] for row in connection.execute("PRAGMA table_info(plans)")}
         assert {"plan_basis_revision", "approved_task_revision"} <= plan_columns
         version_columns = {row[1] for row in connection.execute("PRAGMA table_info(conversation_plan_versions)")}
@@ -63,8 +63,8 @@ def test_alembic_v4_to_v5_plan_versioning_upgrade_is_repeatable(project_root: Pa
     command.upgrade(config, "head")
     connection = sqlite3.connect(database_path)
     try:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0010"
-        assert connection.execute("SELECT version FROM schema_metadata WHERE singleton=1").fetchone()[0] == 10
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0011"
+        assert connection.execute("SELECT version FROM schema_metadata WHERE singleton=1").fetchone()[0] == 11
         columns = {row[1] for row in connection.execute("PRAGMA table_info(conversation_plan_versions)")}
         assert {"kept_file_count", "conflict_count", "created_by_message_id", "restored_from_version_id",
                 "baseline_execution_round_id", "plan_kind"} <= columns
@@ -97,7 +97,7 @@ def test_v2_to_v7_migration_is_backed_up_and_repeatable(project_root: Path, tmp_
     upgraded = Database(path, project_root / "contracts" / "database.sql")
     upgraded.initialize()
     with upgraded.engine.connect() as connection:
-        assert connection.exec_driver_sql("SELECT version FROM schema_metadata WHERE singleton=1").scalar_one() == 10
+        assert connection.exec_driver_sql("SELECT version FROM schema_metadata WHERE singleton=1").scalar_one() == 11
         columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(tasks)")}
         assert {"deleted_at", "deletion_source", "delete_reason", "conversation_id", "conversation_plan_version_id"} <= columns
         tables = {row[0] for row in connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")}

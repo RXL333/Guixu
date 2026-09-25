@@ -1,0 +1,99 @@
+{
+  "status": "PASSED",
+  "test_type": "REAL_DEEPSEEK_REAL_FILESYSTEM_INTEGRATION",
+  "model_id": "deepseek-flash",
+  "input_file_count": 5,
+  "v1": {
+    "id": "cc8e7793-ab75-49b1-9a4f-0e10121c1b5f",
+    "status": "SUPERSEDED",
+    "plan_hash": "6e1f1ca37366266239f1b826b85199f2c3e1403712cf6d0ee4eeb3f05ed892aa"
+  },
+  "v2": {
+    "id": "f82fe036-9e5b-42cb-bbec-ccecd76b8522",
+    "parent": "cc8e7793-ab75-49b1-9a4f-0e10121c1b5f",
+    "status": "PROPOSED",
+    "plan_hash": "f064bcee79937a37a45f6413dd6705db67613a49b40bc716da8f402149d9038e"
+  },
+  "diff_summary": {
+    "total": 5,
+    "unchanged": 0,
+    "added": 0,
+    "removed": 0,
+    "target_changed": 5,
+    "keep_changed": 0,
+    "conflict_changed": 0,
+    "categories_added": 1,
+    "categories_removed": 2,
+    "categories_changed": 0
+  },
+  "pre_approval_disk_unchanged": true,
+  "execution_round": 1,
+  "execution_status": "COMPLETED",
+  "conversation_status": "ACTIVE",
+  "restart_counts": {
+    "messages": 5,
+    "plans": 2,
+    "executions": 1,
+    "files": 5
+  },
+  "restart_conversation_status": "ACTIVE",
+  "model_calls": [
+    {
+      "purpose": "planning",
+      "response_status": "ok",
+      "input_tokens": 1777,
+      "output_tokens": 4928,
+      "latency_ms": 23659,
+      "error_code": null
+    },
+    {
+      "purpose": "classification",
+      "response_status": "ok",
+      "input_tokens": 2039,
+      "output_tokens": 2555,
+      "latency_ms": 10054,
+      "error_code": null
+    },
+    {
+      "purpose": "classification",
+      "response_status": "ok",
+      "input_tokens": 950,
+      "output_tokens": 319,
+      "latency_ms": 2431,
+      "error_code": null
+    },
+    {
+      "purpose": "planning",
+      "response_status": "ok",
+      "input_tokens": 2114,
+      "output_tokens": 7976,
+      "latency_ms": 35673,
+      "error_code": null
+    },
+    {
+      "purpose": "repair",
+      "response_status": "ok",
+      "input_tokens": 2153,
+      "output_tokens": 4387,
+      "latency_ms": 18958,
+      "error_code": null
+    },
+    {
+      "purpose": "classification",
+      "response_status": "ok",
+      "input_tokens": 2193,
+      "output_tokens": 901,
+      "latency_ms": 3848,
+      "error_code": null
+    },
+    {
+      "purpose": "classification",
+      "response_status": "ok",
+      "input_tokens": 903,
+      "output_tokens": 421,
+      "latency_ms": 2531,
+      "error_code": null
+    }
+  ],
+  "secret_recorded": false
+}

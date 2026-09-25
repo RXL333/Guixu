@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/vue'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ConversationMessage from '../src/features/conversations/components/ConversationMessage.vue'
@@ -9,10 +9,11 @@ import ConversationWorkspacePage from '../src/pages/ConversationWorkspacePage.vu
 import PlanPreviewCard from '../src/features/conversations/components/PlanPreviewCard.vue'
 import ExecutionResultCard from '../src/features/conversations/components/ExecutionResultCard.vue'
 import UndoPreviewCard from '../src/features/conversations/components/UndoPreviewCard.vue'
-import { api } from '../src/services/api'
+import { api, ApiError } from '../src/services/api'
 import { useConversationStore } from '../src/features/conversations/store'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
+beforeEach(() => { vi.spyOn(api, 'sourceFiles').mockResolvedValue({ files: [], truncated: false }) })
 
 const message = (role: 'USER'|'ASSISTANT'|'SYSTEM_EVENT', content: string, sequence_number: number) => ({
   id: `m-${sequence_number}`, conversation_id: 'c1', role, content, sequence_number,
@@ -20,6 +21,20 @@ const message = (role: 'USER'|'ASSISTANT'|'SYSTEM_EVENT', content: string, seque
 }) as any
 
 describe('phase E Conversation Workspace', () => {
+  it('shows the real first-analysis contract error and clears stale scanning text', async () => {
+    const store = useConversationStore(createPinia())
+    store.currentConversation = { id: 'c1', title: '首次整理', status: 'ACTIVE', revision: 1, model_profile_id: 'model1', created_at: 'now', updated_at: 'now' } as any
+    store.models = [{ id: 'model1', name: 'DeepSeek 云端', enabled: true }] as any
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(api, 'firstConversationTurn').mockRejectedValue(
+      new ApiError('PLANNER_SCHEMA_INVALID', '首次 AI 分析不可用或授权不足。', { validation_reason: 'CATEGORY_PATH_UNSAFE' }, 409),
+    )
+    expect(await store.appendMessage('进行整理')).toBe(false)
+    expect(store.error).toContain('PLANNER_SCHEMA_INVALID')
+    expect(store.notice).toBe('')
+    expect(store.analysisBusy).toBe(false)
+  })
+
   it('renders ordered user, assistant and system-event messages', () => {
     const view = render(ConversationMessage, { props: { message: message('USER', '整理这些照片', 1) } })
     expect(view.getByText('我')).toBeTruthy()
@@ -30,19 +45,56 @@ describe('phase E Conversation Workspace', () => {
     expect(system.getByText('系统')).toBeTruthy()
   })
 
-  it('persists composer input through Message API without fabricating assistant output', async () => {
+  it('routes ordinary composer input to the selected chat model without starting analysis', async () => {
     const pinia = createPinia()
     const store = useConversationStore(pinia)
-    store.currentConversation = { id: 'c1', title: '摄影照片整理', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' }
-    vi.spyOn(api, 'appendConversationMessage').mockResolvedValue(message('USER', '按照内容整理', 1))
+    store.currentConversation = { id: 'c1', title: '摄影照片整理', status: 'ACTIVE', revision: 1, model_profile_id: 'model1', created_at: 'now', updated_at: 'now' }
+    store.models = [{ id: 'model1', name: '测试模型', enabled: true }] as any
+    vi.spyOn(api, 'chatConversation').mockResolvedValue({ user_message: message('USER', '按照内容整理', 1), assistant_message: message('ASSISTANT', '可以，先说说需要几类？', 2) })
+    const analysis = vi.spyOn(api, 'firstConversationTurn')
     const view = render(ChatComposer, { global: { plugins: [pinia] } })
     await fireEvent.update(view.getByRole('textbox', { name: '整理要求' }), '按照内容整理')
     await fireEvent.keyDown(view.getByRole('textbox', { name: '整理要求' }), { key: 'Enter' })
-    await waitFor(() => expect(api.appendConversationMessage).toHaveBeenCalledWith('c1', {
-      role: 'USER', content: '按照内容整理', selected_file_ids: [], focused_file_id: null,
-      active_category_id: null, expected_context_revision: undefined,
+    await waitFor(() => expect(api.chatConversation).toHaveBeenCalledWith('c1', '按照内容整理', []))
+    expect(store.messages.at(-1)?.content).toBe('可以，先说说需要几类？')
+    expect(analysis).not.toHaveBeenCalled()
+  })
+
+  it('carries discussed requirements into an explicit first organization request', async () => {
+    const store = useConversationStore(createPinia())
+    store.currentConversation = { id: 'c1', title: '照片整理', status: 'ACTIVE', revision: 1, model_profile_id: 'model1', created_at: 'now', updated_at: 'now' } as any
+    store.models = [{ id: 'model1', name: '测试模型', enabled: true }] as any
+    vi.spyOn(api, 'chatConversation').mockResolvedValue({
+      user_message: message('USER', '文件夹名称用中文', 1),
+      assistant_message: message('ASSISTANT', '好的，可以使用中文目录名。', 2),
+    })
+    const analysis = vi.spyOn(api, 'firstConversationTurn').mockRejectedValue(new ApiError('MODEL_UNAVAILABLE', '测试停止在分析入口', null, 409))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    expect(await store.appendMessage('文件夹名称用中文')).toBe(true)
+    expect(analysis).not.toHaveBeenCalled()
+    expect(await store.appendMessage('开始整理')).toBe(false)
+    expect(analysis).toHaveBeenCalledWith('c1', expect.objectContaining({
+      content: expect.stringContaining('文件夹名称用中文'), acknowledge_privacy: true,
     }))
-    expect(view.queryByText('好的，我来帮你整理。')).toBeNull()
+  })
+
+  it('turns a post-execution global request into a confirmation preview', async () => {
+    const store = useConversationStore(createPinia())
+    store.currentConversation = { id: 'c1', title: '照片整理', status: 'ACTIVE', revision: 1, model_profile_id: 'model1', created_at: 'now', updated_at: 'now' } as any
+    store.models = [{ id: 'model1', name: '测试模型', enabled: true }] as any
+    store.planVersions = [{ id: 'p1', conversation_id: 'c1', version_number: 1, status: 'EXECUTED', created_at: '2026-09-20T08:00:00Z' }] as any
+    store.executionRounds = [{ id: 'r1', conversation_id: 'c1', round_number: 1, status: 'COMPLETED', created_at: '2026-09-20T08:10:00Z' }] as any
+    store.messages = [message('USER', '文件夹名称用中文', 3)]
+    vi.spyOn(api, 'prepareConversationRefinement').mockResolvedValue({
+      status: 'GLOBAL_REPLAN_CONFIRMATION_REQUIRED', intent: 'POST_EXECUTION_REFINEMENT',
+      affected_scope: { scope_type: 'GLOBAL', affected_category_ids: [], candidate_file_ids: ['f1'], requires_global_replan: true, preserve_unaffected: false, reason: 'global' },
+      metrics: { total_scope_files: 1, affected_files: 1, evidence_reused: 1, evidence_refreshed: 0, invalid_evidence: 0, delta_plan_count: 0, ai_calls: 0 },
+    })
+    expect(await store.appendMessage('重新进行整理')).toBe(true)
+    expect(api.prepareConversationRefinement).toHaveBeenCalledWith('c1', expect.objectContaining({
+      user_message: expect.stringContaining('全部重新规划'), confirmed_global: false,
+    }))
+    expect(store.pendingGlobalMessage).toContain('文件夹名称用中文')
   })
 
   it('switches file workspace tabs and supports selected file ids', async () => {
@@ -101,8 +153,9 @@ describe('phase E Conversation Workspace', () => {
     store.currentConversation = { id: 'c1', title: '摄影照片整理', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' }
     store.context = { id: 'ctx', conversation_id: 'c1', context_revision: 5, max_directory_depth: 2, file_state_revision: 2, created_at: 'now', updated_at: 'now' } as any
     store.executionRounds = [{ id: 'r1', conversation_id: 'c1', round_number: 1, plan_version_id: 'p1', execution_plan_id: 'core1', status: 'COMPLETED', affected_file_count: 48, created_at: 'now' }] as any
+    store.models = [{ id: 'model1', name: '测试模型', enabled: true }] as any
+    store.currentConversation!.model_profile_id = 'model1'
     const delta = { id: 'p2', conversation_id: 'c1', version_number: 2, parent_plan_version_id: 'p1', baseline_execution_round_id: 'r1', basis_context_revision: 6, source: 'USER_REQUEST', plan_kind: 'DELTA', status: 'PROPOSED', plan_hash: 'a'.repeat(64), summary: '局部调整 · 3 个文件', affected_file_count: 3, kept_file_count: 45, created_at: 'now' } as any
-    vi.spyOn(api, 'appendConversationMessage').mockResolvedValue(message('USER', '建筑里的夜景放到风景，其他不要动。', 2))
     vi.spyOn(api, 'prepareConversationRefinement').mockResolvedValue({
       status: 'WAITING_FOR_APPROVAL', intent: 'POST_EXECUTION_REFINEMENT',
       affected_scope: { scope_type: 'LOCAL', affected_category_ids: ['building'], candidate_file_ids: Array.from({ length: 12 }, (_, i) => `f${i}`), target_category_id: 'landscape', requires_global_replan: false, preserve_unaffected: true, reason: 'validated' },
@@ -110,15 +163,39 @@ describe('phase E Conversation Workspace', () => {
       plan_version: delta, assistant_message: message('ASSISTANT', '本轮只调整 3 个文件，其他保持不变。', 3),
     })
     vi.spyOn(api, 'conversationContext').mockResolvedValue({ ...store.context, context_revision: 7, current_plan_version_id: 'p2' } as any)
-    expect(await store.appendMessage('建筑里的夜景放到风景，其他不要动。')).toBe(true)
-    expect(api.prepareConversationRefinement).toHaveBeenCalledWith('c1', {
-      user_message: '建筑里的夜景放到风景，其他不要动。', confirmed_global: false,
-      referenced_file_ids: [], trigger_message_id: 'm-2',
-    })
+    expect(await store.startOrganization('建筑里的夜景放到风景，其他不要动。')).toBe(true)
+    expect(api.prepareConversationRefinement).toHaveBeenCalledWith('c1', expect.objectContaining({
+      user_message: expect.stringContaining('建筑里的夜景放到风景，其他不要动。'), confirmed_global: false,
+    }))
     expect(store.affectedScope?.scope_type).toBe('LOCAL')
     expect(store.refinementMetrics?.delta_plan_count).toBe(3)
     expect(store.planVersions.at(-1)?.plan_kind).toBe('DELTA')
     expect(store.messages.at(-1)?.role).toBe('ASSISTANT')
+  })
+
+  it('replans a proposed first plan before any execution', async () => {
+    const pinia = createPinia()
+    const store = useConversationStore(pinia)
+    store.currentConversation = { id: 'c1', title: '首次整理', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' }
+    store.context = { id: 'ctx', conversation_id: 'c1', context_revision: 3, current_plan_version_id: 'p1', max_directory_depth: 2, file_state_revision: 1, created_at: 'now', updated_at: 'now' } as any
+    store.planVersions = [{ id: 'p1', conversation_id: 'c1', version_number: 1, basis_context_revision: 2, source: 'USER_REQUEST', plan_kind: 'FULL', status: 'PROPOSED', plan_hash: 'a'.repeat(64), summary: '首次方案', affected_file_count: 1, created_at: 'now' }] as any
+    store.models = [{ id: 'model1', name: '测试模型', enabled: true }] as any
+    store.currentConversation!.model_profile_id = 'model1'
+    vi.spyOn(api, 'prepareConversationRefinement').mockResolvedValue({
+      status: 'WAITING_FOR_APPROVAL', intent: 'PRE_EXECUTION_REPLAN',
+      affected_scope: { scope_type: 'GLOBAL', affected_category_ids: [], candidate_file_ids: ['f1'], requires_global_replan: false, preserve_unaffected: false, reason: 'pre-execution' },
+      metrics: { total_scope_files: 1, affected_files: 1, evidence_reused: 1, evidence_refreshed: 0, invalid_evidence: 0, delta_plan_count: 1, ai_calls: 2 },
+      plan_version: { ...store.planVersions[0], id: 'p2', version_number: 2, parent_plan_version_id: 'p1' },
+      assistant_message: message('ASSISTANT', '已生成方案 v2。', 3),
+    } as any)
+    vi.spyOn(api, 'conversationContext').mockResolvedValue({ ...store.context, context_revision: 5, current_plan_version_id: 'p2' } as any)
+
+    expect(await store.startOrganization('网络课程资料单独归类')).toBe(true)
+    expect(api.prepareConversationRefinement).toHaveBeenCalledWith('c1', expect.objectContaining({
+      user_message: expect.stringContaining('网络课程资料单独归类'), confirmed_global: false,
+    }))
+    expect(store.planVersions.at(-1)?.version_number).toBe(2)
+    expect(store.executionRounds).toEqual([])
   })
 
   it('renders delta approval and the post-execution continuation cue', async () => {
@@ -164,10 +241,12 @@ describe('phase E Conversation Workspace', () => {
     const pinia = createPinia()
     const store = useConversationStore(pinia)
     store.currentConversation = { id: 'c1', title: '引用测试', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' } as any
+    store.currentConversation!.model_profile_id = 'model1'
+    store.models = [{ id: 'model1', name: '测试模型', enabled: true }] as any
     store.context = { id: 'ctx', conversation_id: 'c1', context_revision: 4, max_directory_depth: 2, file_state_revision: 1, created_at: 'now', updated_at: 'now' } as any
     store.files = Array.from({ length: 500 }, (_, index) => ({ id: `cf${index}`, conversation_id: 'c1', file_id: `f${index}`, first_seen_path: `D:/Photos/${index}.jpg`, current_known_path: `D:/Photos/${index}.jpg`, state: 'ACTIVE', added_at: 'now' })) as any
     store.selectedFileIds = Array.from({ length: 500 }, (_, index) => `f${index}`)
-    vi.spyOn(api, 'appendConversationMessage').mockResolvedValue({ ...message('USER', '这些放到旅行', 1), referenced_file_ids: Array.from({ length: 499 }, (_, index) => `f${index + 1}`), reference_source: 'UI_SELECTION' } as any)
+    vi.spyOn(api, 'chatConversation').mockResolvedValue({ user_message: { ...message('USER', '这些放到旅行', 1), referenced_file_ids: Array.from({ length: 499 }, (_, index) => `f${index + 1}`), reference_source: 'UI_SELECTION' } as any, assistant_message: message('ASSISTANT', '可以按旅行场景分组。', 2) })
     const view = render(ChatComposer, { global: { plugins: [pinia] } })
     expect(view.getByText('已引用 500 个文件')).toBeTruthy()
     expect(view.getByText('+497')).toBeTruthy()
@@ -175,7 +254,7 @@ describe('phase E Conversation Workspace', () => {
     expect(store.selectedFileIds).toHaveLength(499)
     await fireEvent.update(view.getByRole('textbox', { name: '整理要求' }), '这些放到旅行')
     await fireEvent.click(view.getByRole('button', { name: '发送消息' }))
-    await waitFor(() => expect(api.appendConversationMessage).toHaveBeenCalledWith('c1', expect.objectContaining({ selected_file_ids: expect.arrayContaining(['f1', 'f499']), expected_context_revision: 4 })))
+    await waitFor(() => expect(api.chatConversation).toHaveBeenCalledWith('c1', '这些放到旅行', expect.arrayContaining(['f1', 'f499'])))
     expect(store.selectedFileIds).toEqual([])
   })
 
