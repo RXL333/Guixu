@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/vue'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TaskStepper from '../src/components/TaskStepper.vue'
 import EvidenceDrawer from '../src/components/EvidenceDrawer.vue'
 import HistoryPage from '../src/pages/HistoryPage.vue'
@@ -8,6 +8,7 @@ import * as dialogs from '../src/components/dialogState'
 import { router } from '../src/router'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
+beforeEach(() => { vi.spyOn(api, 'conversations').mockResolvedValue([]) })
 
 describe('phase 06 UI safety contract', () => {
   it('UI04 exposes named task phases to assistive technology', () => {
@@ -151,6 +152,20 @@ describe('phase 06 UI safety contract', () => {
     await fireEvent.click(view.getByRole('button',{name:'批量永久删除'}))
     await waitFor(()=>expect(purge).toHaveBeenCalledWith(['x','y']))
     expect(dialogs.confirmAction).toHaveBeenCalledWith(expect.stringContaining('不会删除磁盘上的文件'))
+  })
+
+  it('shows deleted conversations and permanently removes only their records', async () => {
+    const conversation = { id: 'c1', title: '照片对话', status: 'DELETED', revision: 2, created_at: 'now', updated_at: 'now', deleted_at: 'now' } as any
+    vi.mocked(api.conversations).mockResolvedValueOnce([conversation]).mockResolvedValueOnce([])
+    vi.spyOn(api, 'tasks').mockResolvedValue({ items: [] })
+    const purge = vi.spyOn(api, 'permanentlyDeleteConversation').mockResolvedValue({ permanently_deleted: true, disk_files_changed: false })
+    vi.spyOn(dialogs, 'confirmAction').mockResolvedValue(true)
+    await router.push('/trash')
+    const view = render(HistoryPage, { global: { plugins: [router] } })
+    await view.findByText('照片对话')
+    await fireEvent.click(view.getByRole('button', { name: '永久删除对话' }))
+    await waitFor(() => expect(purge).toHaveBeenCalledWith('c1'))
+    expect(dialogs.confirmAction).toHaveBeenCalledWith(expect.stringContaining('磁盘文件不会改变'))
   })
 
   it('navigation removes template and rule products and exposes recent deletion', async () => {

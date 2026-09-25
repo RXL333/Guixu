@@ -97,10 +97,32 @@ def test_first_turn_scans_real_evidence_and_only_creates_full_preview(project_ro
         assert result["metrics"]["file_count"] == 1
         assert result["disk_files_changed"] is False
         assert result["assistant_message"]["message_type"] == "PLAN_PROPOSAL"
+        preview = client.get(
+            f"/api/v1/conversations/{conversation['id']}/plan-versions/{result['plan_version']['id']}/preview",
+            headers=_headers(token),
+        )
+        assert preview.status_code == 200, preview.text
+        mappings = preview.json()["data"]["operations"]
+        assert len(mappings) == 1
+        assert mappings[0]["source_path"] == str(sample)
+        assert mappings[0]["target_path"] is not None
+        assert mappings[0]["target_path"].endswith("network-notes.txt")
+        assert preview.json()["data"]["plan_hash"] == result["plan_version"]["plan_hash"]
         assert not app.state.conversations.list_execution_rounds(conversation["id"])
         assert fake.seen_profiles and "TCP" in " ".join(item.text for item in fake.seen_profiles[0].evidence)
         assert hashlib.sha256(sample.read_bytes()).hexdigest() == before_hash
         assert sample.exists()
+
+        task_id = result["task"]["id"]
+        assert client.delete(f"/api/v1/conversations/{conversation['id']}/permanent", headers=_headers(token)).status_code == 409
+        assert client.delete(f"/api/v1/conversations/{conversation['id']}", headers=_headers(token)).status_code == 200
+        purged = client.delete(f"/api/v1/conversations/{conversation['id']}/permanent", headers=_headers(token))
+        assert purged.status_code == 200, purged.text
+        assert client.get(f"/api/v1/conversations/{conversation['id']}", headers=_headers(token)).status_code == 404
+        assert client.get(f"/api/v1/tasks/{task_id}", headers=_headers(token)).status_code == 200
+        preserved_plan = client.get(f"/api/v1/tasks/{task_id}/plan?plan_id={result['plan_version']['plan_id']}", headers=_headers(token))
+        assert preserved_plan.status_code == 200 and preserved_plan.json()["data"]["operations"]
+        assert sample.exists() and hashlib.sha256(sample.read_bytes()).hexdigest() == before_hash
 
 
 def test_first_plan_can_be_explicitly_approved_and_executed(project_root: Path, tmp_path: Path, monkeypatch):

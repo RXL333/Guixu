@@ -31,7 +31,9 @@ class PreviewTicketService:
 
     def issue(self, task_id: str, file_id: str) -> dict[str, object]:
         file = self.repository.get_file(task_id, file_id)
-        path = Path(file["current_path"])
+        return self.issue_path(Path(file["current_path"]))
+
+    def issue_path(self, path: Path) -> dict[str, object]:
         if path.suffix.lower() not in SAFE_EXTENSIONS or not path.is_file():
             raise ValueError("PREVIEW_UNSUPPORTED")
         stat = path.stat()

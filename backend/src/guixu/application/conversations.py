@@ -45,6 +45,9 @@ class ConversationService:
     def restore_conversation(self, conversation_id: str) -> dict[str, Any]:
         return self.repository.restore(conversation_id)
 
+    def permanently_delete_conversation(self, conversation_id: str) -> None:
+        self.repository.permanently_delete(conversation_id)
+
     def append_message(self, conversation_id: str, role: str, content: str, **kwargs: Any) -> dict[str, Any]:
         return self.repository.append_message(conversation_id, role, content, **kwargs)
 

@@ -221,6 +221,11 @@ export interface ConversationPlanVersion {
   superseded_at?: string | null
 }
 
+export interface ConversationPlanPreview {
+  plan_hash: string | null
+  operations: Array<{ file_id: string; action: string; source_path: string; target_path: string | null; reason: string | null }>
+}
+
 export type PlanFileChangeType = 'UNCHANGED' | 'ADDED' | 'REMOVED' | 'TARGET_CHANGED' | 'KEEP_CHANGED' | 'CONFLICT_CHANGED'
 export interface ConversationPlanDiff {
   old_plan_version_id: string | null
@@ -553,6 +558,12 @@ export const api = {
   restoreConversation: (id: string) => request<Conversation>(`/api/v1/conversations/${id}/restore`, {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
   }),
+  permanentlyDeleteConversation: (id: string) => request<{ permanently_deleted: true; disk_files_changed: false }>(`/api/v1/conversations/${id}/permanent`, {
+    method: 'DELETE', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}',
+  }),
+  conversationPreviewTicket: (id: string, file: { file_id?: string; source_path?: string }) => request<{ url: string; media_type: string }>(`/api/v1/conversations/${id}/preview-ticket`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(file),
+  }),
   conversationMessages: (id: string) => request<ConversationMessage[]>(`/api/v1/conversations/${id}/messages`),
   chatConversation: (id: string, content: string, selected_file_ids: string[] = []) => request<{ user_message: ConversationMessage; assistant_message: ConversationMessage }>(`/api/v1/conversations/${id}/chat`, {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ content, selected_file_ids }),
@@ -574,6 +585,7 @@ export const api = {
   conversationPlans: (id: string) => request<ConversationPlanVersion[]>(`/api/v1/conversations/${id}/plans`),
   conversationPlanVersions: (id: string, limit = 20) => request<ConversationPlanVersion[]>(`/api/v1/conversations/${id}/plan-versions?limit=${limit}`),
   conversationPlanVersion: (id: string, versionId: string) => request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/${versionId}`),
+  conversationPlanPreview: (id: string, versionId: string) => request<ConversationPlanPreview>(`/api/v1/conversations/${id}/plan-versions/${versionId}/preview`),
   currentConversationPlanVersion: (id: string) => request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/current`),
   conversationPlanDiff: (id: string, versionId: string, fromVersionId?: string | null) => request<ConversationPlanDiff>(`/api/v1/conversations/${id}/plan-versions/${versionId}/diff${fromVersionId ? `?from_version_id=${encodeURIComponent(fromVersionId)}` : ''}`),
   approveConversationPlanVersion: (id: string, versionId: string, payload: { expected_context_revision?: number; plan_hash?: string; authorization?: Record<string, unknown> } = {}) => request<Record<string, unknown>>(`/api/v1/conversations/${id}/plan-versions/${versionId}/approve`, {

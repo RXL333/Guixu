@@ -152,6 +152,27 @@ def test_conversation_soft_delete_preserves_disk_journal_and_undo(project_root: 
     database.close()
 
 
+def test_permanent_conversation_delete_keeps_executed_file_journal(project_root: Path, tmp_path: Path):
+    database, _, conversations, _, undo_service, conversation_id, _, _, source, output = _environment(
+        project_root, tmp_path, count=2
+    )
+    undo_service.request(conversation_id, user_message="撤销刚才那次整理。")
+    before_files = sorted((path.name, read_identity(path).sha256) for path in output.iterdir() if path.is_file())
+    with database.engine.connect() as connection:
+        operations_before = connection.execute(text("SELECT COUNT(*) FROM operations WHERE state='COMMITTED'")).scalar_one()
+        events_before = connection.execute(text("SELECT COUNT(*) FROM operation_events")).scalar_one()
+    conversations.soft_delete(conversation_id)
+    conversations.permanently_delete(conversation_id)
+    assert conversations.list("all") == []
+    assert sorted((path.name, read_identity(path).sha256) for path in output.iterdir() if path.is_file()) == before_files
+    with database.engine.connect() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM operations WHERE state='COMMITTED'")).scalar_one() == operations_before
+        assert connection.execute(text("SELECT COUNT(*) FROM operation_events")).scalar_one() == events_before
+        assert connection.execute(text("SELECT COUNT(*) FROM tasks WHERE conversation_id IS NULL")).scalar_one() >= 1
+    assert not list(source.iterdir())
+    database.close()
+
+
 def test_partial_undo_and_double_confirm_are_idempotent(project_root: Path, tmp_path: Path):
     database, _, conversations, _, service, conversation_id, execution, file_ids, source, output = _environment(project_root, tmp_path)
     preview = service.request(conversation_id, user_message="只把这几个恢复回去。",

@@ -210,6 +210,33 @@ class ConversationRepository:
                 raise KeyError(conversation_id)
         return self.get(conversation_id)
 
+    def permanently_delete(self, conversation_id: str) -> None:
+        """Remove a deleted conversation while retaining core task and operation journals."""
+        with self.database.begin() as connection:
+            row = connection.execute(text("SELECT deleted_at FROM conversations WHERE id=:id"), {"id": conversation_id}).first()
+            if row is None:
+                raise KeyError(conversation_id)
+            if row[0] is None:
+                raise ValueError("CONVERSATION_NOT_DELETED")
+            params = {"id": conversation_id}
+            connection.execute(text("UPDATE tasks SET conversation_id=NULL,conversation_plan_version_id=NULL WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_message_file_references WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_undo_plan_items WHERE undo_plan_id IN (SELECT id FROM conversation_undo_plans WHERE conversation_id=:id)"), params)
+            connection.execute(text("DELETE FROM conversation_undo_plans WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_plan_approvals WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_contexts WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_messages WHERE conversation_id=:id"), params)
+            connection.execute(text("UPDATE conversation_agent_turns SET retry_of_turn_id=NULL WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_agent_turns WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_reconciliations WHERE conversation_id=:id"), params)
+            connection.execute(text("UPDATE conversation_execution_rounds SET target_execution_round_id=NULL WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_execution_rounds WHERE conversation_id=:id"), params)
+            connection.execute(text("UPDATE conversation_plan_versions SET parent_plan_version_id=NULL,baseline_execution_round_id=NULL,restored_from_version_id=NULL WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_plan_versions WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_files WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversation_scopes WHERE conversation_id=:id"), params)
+            connection.execute(text("DELETE FROM conversations WHERE id=:id"), params)
+
     def archive(self, conversation_id: str) -> dict[str, Any]:
         with self.database.begin() as connection:
             result = connection.execute(text("""

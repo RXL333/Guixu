@@ -79,6 +79,10 @@ input, select, textarea { accent-color: var(--primary); }
 .file-item:disabled { cursor: default; opacity: 1; }
 .file-item:disabled:hover { background: transparent; }
 .file-item.selected { background: var(--primary-soft); }
+.file-item-wrap { position: relative; min-width: 0; }
+.file-item-wrap .file-item { padding-right: 52px; }
+.file-preview-shortcut { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); z-index: 1; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--bg-surface); color: var(--primary); padding: 5px 7px; font-size: 11px; cursor: pointer; }
+.file-preview-shortcut:hover { background: var(--primary-soft); }
 .file-icon { width: 36px; height: 36px; border-radius: 6px; color: var(--text-secondary); background: var(--bg-hover); }
 .file-copy strong { font-weight: 400; font-size: 13px; }
 .file-copy small { font-size: 12px; }
@@ -102,6 +106,22 @@ input, select, textarea { accent-color: var(--primary); }
 .plan-scope-summary span { padding: 0; border-radius: 0; background: transparent; color: var(--text-secondary); }
 .plan-approve-button { width: auto; padding: 0 16px; border-radius: 8px; background: var(--primary); }
 .plan-diff-panel { background: var(--bg-subtle); border: 0; border-radius: 8px; }
+.plan-file-mappings { margin-top: 16px; border-top: 1px solid var(--border-default); padding-top: 14px; }
+.plan-file-mappings h3 { margin: 0 0 5px; font-size: 14px; }
+.plan-file-mappings p { margin: 5px 0 10px; color: var(--text-secondary); font-size: 12px; }
+.plan-file-mappings input { width: 100%; min-height: 34px; margin-bottom: 9px; padding: 6px 9px; border: 1px solid var(--border-default); border-radius: 8px; }
+.plan-file-list { display: grid; gap: 8px; }
+.plan-file-row { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-surface); overflow-wrap: anywhere; }
+.plan-file-row strong { font-size: 12px; }
+.plan-file-row-heading { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.plan-file-row-heading button { flex: none; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg-surface); color: var(--primary); padding: 4px 6px; font-size: 11px; cursor: pointer; }
+.plan-file-row small { font-size: 11px; color: var(--text-secondary); }
+.image-preview-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(12, 24, 42, .68); }
+.image-preview-dialog { display: flex; flex-direction: column; width: min(900px, 96vw); max-height: 94vh; padding: 14px; border-radius: 12px; background: var(--bg-surface); }
+.image-preview-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 10px; }
+.image-preview-dialog header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.image-preview-dialog header button { border: 0; background: transparent; cursor: pointer; }
+.image-preview-dialog img { max-width: 100%; max-height: calc(94vh - 80px); object-fit: contain; align-self: center; }
 .undo-preview-card { width: 100%; margin: 16px 0; padding: 16px; border-radius: var(--radius-card); border-color: var(--border-default); background: var(--bg-surface); box-shadow: none; }
 .undo-preview-card.blocked { background: var(--bg-surface); border-color: var(--border-strong); }
 .page { max-width: 1080px; padding: 32px 40px 48px; }
@@ -113,6 +133,12 @@ input, select, textarea { accent-color: var(--primary); }
 .history-toolbar input { min-width: 160px; }
 .history-row { gap: 12px; padding: 16px 0; }
 .history-row > a { flex: 1; min-width: 0; }
+.deleted-conversations { margin: 22px 0; }
+.deleted-conversations h2 { font-size: 17px; margin-bottom: 10px; }
+.deleted-conversation-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border-default); }
+.deleted-conversation-row > div { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.deleted-conversation-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deleted-conversation-row small { color: var(--text-secondary); }
 .history-row small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .task-status { font-family: inherit; color: var(--text-secondary); }
 .primary-button, .secondary-button { min-height: 36px; padding: 0 12px; }

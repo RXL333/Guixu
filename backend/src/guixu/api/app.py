@@ -532,6 +532,55 @@ def create_app(
             return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
         return envelope(result, request.state.request_id)
 
+    @app.delete("/api/v1/conversations/{conversation_id}/permanent")
+    def permanently_delete_conversation(conversation_id: str, request: Request,
+                                        idempotency_key: str = Header(default="conversation-permanent-delete")):
+        del idempotency_key
+        try:
+            conversations.permanently_delete_conversation(conversation_id)
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "请先将对话移入最近删除。", request.state.request_id)
+        return envelope({"permanently_deleted": True, "disk_files_changed": False}, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/preview-ticket", status_code=201)
+    def issue_conversation_preview_ticket(conversation_id: str, payload: dict[str, str], request: Request,
+                                          idempotency_key: str = Header(default="conversation-preview-ticket")):
+        del idempotency_key
+        try:
+            conversation = conversations.get_conversation(conversation_id)
+            if conversation.get("deleted_at"):
+                raise ValueError("CONVERSATION_DELETED")
+            file_id = payload.get("file_id")
+            if file_id:
+                with database.engine.connect() as connection:
+                    row = connection.execute(text("""
+                        SELECT current_known_path FROM conversation_files
+                        WHERE conversation_id=:conversation AND file_id=:file
+                    """), {"conversation": conversation_id, "file": file_id}).first()
+                if row is None:
+                    raise KeyError(file_id)
+                candidate = Path(row[0])
+            else:
+                source_path = payload.get("source_path")
+                if not source_path:
+                    raise ValueError("PREVIEW_FILE_REQUIRED")
+                candidate = Path(source_path)
+            path = candidate.resolve(strict=True)
+            roots = [Path(str(scope["source_root"])).resolve(strict=True) for scope in conversation.get("scopes", []) if not scope.get("revoked_at")]
+            if not any(path.is_relative_to(root) for root in roots):
+                raise ValueError("PREVIEW_OUTSIDE_SCOPE")
+            result = previews.issue_path(path)
+        except KeyError:
+            return error_response(404, "PREVIEW_FILE_NOT_FOUND", "预览文件不属于当前会话。", request.state.request_id)
+        except OSError:
+            return error_response(404, "PREVIEW_FILE_NOT_FOUND", "预览文件不存在。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(422, str(exc), "该文件无法安全预览。", request.state.request_id)
+        result["url"] = f"/api/v1/previews/{result['ticket']}"
+        return envelope(result, request.state.request_id)
+
     @app.get("/api/v1/conversations/{conversation_id}/messages")
     def list_conversation_messages(conversation_id: str, request: Request, include_redacted: bool = False):
         try:
@@ -819,6 +868,24 @@ def create_app(
         except KeyError:
             return error_response(404, "PLAN_VERSION_NOT_FOUND", "方案版本不存在。", request.state.request_id)
         return envelope(result, request.state.request_id)
+
+    @app.get("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/preview")
+    def get_conversation_plan_preview(conversation_id: str, version_id: str, request: Request):
+        try:
+            version = plan_versions.get(version_id)
+            if version["conversation_id"] != conversation_id:
+                raise KeyError(version_id)
+            plan_id = version.get("plan_id")
+            if not plan_id:
+                return envelope({"operations": [], "plan_hash": version.get("plan_hash")}, request.state.request_id)
+            plan = journal.load_plan(plan_id)
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "整理方案不存在。", request.state.request_id)
+        return envelope({"plan_hash": version.get("plan_hash"), "operations": [
+            {"file_id": item.file_id, "action": item.action, "source_path": item.source_path,
+             "target_path": item.target_path, "reason": item.reason}
+            for item in plan.operations
+        ]}, request.state.request_id)
 
     @app.get("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/diff")
     def diff_conversation_plan_version(conversation_id: str, version_id: str, request: Request,

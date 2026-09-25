@@ -3,11 +3,12 @@ import { confirmAction, promptAction } from '../components/dialogState'
 import { computed, onMounted, ref, watch } from 'vue'
 import { MoreHorizontal, RotateCcw, Trash2 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
-import { api, type Task } from '../services/api'
+import { api, type Conversation, type Task } from '../services/api'
 
 const statusLabel = (status: string) => ({ CREATED: '已创建', RUNNING: '进行中', PAUSED: '已暂停', PAUSE_REQUESTED: '正在暂停', RECOVERY_REQUIRED: '待恢复', COMPLETED: '已完成', COMPLETED_WITH_ISSUES: '部分完成', CANCELLED: '已取消', FAILED: '未完成' }[status] || '待处理')
 const route=useRoute()
 const items=ref<Task[]>([])
+const deletedConversations=ref<Conversation[]>([])
 const selected=ref(new Set<string>())
 const query=ref('')
 const error=ref('')
@@ -18,7 +19,22 @@ const visible=computed(()=>items.value.filter(item=>`${item.name} ${item.source_
 const allSelected=computed(()=>visible.value.length>0&&visible.value.every(item=>selected.value.has(item.id)))
 const blocked=(task:Task)=>['RUNNING','PAUSE_REQUESTED','RECOVERY_REQUIRED'].includes(task.status)
 function target(task:Task){return task.phase==='REPORT'?`/tasks/${task.id}/report`:['EXECUTE','UNDO'].includes(task.phase)?`/tasks/${task.id}/run`:`/tasks/${task.id}/analyze`}
-async function load(){items.value=(await api.tasks(deletedView.value?'deleted':'active')).items;selected.value=new Set();menu.value=''}
+async function load(){
+  const [tasks, conversations] = await Promise.all([
+    api.tasks(deletedView.value?'deleted':'active'),
+    deletedView.value ? api.conversations('deleted') : Promise.resolve([]),
+  ])
+  items.value=tasks.items;deletedConversations.value=conversations;selected.value=new Set();menu.value=''
+}
+async function restoreConversation(id:string){
+  busy.value=true;error.value=''
+  try{await api.restoreConversation(id);await load()}catch(cause){error.value=String(cause)}finally{busy.value=false}
+}
+async function purgeConversation(id:string,title:string){
+  if(!await confirmAction(`永久删除“${title}”这条对话及其消息和整理方案？磁盘文件不会改变，已执行的文件操作日志仍保留。`))return
+  busy.value=true;error.value=''
+  try{await api.permanentlyDeleteConversation(id);await load()}catch(cause){error.value=String(cause)}finally{busy.value=false}
+}
 function toggle(id:string){const next=new Set(selected.value);next.has(id)?next.delete(id):next.add(id);selected.value=next}
 function toggleAll(){selected.value=allSelected.value?new Set():new Set(visible.value.filter(item=>deletedView.value||!blocked(item)).map(item=>item.id))}
 async function remove(tasks:Task[]){
@@ -44,7 +60,15 @@ onMounted(()=>load().catch(cause=>{error.value=String(cause)}))
   <p class="lead">{{deletedView?'这里只删除应用内任务记录；磁盘文件、操作日志和 Undo 安全边界不会被静默处理。':'整理记录用于查看过去的 AI 分析与文件操作；它不是新的整理入口。'}}</p>
   <p v-if="error" class="notice danger-notice">{{error}}</p>
   <div class="history-toolbar"><input v-model="query" aria-label="筛选任务" placeholder="筛选名称、目录或状态"/><button class="secondary-button" @click="toggleAll">{{allSelected?'取消选择':'选择全部当前筛选结果'}}</button><span>已选 {{selected.size}}</span><button v-if="!deletedView" class="danger-button" :disabled="!selected.size||busy" @click="remove(items.filter(item=>selected.has(item.id)))">批量删除</button><template v-else><button class="secondary-button" :disabled="!selected.size||busy" @click="restore(items.filter(item=>selected.has(item.id)))">批量恢复</button><button class="danger-button" :disabled="!selected.size||busy" @click="purge(items.filter(item=>selected.has(item.id)))">批量永久删除</button></template></div>
-  <div v-if="!visible.length" class="state-card">{{deletedView?'最近删除中没有任务。':'尚无整理记录。'}}</div>
+  <section v-if="deletedView && deletedConversations.length" class="deleted-conversations" aria-label="已删除的对话">
+    <h2>已删除的对话</h2>
+    <article v-for="conversation in deletedConversations" :key="conversation.id" class="deleted-conversation-row">
+      <div><strong>{{conversation.title}}</strong><small>{{new Date(conversation.deleted_at || conversation.updated_at).toLocaleString('zh-CN')}}</small></div>
+      <button type="button" class="secondary-button" :disabled="busy" @click="restoreConversation(conversation.id)">恢复对话</button>
+      <button type="button" class="danger-button" :disabled="busy" @click="purgeConversation(conversation.id,conversation.title)">永久删除对话</button>
+    </article>
+  </section>
+  <div v-if="!visible.length && !(deletedView && deletedConversations.length)" class="state-card">{{deletedView?'最近删除中没有记录。':'尚无整理记录。'}}</div>
   <article v-for="item in visible" :key="item.id" class="task-row history-row">
     <input type="checkbox" :aria-label="`选择 ${item.name}`" :checked="selected.has(item.id)" :disabled="!deletedView&&blocked(item)" @change="toggle(item.id)"/>
     <RouterLink :to="target(item)"><b>{{item.name}}</b><small>{{item.source_root||'尚未扫描目录'}} · {{new Date(item.created_at).toLocaleString('zh-CN')}}</small><small>{{item.counters?.discovered||0}} 个文件 · {{item.model_name||'历史模型未知'}} · 最近：{{item.recent_operation||'创建任务'}}</small></RouterLink>

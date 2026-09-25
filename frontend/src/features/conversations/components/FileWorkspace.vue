@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Check, FileImage, FileText, Folder, Grid2X2, List, SlidersHorizontal, Video, X } from 'lucide-vue-next'
-import type { ConversationExecutionRound, ConversationFile, ConversationPlanDiff, ConversationPlanVersion } from '../../../services/api'
+import { api, type ConversationExecutionRound, type ConversationFile, type ConversationPlanDiff, type ConversationPlanPreview, type ConversationPlanVersion } from '../../../services/api'
 import { useConversationStore } from '../store'
 import PlanPreviewCard from './PlanPreviewCard.vue'
 import ExecutionResultCard from './ExecutionResultCard.vue'
@@ -10,6 +10,43 @@ const props = defineProps<{ plans: ConversationPlanVersion[]; executions: Conver
 const emit = defineEmits<{ collapse: []; expand: []; viewHistory: [id: string]; restoreVersion: [id: string]; approvePlan: [plan: ConversationPlanVersion]; undo: [round: ConversationExecutionRound] }>()
 const store = useConversationStore()
 const tab = ref<'files' | 'plans' | 'history'>('files')
+const planPreview = ref<ConversationPlanPreview | null>(null)
+const planPreviewBusy = ref(false)
+const planPreviewError = ref('')
+const previewUrl = ref('')
+const previewName = ref('')
+const previewError = ref('')
+const previewBusy = ref(false)
+const planQuery = ref('')
+const activePlan = computed(() => props.viewingPlanVersion || props.currentPlanVersion || props.plans.at(-1) || null)
+const visibleOperations = computed(() => (planPreview.value?.operations || []).filter(item =>
+  `${item.source_path} ${item.target_path || ''}`.toLowerCase().includes(planQuery.value.trim().toLowerCase()),
+))
+watch([tab, () => activePlan.value?.id, () => store.currentConversation?.id], async () => {
+  if (tab.value !== 'plans' || !activePlan.value || !store.currentConversation) return
+  const planId = activePlan.value.id
+  planPreview.value = null
+  planPreviewError.value = ''
+  planPreviewBusy.value = true
+  try { planPreview.value = await api.conversationPlanPreview(store.currentConversation.id, planId) }
+  catch (cause) { planPreviewError.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { planPreviewBusy.value = false }
+})
+async function previewFile(file: ConversationFile, useSourcePath = false) {
+  const conversationId = store.currentConversation?.id
+  if (!conversationId || previewBusy.value) return
+  previewBusy.value = true
+  previewError.value = ''
+  previewUrl.value = ''
+  previewName.value = basename(file)
+  try {
+    const ticket = await api.conversationPreviewTicket(conversationId,
+      inventoryOnly.value || useSourcePath ? { source_path: file.current_known_path } : { file_id: file.file_id })
+    previewUrl.value = ticket.url
+  } catch (cause) { previewError.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { previewBusy.value = false }
+}
+function closePreview() { previewUrl.value = ''; previewError.value = ''; previewName.value = '' }
 function showTab(value: 'files' | 'plans' | 'history') { tab.value = value }
 defineExpose({ showTab })
 const query = ref('')
@@ -47,6 +84,12 @@ function relativePath(file: ConversationFile) {
   return root && path.toLowerCase().startsWith(root.toLowerCase()) ? path.slice(root.length).replace(/^[/\\]+/, '') || '当前目录' : path
 }
 function extension(file: ConversationFile) { return basename(file).split('.').pop()?.toLowerCase() || '' }
+function isPreviewable(file: ConversationFile) { return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(extension(file)) }
+function previewPlanFile(fileId: string, sourcePath: string) {
+  const file = store.files.find(item => item.file_id === fileId)
+  if (file) return previewFile(file)
+  return previewFile({ file_id: sourcePath, current_known_path: sourcePath } as ConversationFile, true)
+}
 function FileIcon(file: ConversationFile) {
   const ext = extension(file)
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) return FileImage
@@ -81,13 +124,16 @@ function fileChangeLabel(type: string) {
       <div v-if="!filteredFiles.length" class="file-empty"><FileText :size="22" /><strong>{{ displayFiles.length ? '没有匹配的文件' : '当前目录没有可显示的文件' }}</strong><p>检查所选目录，或生成整理方案后重试。</p></div>
       <div v-else class="file-list" :class="{ 'grid-view': view === 'grid' }">
         <div v-if="beforeHeight" aria-hidden="true" class="file-spacer" :style="{ height: `${beforeHeight}px` }" />
-        <button v-for="file in windowFiles" :key="file.file_id" type="button" class="file-item" :class="{ selected: selectedIds.has(file.file_id) }" :aria-pressed="selectedIds.has(file.file_id)" :title="file.current_known_path" :disabled="inventoryOnly" @click="store.toggleFile(file.file_id)">
+        <div v-for="file in windowFiles" :key="file.file_id" class="file-item-wrap">
+        <button type="button" class="file-item" :class="{ selected: selectedIds.has(file.file_id) }" :aria-pressed="selectedIds.has(file.file_id)" :title="file.current_known_path" :disabled="inventoryOnly" @click="store.toggleFile(file.file_id)">
           <span class="file-icon"><Check v-if="selectedIds.has(file.file_id)" :size="18" /><component v-else :is="FileIcon(file)" :size="18" /></span>
           <span class="file-copy"><strong>{{ basename(file) }}</strong><small>{{ relativePath(file) }}</small></span>
           <span class="file-meta"><small>{{ new Date(file.current_mtime_ns ? file.current_mtime_ns / 1_000_000 : file.added_at).toLocaleDateString('zh-CN') }}</small><small>{{ size(file) }}</small></span>
           <span v-if="statusLabel(file)" class="file-state" :data-state="file.state">{{ statusLabel(file) }}</span>
           <span v-else class="file-location"><Folder :size="14" />{{ relativePath(file).split(/[\\/]/)[0] || '当前目录' }}</span>
         </button>
+        <button v-if="isPreviewable(file)" type="button" class="file-preview-shortcut" aria-label="预览图片" :title="`预览 ${basename(file)}`" @click="previewFile(file)">预览</button>
+        </div>
         <div v-if="afterHeight" aria-hidden="true" class="file-spacer" :style="{ height: `${afterHeight}px` }" />
       </div>
     </section>
@@ -118,6 +164,22 @@ function fileChangeLabel(type: string) {
           <button v-if="props.viewingPlanVersion.id !== props.currentPlanVersion?.id" class="restore-version-button" type="button" :disabled="props.versionLoading" @click="emit('restoreVersion', props.viewingPlanVersion.id)">{{ props.versionLoading ? '正在验证…' : '恢复为新方案' }}</button>
         </div>
         <div v-else class="business-card-stack"><PlanPreviewCard v-for="plan in props.plans" :key="plan.id" :plan="plan" :current="plan.id === props.currentPlanVersion?.id" :execution-busy="store.executionBusy" @view-history="emit('viewHistory', $event)" @approve="emit('approvePlan', $event)" /></div>
+        <section v-if="activePlan" class="plan-file-mappings" aria-label="逐文件整理方案">
+          <h3>逐文件去向 <span v-if="planPreview">({{ planPreview.operations.length }})</span></h3>
+          <p>核对每张图片的原位置和目标位置，再决定是否执行。</p>
+          <input v-model="planQuery" type="search" aria-label="搜索方案文件" placeholder="搜索文件名或目标文件夹…" />
+          <p v-if="planPreviewBusy">正在读取逐文件方案…</p>
+          <p v-else-if="planPreviewError" role="alert">{{ planPreviewError }}</p>
+          <p v-else-if="planPreview && !planPreview.operations.length">此方案没有文件操作。</p>
+          <div v-else class="plan-file-list">
+            <article v-for="(operation, index) in visibleOperations" :key="`${operation.file_id}-${index}`" class="plan-file-row">
+              <div class="plan-file-row-heading"><strong>{{ operation.source_path.split(/[\\/]/).pop() }}</strong><button v-if="['jpg','jpeg','png','gif','webp','bmp'].includes(operation.source_path.split('.').pop()?.toLowerCase() || '')" type="button" @click="previewPlanFile(operation.file_id, operation.source_path)">预览图片</button></div>
+              <small>原位置：{{ operation.source_path }}</small>
+              <small v-if="operation.target_path && ['move', 'copy'].includes(operation.action)">{{ operation.action === 'copy' ? '复制到' : '移动到' }}：{{ operation.target_path }}</small>
+              <small v-else>保持原位{{ operation.reason ? ` · ${operation.reason}` : '' }}</small>
+            </article>
+          </div>
+        </section>
       </template>
     </section>
 
@@ -130,4 +192,12 @@ function fileChangeLabel(type: string) {
     <footer class="file-panel-footer"><span>已选择 {{ store.selectedFileIds.length }} 个文件</span><button type="button" class="open-folder-button" disabled><Folder :size="15" />打开所在目录</button></footer>
   </aside>
   <button v-else type="button" class="file-panel-expand" aria-label="展开文件区" @click="emit('expand')"><Folder :size="18" /></button>
+  <div v-if="previewName" class="image-preview-backdrop" role="presentation" @click.self="closePreview">
+    <section class="image-preview-dialog" role="dialog" aria-modal="true" :aria-label="`预览 ${previewName}`">
+      <header><strong>{{ previewName }}</strong><button type="button" aria-label="关闭图片预览" @click="closePreview"><X :size="20" /></button></header>
+      <p v-if="previewBusy">正在加载图片…</p>
+      <p v-else-if="previewError" role="alert">{{ previewError }}</p>
+      <img v-else-if="previewUrl" :src="previewUrl" :alt="previewName" @error="previewError = '图片解码失败或票据已过期，请重新打开预览。'" />
+    </section>
+  </div>
 </template>

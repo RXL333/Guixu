@@ -1,5 +1,11 @@
 # 项目状态
 
+## PHASE N 对话审阅与回收站修复（2026-09-25）
+
+- 整理预览已接入版本化核心计划，逐文件显示原位置、操作、目标位置及保留项，并支持搜索；当前文件和方案条目均可用短时票据预览受限目录中的常见图片。
+- “最近删除”新增已删除对话列表、恢复和永久删除。永久删除只清理 Conversation 层消息、方案、引用和 Undo 预览索引；核心 Task、Plan、Operation/Event 日志及磁盘文件保留。仅允许已软删除会话永久删除。
+- 定向后端 3 passed，已执行文件日志保留专项 2 passed；后端全量 `204 passed / 2 warnings`，前端全量 `43 passed`，production build 均 exit 0。Windows 冻结包覆盖构建与可见桌面人工验收状态见 [阶段报告](artifacts/reports/phase-n-review-and-trash-fix.md)。
+
 ## PHASE N 真实照片整理阻断修复（2026-09-24）
 
 - 用户实际目录为 `D:\Media\Photos\Nikon_z50照片\测试`（48 JPG）。已在应用数据库确认旧失败执行轮次的 48 个 operation 均停在 `PLANNED`：`operations` 表未保存参与计划哈希的 `reason`，重载后 `verify_plan_hash` 为 false，执行器在首个文件操作前报 `PLAN_HASH_MISMATCH`。失败轮次又使 context revision 增加 1，原批准方案重试报 `PLAN_CONTEXT_STALE`。

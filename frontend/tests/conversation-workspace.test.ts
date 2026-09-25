@@ -112,6 +112,28 @@ describe('phase E Conversation Workspace', () => {
     expect(view.getByText('还没有执行记录')).toBeTruthy()
   })
 
+  it('shows each planned destination and opens a scoped photo preview', async () => {
+    const pinia = createPinia()
+    const store = useConversationStore(pinia)
+    store.currentConversation = { id: 'c1', title: '照片', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' } as any
+    store.files = [{ id: 'cf1', conversation_id: 'c1', file_id: 'f1', first_seen_path: 'D:/Photos/one.jpg', current_known_path: 'D:/Photos/one.jpg', added_at: '2026-09-20T08:00:00Z', state: 'ACTIVE' }] as any
+    const plan = { id: 'p1', conversation_id: 'c1', version_number: 1, status: 'PROPOSED', summary: '按场景整理', affected_file_count: 1, created_at: 'now' } as any
+    vi.spyOn(api, 'conversationPreviewTicket').mockResolvedValue({ url: '/api/v1/previews/ticket', media_type: 'image/jpeg' })
+    vi.spyOn(api, 'conversationPlanPreview').mockResolvedValue({ plan_hash: 'hash', operations: [
+      { file_id: 'f1', action: 'move', source_path: 'D:/Photos/one.jpg', target_path: 'D:/Photos/风景/one.jpg', reason: null },
+      { file_id: 'f2', action: 'skip', source_path: 'D:/Photos/two.jpg', target_path: 'D:/Photos/two.jpg', reason: 'UNSUPPORTED_OR_UNDECIDED' },
+    ] })
+    const view = render(FileWorkspace, { props: { plans: [plan], executions: [], currentPlanVersion: plan }, global: { plugins: [pinia] } })
+    await fireEvent.click(view.getAllByRole('button', { name: '预览图片' })[0])
+    await waitFor(() => expect(view.getByRole('img', { name: 'one.jpg' }).getAttribute('src')).toBe('/api/v1/previews/ticket'))
+    await fireEvent.click(view.getByRole('button', { name: '关闭图片预览' }))
+    await fireEvent.click(view.getByRole('tab', { name: /整理预览/ }))
+    await waitFor(() => expect(view.getByText(/D:\/Photos\/风景\/one.jpg/)).toBeTruthy())
+    expect(view.getByText(/保持原位 · UNSUPPORTED_OR_UNDECIDED/)).toBeTruthy()
+    await fireEvent.click(view.getAllByRole('button', { name: '预览图片' })[0])
+    expect(api.conversationPreviewTicket).toHaveBeenCalledWith('c1', { file_id: 'f1' })
+  })
+
   it('keeps the root empty state explicit and does not render fake AI', async () => {
     const pinia = createPinia()
     const testRouter = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ConversationWorkspacePage }] })

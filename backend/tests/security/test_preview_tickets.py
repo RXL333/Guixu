@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from guixu.api.app import create_app
 
@@ -48,3 +49,22 @@ def test_preview_ticket_is_short_lived_file_scoped_range_capability(project_root
         assert blocked.status_code == 422 and blocked.json()["error"]["code"] == "PREVIEW_UNSUPPORTED"
         media.write_bytes(media.read_bytes() + b"changed")
         assert client.get(f"/api/v1/previews/{ticket}").status_code == 409
+
+
+def test_conversation_photo_preview_uses_bound_scope_before_analysis(project_root: Path, tmp_path: Path):
+    source = tmp_path / "source"; source.mkdir()
+    image = source / "photo.jpg"; Image.new("RGB", (2, 2), "blue").save(image)
+    outside = tmp_path / "outside.jpg"; outside.write_bytes(b"private")
+    app = create_app(project_root=project_root, data_dir=tmp_path / "data", session_token=TOKEN, allow_typed_grants=True)
+    with TestClient(app) as client:
+        grant = client.post("/api/v1/dev/grants", headers=headers(), json={"path": str(source), "purpose": "source"}).json()["data"]["grant_id"]
+        conversation = client.post("/api/v1/conversations", headers=headers(), json={"scope_grant": grant}).json()["data"]
+        endpoint = f"/api/v1/conversations/{conversation['id']}/preview-ticket"
+        assert client.post(endpoint, json={"source_path": str(image)}).status_code == 401
+        issued = client.post(endpoint, headers=headers(), json={"source_path": str(image)})
+        assert issued.status_code == 201, issued.text
+        streamed = client.get(issued.json()["data"]["url"])
+        assert streamed.headers["content-type"] == "image/jpeg"
+        assert streamed.content == image.read_bytes() and streamed.content.startswith(b"\xff\xd8")
+        blocked = client.post(endpoint, headers=headers(), json={"source_path": str(outside)})
+        assert blocked.status_code == 422 and blocked.json()["error"]["code"] == "PREVIEW_OUTSIDE_SCOPE"
