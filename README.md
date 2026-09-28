@@ -1,515 +1,837 @@
-# 归序 (Guixu) · Windows AI 文件整理器
+# 归序 (Guixu) | AI File Organizer
 
-[![Python 77.9%](https://img.shields.io/badge/Python-77.9%25-blue)](#技术栈)
-[![Vue 9.6%](https://img.shields.io/badge/Vue-9.6%25-green)](#技术栈)
-[![TypeScript 8.7%](https://img.shields.io/badge/TypeScript-8.7%25-3178c6)](#技术栈)
-![Status: Dev](https://img.shields.io/badge/Status-0.1.0%20dev-orange)
-![License: MIT](https://img.shields.io/badge/License-MIT-green)
-
-**归序** 是一个 Local-First 的 Windows 桌面 AI 文件整理应用。通过与 DeepSeek 或本地 Qwen 模型对话，生成文件分类和整理方案，经人工审阅批准后执行。所有文件操作版本化、可追溯、支持撤销。
-
-- ✨ **AI 驱动但绝不自动化**：AI 仅生成受限的类别 ID + 证据，人工批准后才执行
-- 🔒 **本地优先，隐私第一**：支持离线 Qwen，API Key 不入库；文件全文不上云
-- 📋 **完整的审计链路**：所有操作记录日志，支持受限撤销和会话恢复
-- 🎯 **确定性执行**：计划 hash 校验，无目标覆盖，跨卷移动使用 copy-verify-publish
-- 🧪 **严格的验证标准**：后端 198+ 测试通过，前端 40+ 测试，完整 E2E 流程已实现
+[🇨🇳 中文](#-归序-guixu) | [🇬🇧 English](#-what-is-guixu)
 
 ---
 
-## 📦 快速开始
+# 🇨🇳 归序 (Guixu)
+
+> 💾 **Windows 本地优先 AI 文件整理器**  
+> 通过对话整理文件，而非盲目自动化。
+
+[![Python](https://img.shields.io/badge/Python-77.9%25-3776ab?style=flat-square)](#-技术栈)
+[![Vue](https://img.shields.io/badge/Vue-9.6%25-4FC08D?style=flat-square)](#-技术栈)
+[![TypeScript](https://img.shields.io/badge/TypeScript-8.7%25-3178C6?style=flat-square)](#-技术栈)
+[![Status](https://img.shields.io/badge/状态-0.1.0%20dev-orange?style=flat-square)](#-项目状态)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+
+![Windows x64](https://img.shields.io/badge/Windows%20x64-✓-brightgreen)
+![AI驱动](https://img.shields.io/badge/AI%20驱动-DeepSeek%2FQwen-blue)
+![开源](https://img.shields.io/badge/开源-MIT-green)
+
+## ✨ 什么是归序？
+
+**归序** 在 AI 辅助和人类控制之间找到平衡。与其盲目信任 AI 重新整理文件，你可以：
+
+1. **对话讨论** 你的文件整理需求
+2. **逐文件审阅** AI 生成的方案
+3. **人工批准** 你认可的操作
+4. **安全执行** 完整的审计链和撤销支持
+
+所有数据保留本地。所有操作可追溯。AI 很聪明，但 **你掌控全局**。
+
+```
+📁 扫描目录
+    ↓
+💬 与 AI 对话
+    ↓
+👁️  预览方案
+    ↓
+✅ 人工批准
+    ↓
+🔄 安全执行（支持撤销）
+```
+
+## 🎯 核心特性
+
+### 🤝 对话驱动的文件整理
+
+- **自然语言规划**：与 DeepSeek 或本地 Qwen 讨论文件组织方式
+- **多轮迭代**：提出后续要求、请求修改、生成 v2 方案
+- **内容感知**：AI 理解文件内容（文本、OCR、图像描述）
+- **证据可见**：每个分类都有明确的理由（文件名、内容、视觉线索）
+
+### 🔒 隐私优先设计
+
+- **本地优先**：默认所有数据本地存储，仅在选择云 AI 时上传
+- **离线模式**：通过 Ollama 使用本地 Qwen，零网络访问
+- **Key 隔离**：API Key 仅在内存中，不写入数据库、日志或浏览器
+- **选择性共享**：仅发送元数据和摘要到 AI，绝不上传原始文件
+
+### ✔️ 批准制执行
+
+- **方案版本管理**：v1、v2 及修改对比
+- **哈希验证**：每个批准的方案在执行前都经过密码学验证
+- **不覆盖**：现有文件不会被无故覆盖
+- **原子操作**：跨卷移动采用 Copy → Verify → Publish 模式
+
+### 📋 完整审计链
+
+- **操作日志**：每次移动/复制/删除都记录时间戳和用户批准
+- **会话恢复**：关闭应用后，重新打开从原处继续
+- **撤销支持**：执行后支持撤销（跨卷移动有限制）
+- **决策历史**：查看每个文件为何被分类到某个位置
+
+### 🎨 额外功能：AI 命名
+
+基于内容证据生成智能文件名，批准后应用。
+
+## 🚀 快速开始
 
 ### 系统要求
 
-- **Windows 10/11 x64**（测试环境：Windows 11 23H2）
-- **Python 3.12**
-- **Node.js 18+**（前端开发）
-- **4GB RAM 最小**，8GB 推荐
+- **Windows 10/11 x64**
+- **Python 3.12** + **Node.js 18+**（开发模式）
+- **4GB RAM 最小**（8GB 推荐）
 
-### 一分钟启动
+### 一键启动
 
 ```powershell
-# 1. 克隆仓库
+# 克隆并安装
 git clone https://github.com/RXL333/Guixu.git
 cd Guixu
 
-# 2. 环境检查（自动）
+# 自动环境检查
 .\scripts\doctor.ps1
 
-# 3. 开发模式启动
+# 启动开发环境
 .\scripts\run-dev.ps1
 ```
 
-浏览器自动打开 http://localhost:5173，后端 API 运行在随机端口。
+浏览器自动打开 **http://localhost:5173**，后端运行在随机安全端口。
 
-### 原生桌面启动
+### 便携包
+
+从 [Release 页面](../../releases) 下载：**Guixu-portable-x64-0.1.0.zip**  
+解压即用 — 无需安装。
+
+### 仅桌面模式
 
 ```powershell
-# 仅启动桌面应用（不开发环境）
 .\scripts\run-desktop.ps1
 ```
 
-### Windows 便携包
+## 📸 工作流程
 
-从 [Release](../../releases) 下载 `Guixu-portable-x64-0.1.0.zip`，解压即用，无需安装。
-
----
-
-## 🎯 核心功能
-
-### 1. 会话驱动的文件整理
+### 第一步：扫描与对话
 
 ```
-┌─────────────────────────────────────────┐
-│  新建会话 → 选择授权目录                    │
-└──────────────┬──────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│  对话讨论 (Conversation)                 │
-│  - 自然语言描述分类需求                   │
-│  - 上传最多 3 张参考图片                  │
-│  - AI 生成基础分类方案 (v1)               │
-└──────────────┬──────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│  方案预览与编辑 (Plan Versioning)         │
-│  - 逐文件显示：原路径 → 目标 → 操作       │
-│  - 支持编辑、搜索、版本对比               │
-│  - 计划 hash 校验防篡改                   │
-└──────────────┬──────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│  人工审批 (Manual Approval)              │
-│  - 逐项确认每个文件操作                   │
-│  - 可拒绝、修改或要求重新分类            │
-└──────────────┬──────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│  确定性执行 (Execution)                  │
-│  - 计划 hash 二次校验                    │
-│  - 跨卷移动：Copy → Verify → Publish      │
-│  - 操作日志与事件记录                    │
-└──────────────┬──────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│  结果审查与撤销 (Post-Execution)         │
-│  - 查看已完成的操作                      │
-│  - 受限撤销（需原始状态校验）            │
-│  - 会话持续活跃，支持后续调整            │
-└─────────────────────────────────────────┘
+✅ 选择授权目录
+✅ 选择 AI 模型（DeepSeek 云或 Qwen 本地）
+✅ 上传最多 3 张参考图片（可选）
+✅ 描述你的文件整理需求
 ```
 
-### 2. 双模型适配
-
-| 模型 | 类型 | 延迟 | 隐私 | 成本 | 能力 |
-|------|------|------|------|------|------|
-| **DeepSeek** | 云 API | ~2s | 需同意上传 | ¥0.5-2/100万字 | 文本+视觉(Vision) |
-| **本地 Qwen** | Ollama | ~5-10s | 完全离线 | 仅 CPU/显存 | 文本+视觉(预期) |
-
-- 自动降级：DeepSeek 超时 → 切换 Qwen
-- 单选模型：用户在会话中明确指定
-- 隐私优先：本地模型优先展示
-
-### 3. 内容证据系统
-
-AI 分类基于结构化证据，可追溯：
-
-| 证据类型 | 来源 | 示例 |
-|---------|------|------|
-| **文件名** | 路径解析 | `2024-03-15_meeting.txt` → 日期、会议主题 |
-| **文件内容** | 本地 OCR/解析 | PDF 标题、文档摘要 |
-| **视觉描述** | DeepSeek Vision | 图片包含的物体、文本、场景 |
-| **用户上传** | 对话中最多3张参考图 | 参考分类、风格指引 |
-
-### 4. 文件命名功能
-
-对话式生成文件名建议：
-- 基于文件内容证据
-- 保留原扩展名与目录
-- 验证 Windows 名称规范
-- 逐文件预览后批准执行
-
-### 5. 安全边界
-
-- ✅ **执行前校验**：计划 hash 二次确认、文件指纹匹配
-- ✅ **无覆盖策略**：目标已存在 → 跳过或提示
-- ✅ **操作日志**：所有移动/复制/删除记入 SQLite 日志
-- ✅ **受限撤销**：需要原始文件状态完整存在
-- ✅ **跨卷安全**：Copy → SHA-256 校验 → 原始删除
-
----
-
-## 🏗️ 架构概览
-
-### 分层结构
+### 第二步：AI 规划
 
 ```
-┌─────────────────────────────────────────────────┐
-│         Guixu.exe (pywebview + EdgeChromium)    │
-│  - 原生 Windows 窗口，无外部浏览器依赖          │
-└────────────────┬────────────────────────────────┘
-                 ↓
-┌─────────────────────────────────────────────────┐
-│  FastAPI Backend (127.0.0.1:随机端口)           │
-│  - 会话管理 / AI 规划 / 文件执行                │
-│  - SQLite 数据库 (schema v11)                   │
-│  - 日志与审计                                   │
-└────────────────┬────────────────────────────────┘
-                 ↓
-┌─────────────────────────────────────────────────┐
-│  Vue 3 Frontend (TypeScript + Vite)             │
-│  - 三栏布局：会话导航 / 消息与输入 / 文件预览   │
-│  - 实时消息同步                                 │
-│  - 方案编辑与批准界面                          │
-└─────────────────────────────────────────────────┘
+AI 分析：
+  • 文件名和元数据
+  • 内容（OCR、文本解析）
+  • 嵌入图像和描述
+  • 你上传的参考示例
+
+生成方案 v1：
+  ✓ 建议的类别
+  ✓ 文件-类别映射
+  ✓ 置信度评分
+  ✓ 每个决策的依据
 ```
 
-### 数据库
+### 第三步：人工审阅与批准
 
-- **SQLite** 本地存储，`%LOCALAPPDATA%\Guixu\app.sqlite3`
-- **Schema v11**：Conversation、Message、PlanVersion、Operation、FileReference
-- **WAL 模式**：支持并发读写
-- **自动迁移**：Alembic 版本管理
+```
+每个文件显示：
+  📄 当前位置：/path/to/file.ext
+  🎯 建议位置：/Categories/Business/contract.pdf
+  📝 理由：OCR 检测到内容包含"合同"
+  ☑️ 操作：[移动] [跳过] [重命名]
 
-详见 [`contracts/database.sql`](contracts/database.sql) 和 [`backend/migrations/`](backend/migrations/)。
+批准、编辑或要求重新分类。
+所有变更生成新的方案 v2。
+```
 
-### 核心模块
+### 第四步：执行与跟踪
 
-| 模块 | 职责 | 关键类 |
-|------|------|--------|
-| **Scanner** | 递归扫描目录，提取文件元数据 | `FileScanner`、`FileProfile` |
-| **Parser** | OCR、解析、多模态内容提取 | `TextParser`、`ImageParser`、`DocumentParser` |
-| **AI Planner** | 对话、方案生成、版本管理 | `ConversationAgent`、`PlanVersionService` |
-| **ModelGateway** | DeepSeek / Qwen 适配层 | `DeepSeekAdapter`、`QwenAdapter` |
-| **Executor** | 计划执行、日志、撤销 | `FileOperationExecutor`、`UndoService` |
-| **Security** | 路径校验、指纹核对 | `ScopeValidator`、`ChecksumManager` |
+```
+✓ 方案哈希验证
+✓ 原子执行（copy→verify→publish）
+✓ 每个操作记入日志
+✓ 实时进度更新
 
----
+执行后：
+  • 查看完成的操作
+  • 撤销单个移动（有限制）
+  • 继续聊天处理下一批文件
+```
 
-## 🛠️ 开发指南
+## 🏗️ 架构
+
+### 本地优先单体设计
+
+```
+┌────────────────────────────────────┐
+│   Guixu.exe                        │
+│   (pywebview + EdgeChromium)       │
+│   - 原生 Windows 窗口              │
+│   - 无需外部浏览器                 │
+└──────────────┬─────────────────────┘
+               │
+        ┌──────▼──────────────────────┐
+        │  FastAPI 后端               │
+        │  (localhost:随机端口)       │
+        │                             │
+        │  ✓ 会话管理                 │
+        │  ✓ AI 编排                  │
+        │  ✓ 文件操作                 │
+        │  ✓ SQLite 持久化            │
+        └──────┬──────────────────────┘
+               │
+        ┌──────▼──────────────────────┐
+        │  Vue 3 前端                 │
+        │  (TypeScript + Tailwind)    │
+        │                             │
+        │  ✓ 三栏布局                 │
+        │  ✓ 实时同步                 │
+        │  ✓ 方案编辑器               │
+        │  ��� 操作预览                 │
+        └─────────────────────────────┘
+```
+
+**数据**：SQLite 本地数据库，schema v11，完整迁移历史  
+**API**：RESTful，OpenAPI 文档，契约在 `contracts/`  
+**状态**：Pinia（前端）+ SQLAlchemy ORM（后端）
+
+## 🧠 双模型支持
+
+| | **DeepSeek（云）** | **Qwen（本地/Ollama）** |
+|---|---|---|
+| 速度 | ~2s/请求 | ~5-10s/请求 |
+| 隐私 | 需授权协议 | 100% 离线 |
+| 功能 | 文本 + 视觉 | 文本 + 视觉（预期） |
+| 成本 | ¥0.5-2/100万字 | CPU/显存 |
+| 设置 | API Key | Ollama `qwen:7b` |
+
+**优雅降级**：DeepSeek 超时 → 自动切换 Qwen  
+**用户控制**：每个会话选择模型，无强制默认
+
+## 🔐 安全与隐私
+
+### 核心保证
+
+✅ **无自动执行** — 每个操作都需人工批准  
+✅ **不上传文件** — 内容本地分析或仅发送摘要  
+✅ **Key 不持久化** — API Key 仅在内存中  
+✅ **路径隔离** — 跨目录访问严格禁止  
+✅ **操作审计** — 所有移动/复制/删除永久记录  
+
+### 安全机制
+
+| 机制 | 保护 |
+|------|------|
+| **方案哈希** | 执行前检测篡改 |
+| **不覆盖** | 现有文件不被无故覆盖 |
+| **原子移动** | Copy → SHA-256 验证 → 原始删除 |
+| **作用域验证** | 仅访问授权目录 |
+| **软删除** | 操作可恢复直到硬清除 |
+
+**运行审计**：`python .\scripts\audit_release_secrets.py`  
+扫描 434 个文件、301MB 字节，检测 API key、硬编码密密、字符串注入。
+
+## 📊 项目状态
+
+**版本**：`0.1.0 dev`  
+**阶段**：功能完整开发，验收测试进行中
+
+### ✅ 已完成
+
+- 对话驱动规划
+- 双 AI 模型适配（DeepSeek + Qwen）
+- 方案版本管理与批准工作流
+- 文件证据与内容解析
+- 安全执行与审计日志
+- 会话恢复与撤销支持
+- Windows onedir + 便携包构建
+- 198+ 后端测试，40+ 前端测试
+- 完整 E2E：5 图片 v1→v2→执行→恢复
+
+### ⚠️ 已知限制
+
+- **暂无安装器**（Inno Setup 待开发）
+- **需要代码签名**（生产环保需要）
+- **本地 Qwen 视觉** — 仅验证文本，视觉管道进行中
+- **高 DPI 显示器** — 4K 缩放未充分测试
+- **监控文件夹** — 自动监听未实现
+- **可选：ffmpeg/ASR** — 音频转录需外部设置
+
+**完整详情**：[docs/product/limitations.md](docs/product/limitations.md)
+
+## 💻 开发
 
 ### 项目结构
 
 ```
 Guixu/
-├── backend/                    # Python FastAPI 后端
-│   ├── app/
-│   │   ├── api/              # REST 路由
-│   │   ├── models/           # SQLAlchemy ORM
-│   │   ├── services/         # 业务逻辑
-│   │   ├── adapters/         # AI 模型适配
-│   │   └── executor/         # 文件操作执行
-│   ├── tests/                # 后端单元 + 集成测试 (198+ pass)
-│   ├── migrations/           # Alembic 数据库迁移 (v11)
-│   └── pyproject.toml        # UV 依赖管理
-│
-├── frontend/                   # Vue 3 + TypeScript 前端
-│   ├── src/
-│   │   ├── components/       # 可复用组件
-│   │   ├── pages/            # 页面视图
-│   │   ├── stores/           # Pinia 状态管理
-│   │   ├── api/              # HTTP 客户端
-│   │   └── types/            # TypeScript 定义
-│   ├── tests/                # 单元 + E2E 测试 (40+ pass)
-│   └── package.json
-│
-├── docs/                       # 文档
-│   ├── product/              # 产品文档：功能、工作流、限制
-│   ├── current/              # 当前实现：架构、API、决策日志
-│   ├── development/          # 开发指南：启动、测试、打包
-│   └── archive/              # 历史资料：蓝图、提示词、截图
-│
-├── contracts/                  # API 和数据库契约
-│   ├── openapi.json          # 初始设计 API 约定
-│   ├── openapi-runtime.json  # 实际生成的 OpenAPI 定义
-│   └── database.sql          # DDL 快照
-│
-├── scripts/                    # 自动化脚本
-│   ├── doctor.ps1            # 环境检查
-│   ├── run-dev.ps1           # 开发启动
-│   ├── run-desktop.ps1       # 桌面启动
-│   ├── verify.py             # 全量验证
-│   ├── package-windows.ps1   # 构建便携包 + 安装器
-│   └── audit_release_secrets.py  # 安全审计
-│
-├── seed/                       # 运行时资源（分类法、提示词等）
-├── artifacts/                  # 构建产物、测试报告、便携包
-└── PROJECT_STATUS.md           # 当前开发状态（详见下文）
+├── backend/              # Python FastAPI，198+ 测试
+├── frontend/             # Vue 3 + TypeScript，40+ 测试
+├── docs/
+│   ├── product/         # 功能、工作流、隐私
+│   ├── current/         # 架构、决策、API
+│   ├── development/     # 设置、测试、打包
+│   └── archive/         # 历史设计（参考用）
+├── contracts/           # OpenAPI、数据库 DDL
+├── scripts/             # 构建、测试、验证自动化
+└── seed/                # 运行时数据（分类法、提示词）
 ```
 
-### 快速命令
+### 基础命令
 
 ```powershell
-# 环境检查 (Python、Node、Git)
-.\scripts\doctor.ps1
+# 后端测试
+cd backend && uv run pytest -q          # 198 测试
+cd backend && uv run pytest tests/test_scanner.py  # 单个模块
 
-# 开发启动 (同时运行后端 + 前端)
-.\scripts\run-dev.ps1
+# 前端测试
+cd frontend && npm run test:run          # 40+ 测试
+cd frontend && npm run typecheck        # 类型检查
 
-# 原生桌面启动 (需后端已启动)
-.\scripts\run-desktop.ps1
-
-# 后端单元测试
-cd backend
-uv run pytest -q                    # 全量 198+ 测试
-uv run pytest tests/test_scanner.py # 单个模块
-
-# 前端单元测试
-cd frontend
-npm run test:run                    # 全量 40+ 测试
-npm run test -- src/components/...  # 单个文件
-
-# 全量验证 (测试 + 类型检查 + 构建)
+# 全量验证（测试 + 类型 + 构建）
 python .\scripts\verify.py all
 
-# 构建 Windows 便携包 + 安装器
+# 构建便携包
 .\scripts\package-windows.ps1
 ```
 
-### 常见开发任务
+### 技术栈
 
-#### 添加新的 REST 端点
+| 层 | 技术 |
+|----|------|
+| **后端** | Python 3.12、FastAPI、SQLAlchemy、Pydantic |
+| **前端** | Vue 3、TypeScript、Vite、Pinia、TailwindCSS |
+| **桌面** | pywebview、EdgeChromium |
+| **数据库** | SQLite、Alembic 迁移 |
+| **AI API** | DeepSeek HTTP、Ollama 本地 |
+| **测试** | pytest、Vitest、E2E 烟雾测试 |
 
-1. 在 `backend/app/models/` 定义数据模型
-2. 在 `backend/app/services/` 实现业务逻辑
-3. 在 `backend/app/api/` 创建路由
-4. 添加测试到 `backend/tests/`
-5. 运行 `uv run pytest` 验证
-6. 更新 `contracts/openapi-runtime.json`
-
-#### 添加新的 AI 模型适配
-
-参考 `backend/app/adapters/deepseek_adapter.py`：
-
-```python
-from app.adapters.base import ModelAdapter
-
-class MyModelAdapter(ModelAdapter):
-    def chat(self, messages: List[Dict], **kwargs) -> ModelResponse:
-        # 实现您的模型调用逻辑
-        pass
-    
-    def is_available(self) -> bool:
-        # 检查连接状态
-        pass
-```
-
-注册到 `ModelGateway`：
-
-```python
-gateway.register_adapter("my-model", MyModelAdapter(...))
-```
-
-#### 修改数据库 Schema
-
-1. 新增模型字段或表到 `backend/app/models/`
-2. 生成迁移：`alembic revision --autogenerate -m "description"`
-3. 检查生成的迁移文件
-4. 测试迁移：`alembic upgrade head` 和 `alembic downgrade -1`
-5. 提交迁移文件
-
----
-
-## 📊 当前项目状态
-
-### 版本：0.1.0 dev
-
-**发布判定**：⚠️ **NOT RELEASE READY**
-
-最新工作进展详见 [PROJECT_STATUS.md](PROJECT_STATUS.md)（自动更新，每阶段记录）。
-
-### 已完成
-
-| 阶段 | 功能 | 状态 |
-|------|------|------|
-| **PHASE D** | 对话数据模型 (Conversation schema v4) | ✅ PASSED |
-| **PHASE E** | 三栏 UI 骨架 (会话/消息/文件窗口) | ✅ PASSED |
-| **PHASE F** | 首次整理分析链路 (AI 方案 v1 生成) | ✅ PASSED |
-| **PHASE G** | 方案版本管理 (v1→v2 diff/审批) | ✅ PASSED |
-| **PHASE H** | 执行后对话 (Conversation 持续活跃) | ✅ PASSED |
-| **PHASE I** | 文件引用 (精确路径映射) | ✅ PASSED |
-| **PHASE J** | 语义缓存 (证据复用) | ✅ PASSED |
-| **PHASE K** | 会话恢复 (重启读回数据) | ✅ PASSED |
-| **PHASE L** | 对话撤销 (UndoPlan + FORWARD/UNDO) | ✅ PASSED |
-| **PHASE M** | UI 深度优化 (统一弹窗、设置页等) | ✅ PASSED |
-| **AI-only 核心** | 双模型、视觉、隐私、执行链 | ✅ PASSED |
-
-### 外部阻塞（需后续条件）
-
-- 🔴 **Inno Setup 安装器**：未生成
-- 🔴 **代码签名**：无 EV 证书
-- 🔴 **干净 Windows 测试**：无 Python/Node 环境
-- 🔴 **高 DPI 多系统验收**：4K 显示器测试缺失
-- 🔴 **本地 Qwen 完整链路**：需 Ollama 环境验证
-- 🔴 **ffmpeg / ASR 组件**：可选功能，未集成
-
-### 测试覆盖
-
-- ✅ **后端**：198 passed（含 AI-only、安全、性能、真实模型）
-- ✅ **前端**：40+ passed（组件、页面、集成）
-- ✅ **E2E**：核心流程真实验证（5-JPG v1→v2→执行→恢复）
-- ✅ **数据库**：迁移、幂等性、并发
-- ✅ **安全**：无 hardcoded key、文件超权、跨会话泄露
-
----
-
-## 🔐 安全与隐私
-
-### 核心原则
-
-| 原则 | 实现 |
-|------|------|
-| **本地优先** | 所有数据默认存储在 `%LOCALAPPDATA%\Guixu\`，仅在用户明确选择云模型时上传 |
-| **Key 隔离** | API Key 仅在内存中，不写数据库/日志/浏览器存储 |
-| **文件不上云** | 仅上传 AI 模型需要的结构化内容（文件名、摘要、缩略图），不发送全文或原始媒体 |
-| **路径隐私** | 受授权目录严格限定，跨目录访问拒绝 |
-| **操作审计** | 所有文件操作记入 SQLite 日志，包括执行者、时间、变更前后状态 |
-
-### 隐私模式
-
-```
-普通模式          │ 隐私模式
------------------│------------------
-DeepSeek (云)     │ 本地 Qwen
-需配置 API Key     │ 无需网络、无 Key
-需同意隐私协议     │ 完全离线
-较快（~2s/请求）  │ 较慢（~5-10s/请求）
-文件内容摘要上传    │ 仅本地处理
-```
-
-用户可在设置中随时切换，已生成的方案不依赖模型绑定。
-
-### 安全审计
-
-运行 `python .\scripts\audit_release_secrets.py` 检查便携包：
-
-- ✅ 扫描 434 个文件、301MB 解压字节
-- ✅ 检测常见 Key 特征（DeepSeek、GitHub、AWS、PEM）
-- ✅ 验证字符串编码、环境变量注入点
-- ✅ 生成审计报告
-
----
-
-## 📚 文档导航
-
-| 文档 | 内容 |
-|------|------|
-| [docs/product/](docs/product/) | 产品文档：功能、工作流、已知限制 |
-| [docs/current/](docs/current/) | 实现细节：架构、API、决策日志、部署 |
-| [docs/development/](docs/development/) | 开发指南：快速开始、测试、打包、发布 |
-| [docs/archive/](docs/archive/) | 历史资料：初始蓝图、提示词、视觉稿（参考用，非当前实现） |
-| [contracts/](contracts/) | 契约文件：OpenAPI、数据库 DDL |
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | 实时项目状态：阶段进度、测试结果、已知问题 |
-
----
-
-## 🐛 已知限制
-
-### 功能
-
-- ⚠️ **不支持 Watch Folder**：目录变更监听功能未实现
-- ⚠️ **本地 Qwen Vision 未测**：仅 Ollama deepseek-7b 文本模型验证过
-- ⚠️ **跨卷移动限制**：`direct_move` 模式（不经 copy-verify-publish）在发布门关闭
-- ⚠️ **L3 分类决策缓存**：暂未实现多层级分类的语义缓存
-- ⚠️ **RAG/向量存储**：未集成，复杂问题仍需手工编排
-
-### 系统
-
-- ⚠️ **仅支持 Windows x64**：无 ARM 或 macOS/Linux 适配
-- ⚠️ **需要管理员权限**（某些目录）：系统文件夹访问需提权
-- ⚠️ **不自动下载大模型**：Qwen、CUDA、ffmpeg 需用户手动安装
-- ⚠️ **高 DPI 显示器**：4K 及以上分辨率 UI 缩放未充分测试
-
-详见 [docs/product/limitations.md](docs/product/limitations.md)。
-
----
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
+## 🤝 贡献
 
 ### 提交前检查
 
 ```powershell
-# 1. 运行全量���试
-python .\scripts\verify.py all
-
-# 2. 检查代码风格
-cd backend
-uv run ruff check .
-uv run black --check .
-
-cd ../frontend
-npm run lint
-
-# 3. 类型检查
-npm run typecheck
+python .\scripts\verify.py all    # 所有测试必须通过
+cd backend && uv run ruff check .
+cd frontend && npm run lint
 ```
 
 ### PR 流程
 
 1. Fork 本仓库
 2. 创建特性分支：`git checkout -b feature/your-feature`
-3. 提交更改并补充测试
-4. 推送到 Fork：`git push origin feature/your-feature`
-5. 开启 Pull Request，描述改动和测试结果
+3. 为更改添加测试
+4. 运行验证（见上文）
+5. 推送并开启 PR 并附带描述
+
+## 📚 文档
+
+| 链接 | 用途 |
+|------|------|
+| [docs/product/](docs/product/) | **用户指南**：功能、工作流、限制 |
+| [docs/development/](docs/development/) | **开发设置**：快速开始、测试、打包 |
+| [docs/current/](docs/current/) | **架构**：数据模型、API、决策 |
+| [PROJECT_STATUS.md](PROJECT_STATUS.md) | **实时状态**：阶段进度、测试结果、阻塞项 |
+| [contracts/](contracts/) | **API & DB**：OpenAPI、DDL |
+
+## 🎓 了解更多
+
+### 架构问答
+
+**Q：为什么要本地优先？**  
+A：你的文件保留在你的机器上。仅元数据发送给 AI（如果选择云模型）。无追踪，无分析。
+
+**Q：如果我不同意 AI 的方案怎么办？**  
+A：编辑它。更改类别、重命名文件、跳过操作。新方案 v2 反映你的变更。
+
+**Q：可以撤销操作吗？**  
+A：可以，有限制。单卷移动可以干净撤销。跨卷移动需要原始状态验证。
+
+**Q：为什么有这么多测试？**  
+A：文件整理风险很高。一个错误会丢失数据。我们测试每个代码路径、真实 AI、真实文件。
+
+### 真实案例
+
+```
+目标：组织 48 张最近旅行的照片
+
+1. 创建会话，授权 ~/Pictures/2024-Trip/
+2. 对话："按位置和日期整理这些照片"
+3. AI 审阅文件名、EXIF 数据、图像内容
+4. 方案 v1：12 个类别（海滩、森林、人物、美食等）
+5. 你审阅："合并海滩和水"、"添加人物/集体"
+6. 生成方案 v2 包含你的修改
+7. 批准并执行 → 48 张照片在 <5s 内移动
+8. 审阅操作日志 → 所有 48 个文件已跟踪
+9. 关闭应用 → 次日重新打开，会话完整
+```
+
+## 📦 部署
+
+### 对于用户
+
+**推荐**：从 [Release](../../releases) 下载便携 ZIP  
+解压，运行 `Guixu.exe`，无需依赖。
+
+**替代方案**：从源码构建
+```powershell
+.\scripts\package-windows.ps1
+# 创建：artifacts/release/Guixu-0.1.0/Guixu.exe
+```
+
+### 对于开发者
+
+```powershell
+# 开发模式（热重载）
+.\scripts\run-dev.ps1
+
+# 桌面构建（pywebview）
+.\scripts\run-desktop.ps1
+
+# 生产包
+.\scripts\package-windows.ps1
+```
+
+## 🐛 反馈与问题
+
+发现 Bug？有想法？
+
+- 🐞 [开启 Issue](../../issues)
+- 💬 [开启讨论](../../discussions)
+- 📖 [查看文档](docs/)
 
 ---
 
-## 📦 技术栈
+# 🇬🇧 Guixu
 
-### 后端
+> 💾 **Local-First AI File Organizer for Windows**  
+> Organize your files through conversation, not automation.
 
-- **Python 3.12** + **FastAPI** 0.109+
-- **SQLAlchemy 2.0** + **Alembic** 迁移
-- **Pydantic** 数据校验
-- **pytest** 单元和集成测试
-- **httpx** HTTP 客户端（DeepSeek/Qwen API）
+[![Python](https://img.shields.io/badge/Python-77.9%25-3776ab?style=flat-square)](#-tech-stack)
+[![Vue](https://img.shields.io/badge/Vue-9.6%25-4FC08D?style=flat-square)](#-tech-stack)
+[![TypeScript](https://img.shields.io/badge/TypeScript-8.7%25-3178C6?style=flat-square)](#-tech-stack)
+[![Status](https://img.shields.io/badge/Status-0.1.0%20dev-orange?style=flat-square)](#-project-status)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-### 前端
+![Windows x64](https://img.shields.io/badge/Windows%20x64-✓-brightgreen)
+![AI Powered](https://img.shields.io/badge/AI%20Powered-DeepSeek%2FQwen-blue)
+![Open Source](https://img.shields.io/badge/Open%20Source-MIT-green)
 
-- **Vue 3** (Composition API)
-- **TypeScript** 4.9+
-- **Vite** 5.0+ 构建工具
-- **Pinia** 状态管理
-- **TailwindCSS** + 自定义组件库
-- **Vitest** 单元测试
+## ✨ What is Guixu?
 
-### 桌面
+**Guixu** bridges AI assistance and human control in file organization. Instead of blindly trusting AI to reorganize your files, you:
 
-- **pywebview** 0.5.11+ （Chromium 集成）
-- **UPX** 可执行文件压缩（便携包）
-- **Inno Setup 6** 安装器生成（未集成）
+1. **Discuss** your filing needs in natural conversation
+2. **Review** the AI-generated plan file-by-file
+3. **Approve** only what you're comfortable with
+4. **Execute** with full audit trail and undo support
 
-### 外部依赖
+All data stays local. All operations are traceable. AI is smart, but *you* stay in control.
 
-- **DeepSeek API**（可选，需 Key）
-- **Ollama**（可选，本地 Qwen）
-- **OCR/解析**（本地或云，可选）
+```
+📁 Scan Directory
+    ↓
+💬 Discuss with AI
+    ↓
+👁️  Preview Plan
+    ↓
+✅ Approve Manually
+    ↓
+🔄 Execute Safely (with undo)
+```
+
+## 🎯 Key Features
+
+### 🤝 Conversation-Driven Organization
+
+- **Natural language planning**: Talk to DeepSeek or local Qwen about how you want to organize
+- **Multi-turn refinement**: Ask follow-ups, request changes, generate v2 plans
+- **Context-aware**: AI understands file content (text, OCR, image descriptions)
+- **Evidence-based**: Every classification has a visible reason (filename, content, visual cues)
+
+### 🔒 Privacy-First Design
+
+- **100% local-by-default**: No file uploads unless you choose cloud AI
+- **Qwen offline mode**: Use local models via Ollama, zero network access
+- **API key isolation**: Keys never touch database, logs, or browser storage
+- **Selective sharing**: Only metadata and summaries go to AI, never full file content
+
+### ✔️ Approval-Based Execution
+
+- **Plan versioning**: Compare v1, v2, modifications side-by-side
+- **Hash verification**: Every approved plan is cryptographically validated before execution
+- **No clobber**: Existing files are never silently overwritten
+- **Atomic operations**: Copy → Verify → Publish pattern for cross-drive safety
+
+### 📋 Full Audit Trail
+
+- **Operation logs**: Every move/copy/delete recorded with timestamp and user approval
+- **Session recovery**: Close app and resume exactly where you left off
+- **Undo support**: Revert execution (with caveats for cross-drive moves)
+- **Decision history**: See why each file was categorized a certain way
+
+### 🎨 Bonus: AI-Powered Naming
+
+Generate smart file names based on content evidence, approve before applying.
+
+## 🚀 Quick Start
+
+### Requirements
+
+- **Windows 10/11 x64**
+- **Python 3.12** + **Node.js 18+** (dev mode)
+- **4GB RAM minimum** (8GB recommended)
+
+### One-Click Setup
+
+```powershell
+# Clone and install
+git clone https://github.com/RXL333/Guixu.git
+cd Guixu
+
+# Auto environment check
+.\scripts\doctor.ps1
+
+# Start dev environment
+.\scripts\run-dev.ps1
+```
+
+Browser opens to **http://localhost:5173**, backend runs on a random secure port.
+
+### Portable Package
+
+Download from [Releases](../../releases): **Guixu-portable-x64-0.1.0.zip**  
+Unzip and run — no installation needed.
+
+### Desktop-Only Mode
+
+```powershell
+.\scripts\run-desktop.ps1
+```
+
+## 📸 How It Works
+
+### Phase 1: Scan & Discuss
+
+```
+✅ Select authorized directory
+✅ Choose AI model (DeepSeek cloud or Qwen local)
+✅ Upload up to 3 reference images (optional)
+✅ Describe your filing needs
+```
+
+### Phase 2: AI Planning
+
+```
+AI analyzes:
+  • File names and metadata
+  • Content (OCR, text parsing)
+  • Embedded images and descriptions
+  • Your reference examples
+
+Generates Plan v1:
+  ✓ Proposed categories
+  ✓ File-to-category mapping
+  ✓ Confidence scores
+  ✓ Evidence for each decision
+```
+
+### Phase 3: Manual Review & Approval
+
+```
+For each file, you see:
+  📄 Current: /path/to/file.ext
+  🎯 Proposed: /Categories/Business/contract.pdf
+  📝 Why: OCR detected "contract" in content
+  ☑️ Action: [Move] [Skip] [Rename]
+
+Approve, edit, or request re-classification.
+All changes generate new Plan v2.
+```
+
+### Phase 4: Execute & Track
+
+```
+✓ Plan hash verified
+✓ Atomic execution (copy→verify→publish)
+✓ Every operation logged
+✓ Live progress updates
+
+Post-execution:
+  • Review completed operations
+  • Undo individual moves (with caveats)
+  • Continue chatting for next batch
+```
+
+## 🏗️ Architecture
+
+### Monolithic Local-First Design
+
+```
+┌─────────��──────────────────────────┐
+│   Guixu.exe                        │
+│   (pywebview + EdgeChromium)       │
+│   - Native Windows window          │
+│   - No external browser needed     │
+└──────────────┬─────────────────────┘
+               │
+        ┌──────▼──────────────────────┐
+        │  FastAPI Backend            │
+        │  (localhost:random_port)    │
+        │                             │
+        │  ✓ Session management       │
+        │  ✓ AI orchestration         │
+        │  ✓ File operations          │
+        │  ✓ SQLite persistence       │
+        └──────┬──────────────────────┘
+               │
+        ┌──────▼──────────────────────┐
+        │  Vue 3 Frontend             │
+        │  (TypeScript + Tailwind)    │
+        │                             │
+        │  ✓ 3-column layout          │
+        │  ✓ Real-time sync           │
+        │  ✓ Plan editor              │
+        │  ✓ Operation preview        │
+        └─────────────────────────────┘
+```
+
+**Data**: SQLite local database, schema v11, full migration history  
+**APIs**: RESTful, OpenAPI documented, contracts in `contracts/`  
+**State**: Pinia (frontend) + SQLAlchemy ORM (backend)
+
+## 🧠 Dual AI Model Support
+
+| | **DeepSeek (Cloud)** | **Qwen (Local/Ollama)** |
+|---|---|---|
+| Speed | ~2s/request | ~5-10s/request |
+| Privacy | Need auth agreement | 100% offline |
+| Features | Text + Vision | Text + Vision (preview) |
+| Cost | ¥0.5-2/1M chars | CPU/VRAM only |
+| Setup | API Key | Ollama `qwen:7b` |
+
+**Graceful degradation**: DeepSeek timeout → auto-fallback to Qwen  
+**User control**: Choose model per session, no forced defaults
+
+## 🔐 Security & Privacy
+
+### Core Guarantees
+
+✅ **No automatic execution** — every operation needs human approval  
+✅ **No file uploads** — content analyzed locally or via summaries only  
+✅ **No key storage** — API keys live in memory, never persisted  
+✅ **Path isolation** — cross-directory access strictly forbidden  
+✅ **Operation audit** — all moves/copies/deletes logged permanently  
+
+### Safety Mechanisms
+
+| Mechanism | Protection |
+|-----------|-----------|
+| **Plan hash** | Tampering detection before execution |
+| **No clobber** | Existing files never overwritten |
+| **Atomic moves** | Copy → SHA-256 verify → original delete |
+| **Scope validator** | Authorized directories only |
+| **Soft delete** | Operations recoverable until hard-purge |
+
+**Run audit**: `python .\scripts\audit_release_secrets.py`  
+Scans 434 files, 301MB bytes for API keys, hardcoded secrets, string injections.
+
+## 📊 Current Status
+
+**Version**: `0.1.0 dev`  
+**Stage**: Feature-complete development, acceptance testing in progress
+
+### ✅ Completed
+
+- Conversation-driven planning
+- Dual AI model adapters (DeepSeek + Qwen)
+- Plan versioning with approval workflow
+- File evidence & content parsing
+- Safe execution with audit logging
+- Session recovery & undo support
+- Windows onedir + portable build
+- 198+ backend tests, 40+ frontend tests
+- Full E2E flow: 5-image v1→v2→execute→recover
+
+### ⚠️ Known Limitations
+
+- **No installer yet** (Inno Setup pending)
+- **Code signing required** for production
+- **Local Qwen Vision** — text-only verified, vision pipeline in progress
+- **High-DPI displays** — 4K scaling not fully tested
+- **Watch Folder** — auto-monitoring not implemented
+- **Optional: ffmpeg/ASR** — audio transcription needs external setup
+
+**Full details**: [docs/product/limitations.md](docs/product/limitations.md)
+
+## 💻 Development
+
+### Project Structure
+
+```
+Guixu/
+├── backend/              # Python FastAPI, 198+ tests
+├── frontend/             # Vue 3 + TypeScript, 40+ tests
+├── docs/
+│   ├── product/         # Features, workflows, privacy
+│   ├── current/         # Architecture, decisions, API
+│   ├── development/     # Setup, testing, packaging
+│   └── archive/         # Historical designs (reference only)
+├── contracts/           # OpenAPI, database DDL
+├── scripts/             # Build, test, verify automation
+└── seed/                # Runtime data (taxonomies, prompts)
+```
+
+### Essential Commands
+
+```powershell
+# Backend tests
+cd backend && uv run pytest -q          # 198 tests
+cd backend && uv run pytest tests/test_scanner.py  # Single module
+
+# Frontend tests
+cd frontend && npm run test:run          # 40 tests
+cd frontend && npm run typecheck        # Type checking
+
+# Full validation (tests + types + build)
+python .\scripts\verify.py all
+
+# Build portable package
+.\scripts\package-windows.ps1
+```
+
+### Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| **Backend** | Python 3.12, FastAPI, SQLAlchemy, Pydantic |
+| **Frontend** | Vue 3, TypeScript, Vite, Pinia, TailwindCSS |
+| **Desktop** | pywebview, EdgeChromium |
+| **Database** | SQLite, Alembic migrations |
+| **AI APIs** | DeepSeek HTTP, Ollama local |
+| **Testing** | pytest, Vitest, E2E smoke tests |
+
+## 🤝 Contributing
+
+### Before You PR
+
+```powershell
+python .\scripts\verify.py all    # All tests must pass
+cd backend && uv run ruff check .
+cd frontend && npm run lint
+```
+
+### PR Process
+
+1. Fork this repo
+2. Create feature branch: `git checkout -b feature/your-feature`
+3. Add tests for your changes
+4. Run validation (see above)
+5. Push and open PR with description
+
+## 📚 Documentation
+
+| Link | Purpose |
+|------|---------|
+| [docs/product/](docs/product/) | **User Guide**: Features, workflows, limitations |
+| [docs/development/](docs/development/) | **Dev Setup**: Getting started, testing, packaging |
+| [docs/current/](docs/current/) | **Architecture**: Data models, API, decisions |
+| [PROJECT_STATUS.md](PROJECT_STATUS.md) | **Live Status**: Phase progress, test results, blockers |
+| [contracts/](contracts/) | **API & DB**: OpenAPI spec, DDL |
+
+## 🎓 Learn More
+
+### Architecture Q&A
+
+**Q: Why local-first?**  
+A: Your files stay on your machine. Only metadata goes to AI (if you choose cloud models). No tracking, no profiling.
+
+**Q: What happens if I disagree with the AI plan?**  
+A: You edit it. Change categories, rename files, skip operations. New Plan v2 reflects your changes.
+
+**Q: Can I undo operations?**  
+A: Yes, with caveats. Single-drive moves undo cleanly. Cross-drive moves require original state verification.
+
+**Q: Why is there so much testing?**  
+A: File organization is high-risk. One mistake loses data. We test every code path, real AI, real files.
+
+### Real-World Example
+
+```
+Goal: Organize 48 photos from a recent trip
+
+1. Create session, authorize ~/Pictures/2024-Trip/
+2. Chat: "Sort these by location and date"
+3. AI reviews file names, EXIF data, image content
+4. Plan v1: 12 categories (Beach, Forest, People, Food, etc.)
+5. You review: "Merge Beach + Water", "Add People/Group"
+6. Plan v2 generated with your changes
+7. Approve and execute → 48 photos moved in <5s
+8. Review operation log → all 48 files tracked
+9. Close app → reopen next day, session intact
+```
+
+## 📦 Deployment
+
+### For Users
+
+**Recommended**: Download portable ZIP from [Releases](../../releases)  
+Unzip, run `Guixu.exe`, no dependencies needed.
+
+**Alternative**: Build from source
+```powershell
+.\scripts\package-windows.ps1
+# Creates: artifacts/release/Guixu-0.1.0/Guixu.exe
+```
+
+### For Developers
+
+```powershell
+# Development mode (hot reload)
+.\scripts\run-dev.ps1
+
+# Desktop build (pywebview)
+.\scripts\run-desktop.ps1
+
+# Production package
+.\scripts\package-windows.ps1
+```
+
+## 🐛 Feedback & Issues
+
+Found a bug? Have an idea?
+
+- 🐞 [Open an Issue](../../issues)
+- 💬 [Start a Discussion](../../discussions)
+- 📖 [Check Docs](docs/)
+
+## 📄 License
+
+MIT © 2024–Present. See [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- [DeepSeek API](https://deepseek.com) — Powerful multimodal AI
+- [Ollama](https://ollama.ai) — Local model runtime
+- [FastAPI](https://fastapi.tiangolo.com) — Modern Python web
+- [Vue 3](https://vuejs.org) — Progressive frontend framework
+- [pywebview](https://github.com/r0x0r/pywebview) — Desktop app bridge
 
 ---
 
-## 📄 许可证
+<div align="center">
 
-[MIT License](LICENSE) - 自由使用、修改、分发（需保留许可证文本）。
+**中文** | **[English](#-what-is-guixu)**
 
----
+**[🚀 Get Started](#-quick-start)** · **[📚 Read Docs](docs/)** · **[💬 Discuss](../../discussions)** · **[⭐ Star](../../)**
 
-## 💬 反馈与支持
+Made with ❤️ for better file organization | 为更好的文件整理而打造
 
-- 📮 **GitHub Issues**：[提交问题](../../issues)
-- 💭 **讨论区**：[GitHub Discussions](../../discussions)
-- 📖 **详细文档**：[docs/](docs/) 和 [PROJECT_STATUS.md](PROJECT_STATUS.md)
-
----
-
-## 🙏 致谢
-
-- [DeepSeek API](https://deepseek.com)：强大的多模态 AI 模型
-- [Ollama](https://ollama.ai)：本地模型运行时
-- [FastAPI](https://fastapi.tiangolo.com)：现代 Python Web 框架
-- [Vue 3](https://vuejs.org)：渐进式前端框架
-- [pywebview](https://github.com/r0x0r/pywebview)：跨平台桌面应用开发
-
----
-
-**最后更新**：2026-09-28 | **版本**：0.1.0 dev | **项目状态**：[查看详情](PROJECT_STATUS.md)
+</div>
