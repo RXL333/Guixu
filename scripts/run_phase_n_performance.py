@@ -77,7 +77,8 @@ def run_size(count: int) -> dict[str, object]:
         cache.get_valid_evidence(row["id"], str(row.get("sha256") or ""), "VISUAL_DESCRIPTION")
         sample_latencies.append((time.perf_counter() - started) * 1000)
     rss_after = process.memory_info().rss
-    integrity = database.engine.connect().exec_driver_sql("PRAGMA integrity_check").scalar_one()
+    with database.engine.connect() as connection:
+        integrity = connection.exec_driver_sql("PRAGMA integrity_check").scalar_one()
     database.close()
     return {
         "requested_files": count,

@@ -16,4 +16,4 @@
 - 需要在当前最终源码上重跑完整回归、故障/权限/审批/磁盘安全矩阵，并在实际 Windows 桌面复核。
 - 需要安装器、干净 Windows 环境验收、产物内容/秘密扫描，以及许可证和签名决策。
 
-媒体解析、OCR、云端隐私及系统兼容边界仍以 [KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) 为准。正式发布说明仅在 `docs/RELEASE_ACCEPTANCE.md` 全部必要 gate 通过后定稿。
+媒体解析、OCR、云端隐私及系统兼容边界仍以 [已知限制](../../product/limitations.md) 为准。正式发布说明仅在 [验收矩阵](RELEASE_ACCEPTANCE.md) 全部必要 gate 通过后定稿。

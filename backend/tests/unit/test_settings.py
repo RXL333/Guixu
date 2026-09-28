@@ -5,7 +5,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from guixu.domain.settings import TaskSettings, load_default_settings
+from guixu.domain.settings import TaskSettings, load_default_settings, validate_stored_settings
 
 
 def test_defaults_are_loaded_from_seed(project_root):
@@ -16,3 +16,10 @@ def test_defaults_are_loaded_from_seed(project_root):
 def test_legacy_classification_mode_is_rejected():
     with pytest.raises(ValidationError, match="classification_mode"):
         TaskSettings(classification_mode="rules_only")
+
+
+def test_persisted_legacy_classification_mode_is_ignored_without_relaxing_new_input():
+    restored = validate_stored_settings({"classification_mode": "rules_first", "category_language": "en"})
+    assert restored.category_language == "en"
+    with pytest.raises(ValidationError, match="unexpected_field"):
+        validate_stored_settings({"unexpected_field": True})

@@ -107,7 +107,8 @@ def test_all_jpg_flow_uses_visual_descriptions_as_evidence(project_root: Path, t
     }, nodes)
     results = classifier.classify_taxonomy(task["id"], taxonomy)
     assert {item["category_id"] for item in results} == {"visual.warm", "visual.cool"}
-    assert all(paths for _, paths in gateway.calls[0]["items"])
+    assert len(gateway.calls) == 2
+    assert all(len(call["items"]) == 1 and call["items"][0][1] for call in gateway.calls)
     with db.engine.connect() as connection:
         profiles = [json.loads(row[0]) for row in connection.execute(text(
             "SELECT profile_json FROM file_profiles WHERE cache_key LIKE '%-vision-%' ORDER BY created_at"

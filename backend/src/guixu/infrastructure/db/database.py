@@ -524,5 +524,23 @@ class Database:
                 (key, encoded, utc_now()),
             )
 
+    def get_json_setting(self, key: str) -> tuple[object, int]:
+        with self.engine.connect() as connection:
+            row = connection.exec_driver_sql(
+                "SELECT value_json,revision FROM settings WHERE key=?", (key,),
+            ).one()
+        return json.loads(row[0]), int(row[1])
+
+    def update_json_setting(self, key: str, value: object, expected_revision: int) -> int:
+        encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        with self.begin() as connection:
+            result = connection.exec_driver_sql(
+                "UPDATE settings SET value_json=?,revision=revision+1,updated_at=? WHERE key=? AND revision=?",
+                (encoded, utc_now(), key, expected_revision),
+            )
+            if result.rowcount != 1:
+                raise ValueError("SETTINGS_REVISION_CONFLICT")
+        return expected_revision + 1
+
     def close(self) -> None:
         self.engine.dispose()

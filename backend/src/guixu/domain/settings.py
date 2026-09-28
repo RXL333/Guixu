@@ -36,6 +36,7 @@ class TaskSettings(BaseModel):
     operation_mode: Literal["preview_move", "direct_move", "copy", "report_only"] = "preview_move"
     organization_strategy: Literal["modality_first", "topic_first", "hybrid"] = "hybrid"
     classification_source: Literal["template", "fixed_categories", "auto_plan"] = "auto_plan"
+    category_language: Literal["zh", "en"] = "zh"
     max_depth: int = Field(default=2, ge=1, le=3)
     max_siblings: int = Field(default=12, ge=2, le=20)
     max_nodes_per_scope: int = Field(default=80, ge=2, le=200)
@@ -66,6 +67,13 @@ class TaskSettings(BaseModel):
             raise ValueError("extension_allowlist must contain unique values")
         self.extension_allowlist = normalized
         return self
+
+
+def validate_stored_settings(payload: object) -> TaskSettings:
+    """Read old persisted defaults without accepting legacy fields in new input."""
+    if isinstance(payload, dict):
+        payload = {key: value for key, value in payload.items() if key != "classification_mode"}
+    return TaskSettings.model_validate(payload)
 
 
 def load_default_settings(project_root: Path) -> TaskSettings:

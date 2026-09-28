@@ -17,8 +17,8 @@ from reportlab.pdfgen import canvas
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "artifacts" / "evaluation" / "fixtures"
-MANIFEST = ROOT / "artifacts" / "evaluation" / "gold-manifest.json"
+OUTPUT = ROOT / "backend" / "tests" / "fixtures" / "evaluation" / "fixtures"
+MANIFEST = ROOT / "backend" / "tests" / "fixtures" / "evaluation" / "gold-manifest.json"
 
 
 def sha256(path: Path) -> str:

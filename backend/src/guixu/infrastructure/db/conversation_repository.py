@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -884,8 +885,7 @@ class ConversationRepository:
             raise ValueError("CONVERSATION_SCOPE_REQUIRED")
 
         now = utc_now()
-        insert_rows: list[dict[str, Any]] = []
-        for file_id in ids:
+        def prepare_file(file_id: str) -> dict[str, Any]:
             row = files_by_id[file_id]
             if not self._path_is_within_roots(str(row["current_path"]), roots):
                 raise ValueError("REFERENCE_SCOPE_VIOLATION")
@@ -898,11 +898,20 @@ class ConversationRepository:
                 # attach a file with an unknown fingerprint: plan revalidation
                 # and no-clobber execution depend on this stable snapshot.
                 fingerprint, size, mtime = self._observe(row)
-            insert_rows.append({
+            return {
                 "id": str(uuid.uuid4()), "conversation": conversation_id, "file": file_id,
                 "path": row["current_path"], "fingerprint": fingerprint,
                 "size": size or row["size_bytes"], "mtime": mtime or row["mtime_ns"], "now": now,
-            })
+            }
+
+        # Path resolution and hashing perform filesystem I/O. Keep the worker
+        # count small so a photo directory does not saturate the disk. map()
+        # preserves input order, and no database connection enters a worker.
+        if len(ids) >= 128:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                insert_rows = list(executor.map(prepare_file, ids))
+        else:
+            insert_rows = [prepare_file(file_id) for file_id in ids]
 
         with self.database.begin() as connection:
             if connection.execute(text(
@@ -1019,7 +1028,8 @@ class ConversationRepository:
             raise KeyError(file_id)
         return dict(row)
 
-    def list_conversation_files(self, conversation_id: str, *, include_removed: bool = False) -> list[dict[str, Any]]:
+    def list_conversation_files(self, conversation_id: str, *, include_removed: bool = False,
+                                unique_current: bool = False) -> list[dict[str, Any]]:
         clause = "" if include_removed else " AND cf.removed_from_scope_at IS NULL"
         with self.database.engine.connect() as connection:
             rows = connection.execute(text(f"""
@@ -1028,7 +1038,24 @@ class ConversationRepository:
                 FROM conversation_files cf JOIN files f ON f.id=cf.file_id
                 WHERE cf.conversation_id=:conversation{clause} ORDER BY cf.added_at,cf.id
             """), {"conversation": conversation_id}).mappings().all()
-        return [dict(row) for row in rows]
+        items = [dict(row) for row in rows]
+        return self.unique_current_paths(items) if unique_current and not include_removed else items
+
+    @staticmethod
+    def unique_current_paths(rows: list[Any]) -> list[Any]:
+        """Show one current record per physical path while retaining historical file IDs.
+
+        A new Task scan creates new core IDs for files already seen by a
+        Conversation. Older rows remain available to old plans and journals;
+        only the current workspace view chooses the most recently attached ID.
+        """
+        latest: dict[str, Any] = {}
+        for row in rows:
+            key = str(row["current_known_path"]).replace("\\", "/").casefold()
+            previous = latest.get(key)
+            if previous is None or (row["added_at"], row["id"]) > (previous["added_at"], previous["id"]):
+                latest[key] = row
+        return sorted(latest.values(), key=lambda row: (row["added_at"], row["id"]))
 
     def verify_file(self, conversation_id: str, file_id: str) -> dict[str, Any]:
         now = utc_now()

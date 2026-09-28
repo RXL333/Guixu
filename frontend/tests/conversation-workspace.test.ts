@@ -55,7 +55,7 @@ describe('phase E Conversation Workspace', () => {
     const view = render(ChatComposer, { global: { plugins: [pinia] } })
     await fireEvent.update(view.getByRole('textbox', { name: '整理要求' }), '按照内容整理')
     await fireEvent.keyDown(view.getByRole('textbox', { name: '整理要求' }), { key: 'Enter' })
-    await waitFor(() => expect(api.chatConversation).toHaveBeenCalledWith('c1', '按照内容整理', []))
+    await waitFor(() => expect(api.chatConversation).toHaveBeenCalledWith('c1', '按照内容整理', [], [], false))
     expect(store.messages.at(-1)?.content).toBe('可以，先说说需要几类？')
     expect(analysis).not.toHaveBeenCalled()
   })
@@ -74,7 +74,7 @@ describe('phase E Conversation Workspace', () => {
     expect(analysis).not.toHaveBeenCalled()
     expect(await store.appendMessage('开始整理')).toBe(false)
     expect(analysis).toHaveBeenCalledWith('c1', expect.objectContaining({
-      content: expect.stringContaining('文件夹名称用中文'), acknowledge_privacy: true,
+      content: '开始整理', requirements_context: expect.stringContaining('文件夹名称用中文'), acknowledge_privacy: true,
     }))
   })
 
@@ -112,6 +112,39 @@ describe('phase E Conversation Workspace', () => {
     expect(view.getByText('还没有执行记录')).toBeTruthy()
   })
 
+  it('lets a new conversation discuss selected inventory images only after consent', async () => {
+    const pinia = createPinia()
+    const store = useConversationStore(pinia)
+    store.currentConversation = { id: 'c1', title: '照片', status: 'ACTIVE', model_profile_id: 'model1',
+      scopes: [{ id: 's1', source_root: 'D:/Photos', display_name: 'Photos' }] } as any
+    store.models = [{ id: 'model1', name: '视觉模型', enabled: true }] as any
+    store.sourceFiles = [{ path: 'D:/Photos/one.jpg', size_bytes: 42, mtime_ns: 1_000_000 }] as any
+    const workspace = render(FileWorkspace, { props: { plans: [], executions: [] }, global: { plugins: [pinia] } })
+    await fireEvent.click(workspace.getByRole('button', { name: /one.jpg/ }))
+    expect(store.selectedFileIds).toEqual(['D:/Photos/one.jpg'])
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const chat = vi.spyOn(api, 'chatConversation').mockResolvedValue({
+      user_message: message('USER', '这张是什么？', 1), assistant_message: message('ASSISTANT', '蓝色照片。', 2),
+    })
+    expect(await store.appendMessage('这张是什么？')).toBe(false)
+    expect(chat).not.toHaveBeenCalled()
+    confirm.mockReturnValue(true)
+    expect(await store.appendMessage('这张是什么？')).toBe(true)
+    expect(chat).toHaveBeenCalledWith('c1', '这张是什么？', [], ['D:/Photos/one.jpg'], true)
+    expect(store.selectedFileIds).toEqual([])
+  })
+
+  it('copies the exact message text from the action below a chat bubble', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    try {
+      const view = render(ConversationMessage, { props: { message: message('ASSISTANT', '按拍摄地点整理。\n保留原文件名。', 2) } })
+      await fireEvent.click(view.getByRole('button', { name: '复制对话' }))
+      expect(writeText).toHaveBeenCalledWith('按拍摄地点整理。\n保留原文件名。')
+      expect(view.getByRole('button', { name: '已复制对话' })).toBeTruthy()
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it('shows each planned destination and opens a scoped photo preview', async () => {
     const pinia = createPinia()
     const store = useConversationStore(pinia)
@@ -126,12 +159,57 @@ describe('phase E Conversation Workspace', () => {
     const view = render(FileWorkspace, { props: { plans: [plan], executions: [], currentPlanVersion: plan }, global: { plugins: [pinia] } })
     await fireEvent.click(view.getAllByRole('button', { name: '预览图片' })[0])
     await waitFor(() => expect(view.getByRole('img', { name: 'one.jpg' }).getAttribute('src')).toBe('/api/v1/previews/ticket'))
-    await fireEvent.click(view.getByRole('button', { name: '关闭图片预览' }))
+    await fireEvent.keyDown(view.getByRole('button', { name: '关闭图片预览' }), { key: 'Escape' })
+    expect(view.queryByRole('dialog', { name: '预览 one.jpg' })).toBeNull()
     await fireEvent.click(view.getByRole('tab', { name: /整理预览/ }))
     await waitFor(() => expect(view.getByText(/D:\/Photos\/风景\/one.jpg/)).toBeTruthy())
     expect(view.getByText(/保持原位 · UNSUPPORTED_OR_UNDECIDED/)).toBeTruthy()
     await fireEvent.click(view.getAllByRole('button', { name: '预览图片' })[0])
     expect(api.conversationPreviewTicket).toHaveBeenCalledWith('c1', { file_id: 'f1' })
+  })
+
+  it('shows uncertain image suggestions and requires an explicit per-file confirmation', async () => {
+    const pinia = createPinia()
+    const store = useConversationStore(pinia)
+    store.currentConversation = { id: 'c1', title: '照片', status: 'ACTIVE' } as any
+    store.context = { context_revision: 4, current_plan_version_id: 'p1' } as any
+    const plan = { id: 'p1', conversation_id: 'c1', version_number: 1, status: 'PROPOSED', created_at: 'now' } as any
+    vi.spyOn(api, 'conversationPlanPreview').mockResolvedValue({ plan_hash: 'hash', operations: [{
+      file_id: 'f1', action: 'skip', source_path: 'D:/Photos/one.jpg', target_path: null,
+      reason: 'UNSUPPORTED_OR_UNDECIDED', suggested_category_id: 'blue',
+      suggested_category_path: ['蓝色照片'], review_band: 'medium', classification_reason: '画面以蓝色为主', abstain: false,
+    }] })
+    const confirm = vi.spyOn(api, 'confirmConversationSuggestions').mockResolvedValue({ ...plan, id: 'p2', version_number: 2 } as any)
+    vi.spyOn(store, 'loadConversation').mockResolvedValue(undefined)
+    const view = render(FileWorkspace, { props: { plans: [plan], executions: [], currentPlanVersion: plan }, global: { plugins: [pinia] } })
+    await fireEvent.click(view.getByRole('tab', { name: /整理预览/ }))
+    await waitFor(() => expect(view.getByText(/AI 建议：蓝色照片/)).toBeTruthy())
+    const button = view.getByRole('button', { name: /确认选中的/ }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    await fireEvent.click(view.getByRole('checkbox', { name: /我已核对图片/ }))
+    await fireEvent.click(button)
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith('c1', 'p1', {
+      expected_context_revision: 4, file_ids: ['f1'],
+    }))
+  })
+
+  it('pages a large plan while keeping the last destination searchable', async () => {
+    const pinia = createPinia()
+    const store = useConversationStore(pinia)
+    store.currentConversation = { id: 'c1', title: '大方案', status: 'ACTIVE', revision: 1, created_at: 'now', updated_at: 'now' } as any
+    const plan = { id: 'p1', conversation_id: 'c1', version_number: 1, status: 'PROPOSED', summary: '分类', affected_file_count: 5000, created_at: 'now' } as any
+    vi.spyOn(api, 'conversationPlanPreview').mockResolvedValue({ plan_hash: 'hash', operations: Array.from({ length: 5000 }, (_, index) => ({
+      file_id: `f${index}`, action: 'move', source_path: `D:/Photos/photo-${index}.jpg`, target_path: `D:/Photos/分类/photo-${index}.jpg`, reason: null,
+    })) })
+    const view = render(FileWorkspace, { props: { plans: [plan], executions: [], currentPlanVersion: plan }, global: { plugins: [pinia] } })
+    await fireEvent.click(view.getByRole('tab', { name: /整理预览/ }))
+    await waitFor(() => expect(view.container.querySelectorAll('.plan-file-row')).toHaveLength(50))
+    expect(view.getByText(/第 1 \/ 100 页/)).toBeTruthy()
+    await fireEvent.click(view.getByRole('button', { name: '下一页' }))
+    expect(view.getAllByText(/photo-50.jpg/).length).toBeGreaterThan(0)
+    await fireEvent.update(view.getByRole('searchbox', { name: '搜索方案文件' }), 'photo-4999')
+    expect(view.container.querySelectorAll('.plan-file-row')).toHaveLength(1)
+    expect(view.getByText(/分类\/photo-4999.jpg/)).toBeTruthy()
   })
 
   it('keeps the root empty state explicit and does not render fake AI', async () => {
@@ -276,7 +354,7 @@ describe('phase E Conversation Workspace', () => {
     expect(store.selectedFileIds).toHaveLength(499)
     await fireEvent.update(view.getByRole('textbox', { name: '整理要求' }), '这些放到旅行')
     await fireEvent.click(view.getByRole('button', { name: '发送消息' }))
-    await waitFor(() => expect(api.chatConversation).toHaveBeenCalledWith('c1', '这些放到旅行', expect.arrayContaining(['f1', 'f499'])))
+    await waitFor(() => expect(api.chatConversation).toHaveBeenCalledWith('c1', '这些放到旅行', expect.arrayContaining(['f1', 'f499']), [], false))
     expect(store.selectedFileIds).toEqual([])
   })
 
@@ -304,6 +382,23 @@ describe('phase E Conversation Workspace', () => {
     await store.loadConversation('b')
     expect(store.selectedFileIds).toEqual([])
     expect(store.focusedFileId).toBeNull()
+  })
+
+  it('shows saved chat before the optional directory inventory finishes', async () => {
+    const store = useConversationStore(createPinia())
+    store.models = [{ id: 'model1', name: '测试模型', enabled: true }] as any
+    let finishInventory!: (value: { files: []; truncated: false }) => void
+    vi.spyOn(api, 'sourceFiles').mockImplementation(() => new Promise(resolve => { finishInventory = resolve }))
+    vi.spyOn(api, 'conversation').mockResolvedValue({ id: 'b', title: '照片', status: 'ACTIVE' } as any)
+    vi.spyOn(api, 'conversationMessages').mockResolvedValue([message('ASSISTANT', '已有讨论', 1)])
+    vi.spyOn(api, 'conversationContext').mockResolvedValue({ conversation_id: 'b', context_revision: 1 } as any)
+    vi.spyOn(api, 'conversationFiles').mockResolvedValue([])
+    vi.spyOn(api, 'conversationPlans').mockResolvedValue([])
+    vi.spyOn(api, 'conversationExecutions').mockResolvedValue([])
+    await store.loadConversation('b')
+    expect(store.loading).toBe(false)
+    expect(store.messages[0].content).toBe('已有讨论')
+    finishInventory({ files: [], truncated: false })
   })
 
   it('renders UndoPreviewCard and requires explicit confirmation', async () => {

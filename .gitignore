@@ -18,3 +18,5 @@ artifacts/runtime-undo-ui/
 *.sqlite3-shm
 *.sqlite3-wal
 scripts/__pycache__/
+artifacts/runtime-phase*/
+artifacts/reports/*.log

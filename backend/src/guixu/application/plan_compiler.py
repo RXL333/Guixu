@@ -46,6 +46,7 @@ class PlanCompiler:
         max_depth: int,
         collision_policy: str = "keep_both",
         protected_root_names: set[str] | None = None,
+        allow_file_rename: bool = False,
     ) -> ExecutionPlan:
         if operation_mode not in {"preview_move", "direct_move", "copy", "report_only"}:
             raise ValueError("INVALID_OPERATION_MODE")
@@ -97,8 +98,30 @@ class PlanCompiler:
             target: Path | None = None
             if unsafe_feature:
                 reason = unsafe_feature
-            elif not candidate.eligible or candidate.modality == "other" or candidate.category_id is None:
+            elif not candidate.eligible or candidate.modality == "other" or (candidate.category_id is None and candidate.proposed_stem is None):
                 reason = "UNSUPPORTED_OR_UNDECIDED"
+            elif candidate.proposed_stem is not None:
+                if not allow_file_rename or operation_mode not in {"preview_move", "direct_move"}:
+                    raise ValueError("FILE_RENAME_DISABLED")
+                stem = validate_category_segment(candidate.proposed_stem)
+                target = ensure_within(source.with_name(stem + source.suffix), candidate.source_root)
+                if target_key(target) == target_key(source):
+                    action = "noop"
+                    reason = "SOURCE_EQUALS_TARGET"
+                elif target.exists() and collision_policy == "skip":
+                    action = "skip"
+                    reason = "TARGET_EXISTS"
+                    target = None
+                elif collision_policy == "keep_both":
+                    target = _keep_both(target, allocated)
+                    action = "move"
+                elif target_key(target) in allocated:
+                    action = "skip"
+                    reason = "BATCH_TARGET_COLLISION"
+                    target = None
+                else:
+                    allocated.add(target_key(target))
+                    action = "move"
             elif operation_mode == "report_only":
                 action = "noop"
                 reason = "REPORT_ONLY"

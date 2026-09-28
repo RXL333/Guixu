@@ -3,11 +3,31 @@ import { confirmAction } from '../components/dialogState'
 import { onMounted, ref } from 'vue'
 import { api, type CacheStatus, type TaskSettings } from '../services/api'
 const settings = ref<TaskSettings | null>(null)
+const settingsRevision = ref(0)
+const languageBusy = ref(false)
+const savedNotice = ref('')
 const components = ref<Array<Record<string, unknown>>>([])
 const cache = ref<CacheStatus | null>(null)
 const cacheBusy = ref(false)
 const error = ref('')
-onMounted(async () => { try { settings.value = (await api.settings()).values; components.value = await api.components(); cache.value = await api.cacheStatus() } catch (e) { error.value = String(e) } })
+onMounted(async () => { try { const result = await api.settings(); settings.value = result.values; settingsRevision.value = result.revision; components.value = await api.components(); cache.value = await api.cacheStatus() } catch (e) { error.value = String(e) } })
+async function changeCategoryLanguage(event: Event) {
+  const language = (event.target as HTMLSelectElement).value as 'zh' | 'en'
+  languageBusy.value = true
+  error.value = ''
+  savedNotice.value = ''
+  try {
+    const result = await api.setCategoryLanguage(language, settingsRevision.value)
+    settings.value = result.values
+    settingsRevision.value = result.revision
+    savedNotice.value = '已保存。新生成的分类方案将使用所选语言；已有方案不会自动更改。'
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : String(cause)
+    const current = await api.settings()
+    settings.value = current.values
+    settingsRevision.value = current.revision
+  } finally { languageBusy.value = false }
+}
 async function clearCache() {
   if (!await confirmAction('清除文件内容分析缓存？不会删除原文件、任务或操作历史。')) return
   cacheBusy.value = true
@@ -23,10 +43,12 @@ function settingLabel(value: string | undefined) {
     <nav class="page-nav" aria-label="设置页面"><RouterLink to="/models">模型连接</RouterLink><RouterLink to="/settings">通用设置</RouterLink></nav>
     <h1>通用设置</h1><p class="lead">整理偏好、隐私与本地资源。</p>
     <p v-if="error" class="notice danger-notice" role="alert">{{ error }}</p>
+    <p v-if="savedNotice" class="notice" role="status">{{ savedNotice }}</p>
     <div class="settings-layout">
       <nav class="settings-nav" aria-label="设置分区"><a v-for="section in sections" :key="section.id" :href="`#${section.id}`">{{ section.label }}</a></nav>
       <div>
         <section id="behavior" class="settings-section"><h2>整理偏好</h2>
+          <div class="settings-row"><div>默认分类语言<p>新生成的分类文件夹名称使用所选语言；已有方案保持原样。</p></div><select aria-label="默认分类语言" :value="settings?.category_language || 'zh'" :disabled="!settings || languageBusy" @change="changeCategoryLanguage"><option value="zh">中文</option><option value="en">English</option></select></div>
           <div class="settings-row"><div>扫描范围<p>新建整理时使用的默认目录范围。</p></div><span>{{ settingLabel(settings?.scan_mode) }}</span></div>
           <div class="settings-row"><div>分析强度<p>平衡内容理解的深度和耗时。</p></div><span>{{ settingLabel(settings?.analysis_preset) }}</span></div>
           <div class="settings-row"><div>无法确定分类的文件</div><span>{{ settingLabel(settings?.uncertain_action) }}</span></div>

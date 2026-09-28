@@ -5,6 +5,7 @@ export interface TaskSettings {
   operation_mode: 'preview_move' | 'direct_move' | 'copy' | 'report_only'
   organization_strategy: 'modality_first' | 'topic_first' | 'hybrid'
   classification_source: 'template' | 'fixed_categories' | 'auto_plan'
+  category_language: 'zh' | 'en'
   max_depth: number
   max_siblings: number
   max_nodes_per_scope: number
@@ -223,7 +224,9 @@ export interface ConversationPlanVersion {
 
 export interface ConversationPlanPreview {
   plan_hash: string | null
-  operations: Array<{ file_id: string; action: string; source_path: string; target_path: string | null; reason: string | null }>
+  operations: Array<{ file_id: string; action: string; source_path: string; target_path: string | null; reason: string | null;
+    suggested_category_id?: string | null; suggested_category_path?: string[] | null;
+    review_band?: 'high' | 'medium' | 'low' | null; classification_reason?: string | null; abstain?: boolean }>
 }
 
 export type PlanFileChangeType = 'UNCHANGED' | 'ADDED' | 'REMOVED' | 'TARGET_CHANGED' | 'KEEP_CHANGED' | 'CONFLICT_CHANGED'
@@ -442,13 +445,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: { 'Content-Type': 'application/json', 'X-Guixu-Session': session, ...init.headers },
   })
-  const body = await response.json()
-  if (!response.ok) throw new ApiError(body.error?.code ?? `HTTP_${response.status}`, body.error?.message ?? `HTTP ${response.status}`, body.error?.details, response.status)
+  const raw = await response.text()
+  let body: any
+  try { body = JSON.parse(raw) } catch {
+    throw new ApiError(`HTTP_${response.status}`, response.ok
+      ? '服务器返回了无法读取的数据，请重试。'
+      : `服务暂时不可用（HTTP ${response.status}），请重试或查看应用日志。`, undefined, response.status)
+  }
+  if (!response.ok) throw new ApiError(body?.error?.code ?? `HTTP_${response.status}`, body?.error?.message ?? `HTTP ${response.status}`, body?.error?.details, response.status)
   return (body as Envelope<T>).data
 }
 
 export const api = {
   settings: () => request<{ revision: number; values: TaskSettings }>('/api/v1/settings'),
+  setCategoryLanguage: (category_language: 'zh' | 'en', expected_revision: number) =>
+    request<{ revision: number; values: TaskSettings }>('/api/v1/settings/category-language', {
+      method: 'PATCH', body: JSON.stringify({ category_language, expected_revision }),
+    }),
   tasks: (view: 'active'|'deleted'|'all' = 'active') => request<{ items: Task[] }>(`/api/v1/tasks?view=${view}`),
   createTask: (payload: { name: string; source_grant: string; output_grant?: string | null; settings: TaskSettings; model_profile_id: string; user_instructions?: string }) =>
     request<Task>('/api/v1/tasks', {
@@ -494,6 +507,9 @@ export const api = {
   }),
   batchPermanentlyDeleteTasks: (taskIds: string[]) => request<{permanently_deleted:number;disk_files_changed:false}>('/api/v1/tasks/batch-permanent-delete', {
     method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({task_ids:taskIds}),
+  }),
+  clearTrash: () => request<{permanently_deleted_tasks:number;retained_safety_records:number;permanently_deleted_conversations:number;disk_files_changed:false}>('/api/v1/trash/clear', {
+    method:'POST', headers:{'Idempotency-Key':crypto.randomUUID()}, body:'{}',
   }),
   models: () => request<ModelProfile[]>('/api/v1/models'),
   createModel: (payload: Record<string, unknown>) => request<ModelProfile>('/api/v1/models', {
@@ -565,27 +581,42 @@ export const api = {
     method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(file),
   }),
   conversationMessages: (id: string) => request<ConversationMessage[]>(`/api/v1/conversations/${id}/messages`),
-  chatConversation: (id: string, content: string, selected_file_ids: string[] = []) => request<{ user_message: ConversationMessage; assistant_message: ConversationMessage }>(`/api/v1/conversations/${id}/chat`, {
-    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ content, selected_file_ids }),
+  chatConversation: (id: string, content: string, selected_file_ids: string[] = [], selected_source_paths: string[] = [], acknowledge_image_content = false) => request<{ user_message: ConversationMessage; assistant_message: ConversationMessage }>(`/api/v1/conversations/${id}/chat`, {
+    method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ content, selected_file_ids, selected_source_paths, acknowledge_image_content }),
   }),
   appendConversationMessage: (id: string, payload: { role: ConversationMessageRole; content: string; message_type?: ConversationMessageType; metadata?: Record<string, unknown>; referenced_plan_version_id?: string | null; referenced_execution_round_id?: string | null; selected_file_ids?: string[]; focused_file_id?: string | null; active_category_id?: string | null; expected_context_revision?: number; reference_role?: 'SUBJECT'|'RESULT'|'CONTEXT' }) =>
     request<ConversationMessage>(`/api/v1/conversations/${id}/messages`, {
       method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
     }),
-  firstConversationTurn: (id: string, payload: { content: string; selected_file_ids?: string[]; focused_file_id?: string | null; active_category_id?: string | null; acknowledge_privacy: boolean; reference_role?: 'SUBJECT'|'RESULT'|'CONTEXT' }) =>
+  firstConversationTurn: (id: string, payload: { content: string; requirements_context?: string; selected_file_ids?: string[]; focused_file_id?: string | null; active_category_id?: string | null; acknowledge_privacy: boolean; reference_role?: 'SUBJECT'|'RESULT'|'CONTEXT' }) =>
     request<FirstAnalysisResult>(`/api/v1/conversations/${id}/turns`, {
       method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+    }),
+  prepareConversationNaming: (id: string, instruction: string, fileIds: string[] = []) =>
+    request<{ plan_version: ConversationPlanVersion; assistant_message: ConversationMessage; metrics: Record<string, number> }>(`/api/v1/conversations/${id}/naming/prepare`, {
+      method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ instruction, file_ids: fileIds }),
     }),
   conversationContext: (id: string) => request<ConversationContext>(`/api/v1/conversations/${id}/context`),
   updateConversationContext: (id: string, expected_revision: number, changes: Record<string, unknown>) => request<ConversationContext>(`/api/v1/conversations/${id}/context`, {
     method: 'PATCH', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ expected_revision, changes }),
   }),
   conversationFiles: (id: string) => request<ConversationFile[]>(`/api/v1/conversations/${id}/files`),
-  sourceFiles: (id: string) => request<{ files: SourceFile[]; truncated: boolean }>(`/api/v1/conversations/${id}/source-files`),
+  sourceFiles: (id: string, options: { limit?: number; offset?: number; q?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (options.limit) params.set('limit', String(options.limit))
+    if (options.offset) params.set('offset', String(options.offset))
+    if (options.q) params.set('q', options.q)
+    const suffix = params.size ? `?${params}` : ''
+    return request<{ files: SourceFile[]; truncated: boolean }>(`/api/v1/conversations/${id}/source-files${suffix}`)
+  },
   conversationPlans: (id: string) => request<ConversationPlanVersion[]>(`/api/v1/conversations/${id}/plans`),
   conversationPlanVersions: (id: string, limit = 20) => request<ConversationPlanVersion[]>(`/api/v1/conversations/${id}/plan-versions?limit=${limit}`),
   conversationPlanVersion: (id: string, versionId: string) => request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/${versionId}`),
   conversationPlanPreview: (id: string, versionId: string) => request<ConversationPlanPreview>(`/api/v1/conversations/${id}/plan-versions/${versionId}/preview`),
+  confirmConversationSuggestions: (id: string, versionId: string, payload: { expected_context_revision: number; file_ids: string[] }) =>
+    request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/${versionId}/confirm-suggestions`, {
+      method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(payload),
+    }),
   currentConversationPlanVersion: (id: string) => request<ConversationPlanVersion>(`/api/v1/conversations/${id}/plan-versions/current`),
   conversationPlanDiff: (id: string, versionId: string, fromVersionId?: string | null) => request<ConversationPlanDiff>(`/api/v1/conversations/${id}/plan-versions/${versionId}/diff${fromVersionId ? `?from_version_id=${encodeURIComponent(fromVersionId)}` : ''}`),
   approveConversationPlanVersion: (id: string, versionId: string, payload: { expected_context_revision?: number; plan_hash?: string; authorization?: Record<string, unknown> } = {}) => request<Record<string, unknown>>(`/api/v1/conversations/${id}/plan-versions/${versionId}/approve`, {

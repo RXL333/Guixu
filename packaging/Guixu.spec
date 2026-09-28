@@ -11,8 +11,8 @@ datas = [
     (str(ROOT / "seed"), "seed"),
     (str(ROOT / "frontend" / "dist"), "frontend/dist"),
     (str(ROOT / "README.md"), "docs"),
-    (str(ROOT / "docs" / "USER_GUIDE.md"), "docs"),
-    (str(ROOT / "KNOWN_LIMITATIONS.md"), "docs"),
+    (str(ROOT / "docs" / "product" / "workflows.md"), "docs"),
+    (str(ROOT / "docs" / "product" / "limitations.md"), "docs"),
     (str(ROOT / "THIRD_PARTY_NOTICES.md"), "docs"),
     (str(ROOT / "CHANGELOG.md"), "docs"),
 ]
@@ -43,6 +43,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="Guixu",
+    icon=str(ROOT / "packaging" / "assets" / "guixu.ico"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

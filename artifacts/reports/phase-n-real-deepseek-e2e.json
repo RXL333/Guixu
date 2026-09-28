@@ -4,26 +4,26 @@
   "model_id": "deepseek-flash",
   "input_file_count": 5,
   "v1": {
-    "id": "cc8e7793-ab75-49b1-9a4f-0e10121c1b5f",
+    "id": "96397758-24c8-43a2-941b-509830d07fb1",
     "status": "SUPERSEDED",
-    "plan_hash": "6e1f1ca37366266239f1b826b85199f2c3e1403712cf6d0ee4eeb3f05ed892aa"
+    "plan_hash": "d5626685152d366ac8600ef7f9dd1873da5e1763e93a1313f1f999cf9dc1e739"
   },
   "v2": {
-    "id": "f82fe036-9e5b-42cb-bbec-ccecd76b8522",
-    "parent": "cc8e7793-ab75-49b1-9a4f-0e10121c1b5f",
+    "id": "bec1b2b7-5e2d-491c-a7b2-711dbaa7c93e",
+    "parent": "96397758-24c8-43a2-941b-509830d07fb1",
     "status": "PROPOSED",
-    "plan_hash": "f064bcee79937a37a45f6413dd6705db67613a49b40bc716da8f402149d9038e"
+    "plan_hash": "6776186ce9b6b7a09c5a6ae587f4657a03fa7092fbef354c215f545b73747426"
   },
   "diff_summary": {
     "total": 5,
     "unchanged": 0,
     "added": 0,
     "removed": 0,
-    "target_changed": 5,
-    "keep_changed": 0,
+    "target_changed": 1,
+    "keep_changed": 4,
     "conflict_changed": 0,
-    "categories_added": 1,
-    "categories_removed": 2,
+    "categories_added": 6,
+    "categories_removed": 4,
     "categories_changed": 0
   },
   "pre_approval_disk_unchanged": true,
@@ -41,57 +41,49 @@
     {
       "purpose": "planning",
       "response_status": "ok",
-      "input_tokens": 1777,
-      "output_tokens": 4928,
-      "latency_ms": 23659,
+      "input_tokens": 1801,
+      "output_tokens": 4722,
+      "latency_ms": 22799,
       "error_code": null
     },
     {
       "purpose": "classification",
       "response_status": "ok",
-      "input_tokens": 2039,
-      "output_tokens": 2555,
-      "latency_ms": 10054,
+      "input_tokens": 2201,
+      "output_tokens": 3481,
+      "latency_ms": 14912,
       "error_code": null
     },
     {
       "purpose": "classification",
       "response_status": "ok",
-      "input_tokens": 950,
-      "output_tokens": 319,
-      "latency_ms": 2431,
+      "input_tokens": 1194,
+      "output_tokens": 237,
+      "latency_ms": 1954,
       "error_code": null
     },
     {
       "purpose": "planning",
       "response_status": "ok",
-      "input_tokens": 2114,
-      "output_tokens": 7976,
-      "latency_ms": 35673,
-      "error_code": null
-    },
-    {
-      "purpose": "repair",
-      "response_status": "ok",
-      "input_tokens": 2153,
-      "output_tokens": 4387,
-      "latency_ms": 18958,
+      "input_tokens": 2142,
+      "output_tokens": 2524,
+      "latency_ms": 11950,
       "error_code": null
     },
     {
       "purpose": "classification",
       "response_status": "ok",
-      "input_tokens": 2193,
-      "output_tokens": 901,
-      "latency_ms": 3848,
+      "input_tokens": 2670,
+      "output_tokens": 4249,
+      "latency_ms": 17139,
       "error_code": null
     },
     {
       "purpose": "classification",
       "response_status": "ok",
-      "input_tokens": 903,
-      "output_tokens": 421,
-      "latency_ms": 2531,
+      "input_tokens": 1491,
+      "output_tokens": 315,
+      "latency_ms": 1950,
       "error_code": null
     }
   ],

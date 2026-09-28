@@ -1,0 +1,60 @@
+{
+  "test_type": "ISOLATED_BACKEND_PERFORMANCE",
+  "date": "2026-09-27",
+  "exit_status": "PASS",
+  "results": [
+    {
+      "requested_files": 500,
+      "observed_files": 501,
+      "scan_seconds": 0.03721350000068924,
+      "db_persist_seconds": 0.05634430000009161,
+      "conversation_attach_seconds": 0.44254350000028353,
+      "conversation_open_seconds": 0.0035620999997263425,
+      "workspace_projection_seconds": 0.011503000000629982,
+      "workspace_reconcile_seconds": 0.3429222999993726,
+      "cache_lookup_total_seconds": 0.044632799974351656,
+      "cache_lookup_median_ms": 0.08279999929072801,
+      "rss_before_bytes": 89452544,
+      "rss_after_bytes": 102215680,
+      "rss_delta_bytes": 12763136,
+      "sqlite_integrity_check": "ok"
+    },
+    {
+      "requested_files": 1000,
+      "observed_files": 1001,
+      "scan_seconds": 0.09287990000029822,
+      "db_persist_seconds": 0.10841340000024502,
+      "conversation_attach_seconds": 0.9928965999997672,
+      "conversation_open_seconds": 0.007341900000028545,
+      "workspace_projection_seconds": 0.023782199999914155,
+      "workspace_reconcile_seconds": 0.7745026000002326,
+      "cache_lookup_total_seconds": 0.08909230001245305,
+      "cache_lookup_median_ms": 0.08489999981975416,
+      "rss_before_bytes": 99856384,
+      "rss_after_bytes": 112562176,
+      "rss_delta_bytes": 12705792,
+      "sqlite_integrity_check": "ok"
+    },
+    {
+      "requested_files": 5000,
+      "observed_files": 5001,
+      "scan_seconds": 0.3264748999999938,
+      "db_persist_seconds": 0.6428720999992947,
+      "conversation_attach_seconds": 4.146467100000336,
+      "conversation_open_seconds": 0.059234700000160956,
+      "workspace_projection_seconds": 0.15873410000040167,
+      "workspace_reconcile_seconds": 3.3165405999998256,
+      "cache_lookup_total_seconds": 0.34327059997849574,
+      "cache_lookup_median_ms": 0.06680000024061883,
+      "rss_before_bytes": 106803200,
+      "rss_after_bytes": 157626368,
+      "rss_delta_bytes": 50823168,
+      "sqlite_integrity_check": "ok"
+    }
+  ],
+  "limitations": [
+    "OS cache not cold",
+    "small text fixtures, not large photos",
+    "no desktop rendering or end-to-end model inference"
+  ]
+}

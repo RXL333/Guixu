@@ -289,6 +289,14 @@ def test_taxonomy_response_rejects_windows_invalid_category_names():
     assert raised.value.provider_code == "CATEGORY_PATH_UNSAFE"
 
 
+def test_taxonomy_response_rejects_contract_placeholder_category_id():
+    with pytest.raises(ModelTransportError) as raised:
+        ModelGateway._parse_taxonomy_response(json.dumps({"categories": [{
+            "category_id": "stable-id", "name": "几何图形", "parent_id": None,
+        }]}))
+    assert raised.value.provider_code == "CATEGORY_ID_PLACEHOLDER"
+
+
 def test_first_image_batch_accepts_new_visual_evidence_but_not_invented_ids():
     image = profile().model_copy(update={"modality": "image", "evidence": []})
     taxonomy = {"taxonomy_id": "tax", "nodes": [{"category_id": "scene", "selectable": True}]}
@@ -299,15 +307,107 @@ def test_first_image_batch_accepts_new_visual_evidence_but_not_invented_ids():
     normalized = ModelGateway._normalize_batch_results(
         json.dumps({"results": [result]}), [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
     assert normalized[0]["visual_description"] == "海边日落与橙色天空"
-    with pytest.raises(ModelTransportError) as raised:
-        ModelGateway._normalize_batch_results(
-            json.dumps({"results": [{**result, "evidence_ids": ["invented"]}]}),
-            [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
-    assert raised.value.provider_code == "EVIDENCE_INVALID"
+    invented = ModelGateway._normalize_batch_results(
+        json.dumps({"results": [{**result, "evidence_ids": ["invented"]}]}),
+        [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+    assert invented[0]["evidence_ids"] == []
+    assert "insufficient_evidence" in invented[0]["warnings"]
     with pytest.raises(ModelTransportError, match="VISION_DESCRIPTION_MISSING"):
         ModelGateway._normalize_batch_results(
             json.dumps({"results": [{**result, "visual_description": ""}]}),
             [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+
+
+def test_single_image_batch_derives_only_missing_abstain_flag():
+    image = profile().model_copy(update={"modality": "image", "evidence": []})
+    taxonomy = {"taxonomy_id": "tax", "nodes": [{"category_id": "scene", "selectable": True}]}
+    result = {"taxonomy_id": "tax", "category_id": "scene",
+              "model_score": 0.8, "reason": "图片内容",
+              "visual_description": "图中有一片蓝色天空"}
+    normalized = ModelGateway._normalize_batch_results(
+        json.dumps({"results": [result]}), [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+    assert normalized[0]["abstain"] is False
+    assert normalized[0]["evidence_ids"] == []
+    assert normalized[0]["file_id"] == image.file_id
+    with pytest.raises(ModelTransportError) as raised:
+        ModelGateway._normalize_batch_results(
+            json.dumps({"results": [{**result, "abstain": True}]}),
+            [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+    assert raised.value.provider_code == "CATEGORY_INVALID"
+    with pytest.raises(ModelTransportError) as raised:
+        ModelGateway._normalize_batch_results(
+            json.dumps({"results": [{**result, "file_id": "other-file"}]}),
+            [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+    assert raised.value.provider_code == "FILE_SET_MISMATCH"
+    nested = ModelGateway._normalize_batch_results(
+        json.dumps({"classification": result}), [(image, ["controlled.jpg"])], taxonomy, {image.file_id})
+    assert nested[0]["category_id"] == "scene"
+
+
+def test_missing_visual_description_repair_reinspects_authorized_image(services, tmp_path: Path):
+    db, task, models, privacy, _secrets = services
+    image = profile().model_copy(update={"modality": "image", "evidence": []})
+    derivative = tmp_path / "controlled.jpg"
+    Image.new("RGB", (24, 24), "#d94b35").save(derivative)
+    taxonomy = {"taxonomy_id": "tax", "nodes": [{"category_id": "scene", "selectable": True}]}
+
+    def responder(number, body):
+        answer = {"file_id": image.file_id, "taxonomy_id": "tax", "category_id": "scene",
+                  "abstain": False, "model_score": 0.8, "evidence_ids": [], "reason": "图片内容",
+                  "tags": [], "warnings": []}
+        if number == 2:
+            answer["visual_description"] = "图中是一块红色区域"
+        return 200, {}, {"choices": [{"message": {"content": json.dumps({"results": [answer]})}}],
+                         "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+
+    with fake_service(responder) as (url, calls):
+        model = models.create(model_input(url))
+        mark_supported(models, model["id"], vision=True)
+        budget = {"max_calls": 3, "max_input_tokens": 100_000, "max_output_tokens": 10_000,
+                  "max_cost_micros": None, "currency": None}
+        privacy.grant(task["id"], model["id"], ["derivative_images"], budget,
+                      scope_hash(model["id"], ["derivative_images"], budget), task["revision"], True)
+        result = ModelGateway(db, models, privacy).classify_batch(
+            task_id=task["id"], profile_id=model["id"], items=[(image, [str(derivative)])],
+            taxonomy=taxonomy, policy={}, vision_refresh_file_ids={image.file_id},
+        )
+        assert result[0]["visual_description"] == "图中是一块红色区域"
+        assert len(calls) == 2
+        repair_parts = calls[1]["body"]["messages"][1]["content"]
+        assert any(part["type"] == "image_url" for part in repair_parts)
+        assert any(image.file_id in part.get("text", "") for part in repair_parts)
+
+
+def test_local_image_description_fallback_after_schema_repair(services, tmp_path: Path):
+    db, task, models, privacy, _secrets = services
+    image = profile().model_copy(update={"modality": "image", "evidence": []})
+    derivative = tmp_path / "controlled.jpg"
+    Image.new("RGB", (24, 24), "#d94b35").save(derivative)
+    taxonomy = {"taxonomy_id": "tax", "nodes": [{"category_id": "scene", "selectable": True}]}
+
+    def responder(number, body):
+        result = ({"visual_description": "图中是一块红色区域"} if number == 3 else {"results": [{
+            "file_id": image.file_id, "category_id": "scene", "abstain": False,
+            "evidence_ids": [], "model_score": 0.8, "reason": "红色画面",
+            "visual_description": "",
+        }]})
+        return 200, {}, {"choices": [{"message": {"content": json.dumps(result)}}],
+                         "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+
+    with fake_service(responder) as (url, calls):
+        model = models.create(model_input(url))
+        mark_supported(models, model["id"], vision=True)
+        budget = {"max_calls": 4, "max_input_tokens": 100_000, "max_output_tokens": 10_000,
+                  "max_cost_micros": None, "currency": None}
+        privacy.grant(task["id"], model["id"], ["derivative_images"], budget,
+                      scope_hash(model["id"], ["derivative_images"], budget), task["revision"], True)
+        normalized = ModelGateway(db, models, privacy).classify_batch(
+            task_id=task["id"], profile_id=model["id"], items=[(image, [str(derivative)])],
+            taxonomy=taxonomy, policy={}, vision_refresh_file_ids={image.file_id},
+        )
+        assert normalized[0]["visual_description"] == "图中是一块红色区域"
+        assert len(calls) == 3
+        assert any(part["type"] == "image_url" for part in calls[2]["body"]["messages"][1]["content"])
 
 
 def test_empty_taxonomy_response_reasks_once_with_original_evidence(services):
@@ -332,6 +432,49 @@ def test_empty_taxonomy_response_reasks_once_with_original_evidence(services):
         assert result["categories"][0]["category_id"] == "course.network"
         assert len(calls) == 2
         assert "representative_file_profiles" in calls[1]["body"]["messages"][1]["content"]
+
+
+def test_duplicate_planner_category_ids_are_repaired_before_saving(services):
+    db, task, models, privacy, _secrets = services
+    item = profile()
+
+    def responder(number, body):
+        categories = [
+            {"category_id": "scene", "name": "风景", "parent_id": None, "selectable": True},
+            {"category_id": "scene" if number == 1 else "portrait", "name": "人物",
+             "parent_id": None, "selectable": True},
+        ]
+        return 200, {}, {"choices": [{"message": {"content": json.dumps({"categories": categories})}}],
+                         "usage": {"prompt_tokens": 10, "completion_tokens": 10}}
+
+    with fake_service(responder) as (url, calls):
+        model = models.create(model_input(url))
+        mark_supported(models, model["id"])
+        budget = {"max_calls": 3, "max_input_tokens": 100_000, "max_output_tokens": 10_000,
+                  "max_cost_micros": None, "currency": None}
+        privacy.grant(task["id"], model["id"], ["extracted_text"], budget,
+                      scope_hash(model["id"], ["extracted_text"], budget), task["revision"], True)
+        result = ModelGateway(db, models, privacy).plan_taxonomy(
+            task_id=task["id"], profile_id=model["id"], profiles=[(item, [])],
+            request={"constraints": {"max_depth": 2, "max_siblings": 12, "max_nodes": 80},
+                     "user_instructions": "按内容整理"},
+        )
+        assert [node["category_id"] for node in result["categories"]] == ["scene", "portrait"]
+        assert len(calls) == 2
+        assert "CATEGORY_ID_DUPLICATE" in calls[1]["body"]["messages"][1]["content"]
+
+
+def test_taxonomy_category_language_is_enforced():
+    english = '{"categories":[{"category_id":"nature","name":"Nature"}]}'
+    chinese = '{"categories":[{"category_id":"nature","name":"自然"}]}'
+    assert ModelGateway._parse_taxonomy_response(chinese, "zh")["categories"][0]["name"] == "自然"
+    assert ModelGateway._parse_taxonomy_response(english, "en")["categories"][0]["name"] == "Nature"
+    with pytest.raises(ModelTransportError) as mismatch:
+        ModelGateway._parse_taxonomy_response(english, "zh")
+    assert mismatch.value.provider_code == "CATEGORY_LANGUAGE_MISMATCH"
+    with pytest.raises(ModelTransportError) as mismatch:
+        ModelGateway._parse_taxonomy_response(chinese, "en")
+    assert mismatch.value.provider_code == "CATEGORY_LANGUAGE_MISMATCH"
 
 
 def test_batch_classifier_defaults_missing_explanatory_fields_to_review():

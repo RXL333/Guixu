@@ -154,6 +154,18 @@ describe('phase 06 UI safety contract', () => {
     expect(dialogs.confirmAction).toHaveBeenCalledWith(expect.stringContaining('不会删除磁盘上的文件'))
   })
 
+  it('clears recent deletion while reporting retained safety records', async () => {
+    const item={id:'old',name:'旧任务',status:'COMPLETED',phase:'REPORT',revision:2,settings:{},counters:{},created_at:'now',updated_at:'now',deleted_at:'now'} as any
+    vi.spyOn(api,'tasks').mockResolvedValueOnce({items:[item]}).mockResolvedValueOnce({items:[]})
+    const clear=vi.spyOn(api,'clearTrash').mockResolvedValue({permanently_deleted_tasks:0,retained_safety_records:1,permanently_deleted_conversations:0,disk_files_changed:false})
+    vi.spyOn(dialogs,'confirmAction').mockResolvedValue(true)
+    await router.push('/trash');const view=render(HistoryPage,{global:{plugins:[router]}});await view.findByText('旧任务')
+    await fireEvent.click(view.getByRole('button',{name:'清空最近删除'}))
+    await waitFor(()=>expect(clear).toHaveBeenCalledOnce())
+    await view.findByText(/1 条安全记录已从列表移出并保留日志/)
+    expect(dialogs.confirmAction).toHaveBeenCalledWith(expect.stringContaining('磁盘文件不会改变'))
+  })
+
   it('shows deleted conversations and permanently removes only their records', async () => {
     const conversation = { id: 'c1', title: '照片对话', status: 'DELETED', revision: 2, created_at: 'now', updated_at: 'now', deleted_at: 'now' } as any
     vi.mocked(api.conversations).mockResolvedValueOnce([conversation]).mockResolvedValueOnce([])

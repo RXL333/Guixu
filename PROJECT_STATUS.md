@@ -1,5 +1,80 @@
 # 项目状态
 
+## 本地千问图片整理阻断修复（2026-09-28）
+
+- `qwen3-vl:4b-instruct` 本机 Ollama 使用三张合成 JPG 完成首次分类预览；低/中可信度建议现在逐文件显示分类和依据，由用户看图后逐项确认。真实模型确认一项后生成 v2 `move` 预览，源文件哈希不变、执行操作为 0。小模型缺字段或视觉描述时采用单图请求、受授权和预算约束的补问及严格校验；非法类别和未经核实的证据仍不能进入计划。
+- 后端全量 228 passed、前端 53 passed、TypeScript/生产构建通过；同名 Windows 便携包已覆盖并通过冻结诊断。P1-005 的源码真实模型预览和人工确认链已通过，最终打包版原生“确认建议→批准执行”尚待验收；正式上线判定仍为 **NOT RELEASE READY**。见 [修复报告](artifacts/reports/phase-n-local-qwen-vision-fix.md)。
+
+## 正式上线前验收（2026-09-28）
+
+- 当前判定 **NOT RELEASE READY**。当前工作树后端全量 222 passed、前端 52 passed、生产构建通过；便携包 437/437 SHA-256 校验、ZIP 完整性、已知密钥特征扫描及冻结诊断通过。真实 DeepSeek 5 张隔离 JPG 首次 v1→v2→批准→执行→重启读回、20 张隔离 JPG 后续 DELTA→Execution #2 均 exit 0。
+- 打包版原生新会话、三张合成 JPG 列表和图片预览、本地千问两轮普通聊天及重启恢复通过；但同一模型的真实三图整理在分类阶段因 `VISION_DESCRIPTION_MISSING` 失败，未生成方案或进行文件操作，登记为 P1-005。用户主动选择测试文件夹的操作不是应用异常关闭；未对个人照片调用模型或执行整理。
+- 5,001 项后端关联本轮两次为 12.424 s / 3.922 s，波动需进一步测 p95；桌面大列表、多 DPI、发行包真实模型全链、安装器、干净 Windows、签名和许可证决策仍未验收。详见 [本轮报告](artifacts/reports/release-audit-2026-09-28.md) 与 [验收矩阵](docs/current/deployment/RELEASE_ACCEPTANCE.md)。
+
+## 大目录性能改进（2026-09-27）
+
+- 首次关联文件的路径/指纹读取改为最多 4 路有界并行，恢复核对合并未变化文件的数据库写入；授权目录列表支持服务端分页、搜索与加载更多，方案映射每页 50 项。5,001 项隔离复测关联 3.057 s（此前 4.146 s）、核对 3.196 s（此前 3.317 s）；单次测量有缓存波动，不视为稳定 p95 提升。
+- 后端完整回归 222 passed，前端完整回归 52 passed，生产构建通过；冻结包诊断/worker 冒烟通过，原 `artifacts/release-agent-chat/Guixu-0.1.0` 与 ZIP 原位覆盖。真实 WebView 帧率、方案 API 服务端分页、本地模型 20 图全链仍待测，发布判定仍为 **NOT RELEASE READY**。见 [实施报告](artifacts/reports/phase-n-performance-implementation.md)。
+
+## 性能测评（2026-09-27）
+
+- 隔离 501/1,001/5,001 个小文件复测：5,001 项扫描 0.326 s、入库 0.643 s、会话关联 4.146 s、工作区核对 3.317 s；首次关联曾达 32.183 s，说明冷态波动大。剖析显示关联主要耗于逐文件哈希和路径解析。合成图本地 Qwen 短请求成功，不能代表真实 20 图完整整理。冻结诊断 1.41–1.63 s；5,000 文件 jsdom 窗口化专项通过。详见 [性能报告](artifacts/reports/performance-audit-2026-09-27.md) 与 [原始数据](artifacts/reports/performance-audit-2026-09-27.json)。
+- 优先优化关联 I/O、恢复核对与大目录分页/方案虚拟列表；真实 WebView 帧率、完整本地模型链和长期内存仍未测。基准脚本关闭 SQLite integrity 连接，隔离复测 exit 0；未修改用户照片。
+
+## 首次分析旧设置兼容与消息展示（2026-09-27）
+
+- 本机失败会话使用已验证的本地千问，但首次分析尚未创建 Task、没有新模型调用。只读核对发现本机 `default_settings` 含历史 `classification_mode`，当前 `TaskSettings` 严格校验在分析开始前拒绝此字段，UI 只显示“首次整理分析无法完成”。现仅在读取已存设置时忽略该历史字段；新输入仍严格拒绝未知字段。
+- 首次分析请求把界面显示的“开始整理”等用户指令与仅供分析的讨论上下文分开，内部提取提示词不再作为用户消息保存；旧会话已保存的重复消息不自动修改。完整后端 222 passed、前端 50 passed、生产构建通过。Windows 原便携包已覆盖，哈希与新构建一致；真实本地千问 20 图全链仍待验证。详见 [阶段报告](artifacts/reports/phase-n-legacy-settings-first-analysis.md)。
+
+## 会话模型列表刷新（2026-09-27）
+
+- 修复聊天页只在模型列表为空时读取配置的问题。进入会话及打开模型菜单时会刷新连接列表；刷新失败时保留上次成功读取的选择。设置页已保存的本地千问现在可显示并用于会话切换。
+- 前端 50 项测试及生产构建通过；Windows 便携包完成构建、冻结诊断和 worker 冒烟，已覆盖原 `artifacts/release-agent-chat/` 包，EXE 与 ZIP 哈希核对通过。详见 [阶段报告](artifacts/reports/phase-n-model-selector-refresh.md)。
+
+## 命名意图与默认分类语言（2026-09-26）
+
+- 修复明确命名指令（例如“帮我把所有文件文件进行命名”）落入普通聊天、随后误按整理按钮生成分类方案的问题；输入框的明确命名指令与整理按钮都会转入命名预览。命名预览的批准按钮明确写为“确认并开始命名”。
+- 通用设置新增持久化默认分类语言（中文 / English）。会话中新生成或重新生成的 AI 分类方案使用当前选择，模型输出不符合所选语言时修复或拒绝；已有方案保留历史名称。服务端非 JSON 错误统一显示可读的 HTTP 错误，不再暴露 JSON 解析异常。
+- 后端完整回归 220 passed、前端 49 passed、生产构建通过；后续新增的会话语言优先级专项 1 passed。Windows 包覆盖构建受到运行中旧版 Guixu.exe 文件占用阻挡，正在构建隔离暂存包，待旧应用退出后原位覆盖。见 [阶段报告](artifacts/reports/phase-n-naming-language.md)。
+
+## 发布复核（2026-09-26）
+
+- 当前结论仍为 **NOT RELEASE READY**。完整后端 218 passed、分域验证 exit 0、前端 47 passed 与生产构建通过；真实 DeepSeek 在 5 张合成 JPG 上完成 v1→v2→审批→执行→重启读取。当前 `0.1.0` 冻结包在隔离数据目录完成桌面新建会话、文件列表、合成图片预览与重启恢复；真实 DeepSeek 普通聊天连续两轮成功，未自动生成方案或操作文件。包内容已知密钥特征扫描及 437 项 SHA-256 清单复核通过。
+- 正式上线仍缺 1.0 RC、安装器、干净 Windows、签名/许可证决策、发行包真实模型整理与恢复全链、安全异常矩阵及多 DPI/大列表 UI 验收。新增 P2-003：普通聊天的模型调用未写入 `model_calls`。5,000 文件后端 attach 独立运行 3.766 秒、并发负载 19.875 秒，UI 性能尚未测。详见 [本轮发布报告](artifacts/reports/release-audit-2026-09-26.md) 与 [验收矩阵](docs/current/deployment/RELEASE_ACCEPTANCE.md)。
+
+## 会话审计四项修复（2026-09-26）
+
+- 旧会话重复扫描造成的当前文件重复计数已改为按物理路径显示唯一最新记录，同时保留历史 Task、Plan 和操作日志；本机只读核对 96 条历史引用对应 48 个唯一路径。首次分析改为完整分页关联，加入 501 项分页边界测试。
+- 新会话可选择最多 3 张授权图片，在明确确认后与视觉模型讨论内容；后端限定目录、图片大小/格式和模型能力，不触发整理。图片预览可用 Escape 关闭；桌面“打开当前目录”已接通并验证会话目录。
+- 后端全量 218 passed，前端 47 passed，生产构建及 Windows 冻结诊断/worker 冒烟 exit 0。原 `artifacts/release-agent-chat/` onedir 与 ZIP 已原位覆盖。真实 DeepSeek 图片对话、501 文件完整桌面性能和安装器未验收。详见 [阶段报告](artifacts/reports/phase-n-conversation-audit-fixes.md)。
+
+## 会话加载与窗口布局优化（2026-09-25）
+
+- 打开已有会话时先显示已保存的消息、方案和文件记录；目录清点与恢复核对在后台进行，且切换会话后旧请求不得覆盖新会话。已有文件记录时不再重复扫描目录。文件执行前的后端重验证保留。
+- 普通窗口不再按宽度强制折叠左侧侧栏；每条对话增加复制按钮。模型连接操作改用与蓝色界面一致的图标按钮。修复品牌图片和 favicon 请求被本地会话校验拦截的问题。
+- 后端全量 `uv run pytest -q` 214 passed，前端全量 46 passed、生产构建通过；1280×900 和 1024×768 浏览器视口已人工核对。详见 [阶段报告](artifacts/reports/phase-n-performance-and-chat-ui.md)。
+
+## 文件命名功能（2026-09-25）
+
+- 已实现对话式“生成命名方案”：基于已有内容证据建议文件名主体，程序保留原扩展名与目录，验证证据和 Windows 名称；逐文件预览后才批准执行，复用无覆盖日志与撤销。全量回归 exit 0，Windows 便携包已覆盖构建并启动；真实模型命名质量待用户在备份目录中核对。详见 [阶段报告](artifacts/reports/phase-n-file-naming.md)。
+
+## 应用图标替换（2026-09-25）
+
+- 已使用用户提供的图案生成透明 PNG 和多尺寸 ICO，接入 Windows EXE、安装器配置、页面 favicon 与侧栏标识。已覆盖构建既有便携包，冻结诊断、worker 冒烟和全量回归均通过；安装器因本机缺少 Inno Setup 尚未生成。证据见 [图标替换报告](artifacts/reports/phase-n-app-icon.md)。
+
+## 最近删除清空（2026-09-25）
+
+- 旧版永久删除对含计划或会话文件引用的任务返回 `TASK_SAFETY_HISTORY_RETAINED` / `TASK_CONVERSATION_REFERENCE_RETAINED`，所以批量删除无法完成。新增“清空最近删除”：永久删除安全可清理的记录；关联安全历史的任务从列表移出，计划与操作日志保留。
+- 已对本机应用数据执行：清空前 15 条已删除任务、6 条已删除对话；结果为永久删除 7 条任务和 6 条对话，另 8 条任务保留安全历史并移出列表。清空后列表均为 0，数据库 `integrity_check=ok`，16 个方案与 723 条操作记录数量未变。清空前备份在 `%LOCALAPPDATA%\Guixu\backups\before-trash-clear-20260925-135555.sqlite3`。
+- 定向后端 8 passed、前端 18 passed；全量 `python scripts/verify.py all` exit 0、前端 44 passed、生产构建成功。Windows 覆盖打包状态见 [阶段报告](artifacts/reports/phase-n-trash-clear.md)。
+
+## 仓库目录整理（2026-09-25）
+
+- 文档按 `docs/current/`、`docs/product/`、`docs/development/`、`docs/archive/` 归类，入口见 [文档导航](docs/README.md)。阶段截图统一归入 `artifacts/reports/ui/`；120 个评测样本及 gold manifest 归入 `backend/tests/fixtures/evaluation/`，样本哈希校验通过。
+- 运行时必需的 `seed/` 保留根目录；历史设计提示词、蓝图、旧验证报告与脚本归档而不当作当前实现。全文件盘点见 [清单](artifacts/reports/project-file-inventory.tsv) 和 [整理报告](artifacts/reports/project-structure-cleanup.md)。
+- 清理候选为评测目录内 20 个生成缩略图及 4 个旧阶段 profile 缓存；自动审批拒绝递归删除，现保持原样，仅为未来阶段缓存加忽略规则，待允许安全清理后再移除。发布状态不变。
+- 验证：文档链接 27 份 0 断链、gold manifest 120 个样本哈希一致、`python scripts/verify.py all` exit 0（前端 43 passed，production build 成功）。本次未重新构建 Windows 冻结包。
+
 ## PHASE N 对话审阅与回收站修复（2026-09-25）
 
 - 整理预览已接入版本化核心计划，逐文件显示原位置、操作、目标位置及保留项，并支持搜索；当前文件和方案条目均可用短时票据预览受限目录中的常见图片。
@@ -15,7 +90,7 @@
 
 ## PHASE N 最终验收（进行中，2026-09-24）
 
-当前发布判定：**NOT RELEASE READY**，版本仍为 `0.1.0 dev`，没有生成或标记 1.0 RC/stable。Feature Freeze 生效，详见 [验收矩阵](docs/RELEASE_ACCEPTANCE.md)、[缺陷登记](artifacts/reports/guixu-1.0-bug-registry.md)和[阶段报告](artifacts/reports/guixu-1.0-final-acceptance.md)。
+当前发布判定：**NOT RELEASE READY**，版本仍为 `0.1.0 dev`，没有生成或标记 1.0 RC/stable。Feature Freeze 生效，详见 [验收矩阵](docs/current/deployment/RELEASE_ACCEPTANCE.md)、[缺陷登记](artifacts/reports/guixu-1.0-bug-registry.md)和[阶段报告](artifacts/reports/guixu-1.0-final-acceptance.md)。
 
 - 已实现执行前 FULL v1→v2 的后端/前端链路；当前真实 DeepSeek 5-JPG v1→修改要求→v2/diff→批准→执行→重启读取完整 E2E 一次通过（7 次模型调用成功，审批前文件 hash 不变）。详见 `artifacts/reports/phase-n-real-deepseek-e2e.json`；更长的继续对话/Undo、发行包链仍未验收。
 - 针对用户 16:24 截图核对本机只读任务/模型调用审计：请求已成功返回，规划/分类输出未通过应用契约，旧 UI 却显示“不可用或授权不足”并留下过期扫描状态。修复首次视觉分类引用尚未生成 evidence ID 的死锁、图片批次过大、缓存描述重复要求；缺少解释字段时强制标记证据不足以进入复核；失败 Task 持久化为 FAILED；首次/后续分析 API 和前端现能展示契约错误详情。定向后端测试和前端 16 tests/typecheck 通过。
@@ -50,32 +125,32 @@
 
 ## Conversation Agent 转型准备
 
-- PHASE L Conversational Undo 已完成：schema v10 / Alembic 0010 新增不可变 UndoPlan/UndoPlanItem，并为 ExecutionRound 增加 FORWARD/UNDO、目标轮次和 partial/full undo state。UndoTargetResolver 支持最近一次、明确历史轮次和同一执行内的 File References；逆向路径只来自真实 COMMITTED OperationJournal。Dependency Analyzer 阻止后来又操作同一 stable file 的历史撤销；preview、approval、hash/revision/scope/fingerprint/no-clobber、外部修改/移动/缺失/目标冲突、幂等和 crash recovery 均接入既有 FileOperationExecutor/Recovery。Undo 成功形成新的 ExecutionRound/Journal，保留原历史，推进 file_state_revision，不倒退 PlanVersion，也不使内容未变的 Semantic Cache 失效。详见 [CONVERSATIONAL_UNDO](docs/CONVERSATIONAL_UNDO.md)、[审计](artifacts/reports/conversational-undo-audit.md) 和 [阶段报告](artifacts/reports/conversational-undo.md)。
-- PHASE L 验证：后端全量 176 passed / 2 warnings；前端 4 files / 34 passed，typecheck 与 production build 均 exit 0；20 文件真实临时目录完成 Round 1、局部 Round 2、5 文件 Undo 和继续 Round 4。Playwright 真实页面已保存 request/preview/conflict/confirming/complete/history 截图到 `artifacts/ui/conversational-undo/`，runtime OpenAPI contract 已重新导出。当前限制为不支持 Redo、级联撤销、跨轮次 partial batch，也没有通用 Agent Tool Registry。
+- PHASE L Conversational Undo 已完成：schema v10 / Alembic 0010 新增不可变 UndoPlan/UndoPlanItem，并为 ExecutionRound 增加 FORWARD/UNDO、目标轮次和 partial/full undo state。UndoTargetResolver 支持最近一次、明确历史轮次和同一执行内的 File References；逆向路径只来自真实 COMMITTED OperationJournal。Dependency Analyzer 阻止后来又操作同一 stable file 的历史撤销；preview、approval、hash/revision/scope/fingerprint/no-clobber、外部修改/移动/缺失/目标冲突、幂等和 crash recovery 均接入既有 FileOperationExecutor/Recovery。Undo 成功形成新的 ExecutionRound/Journal，保留原历史，推进 file_state_revision，不倒退 PlanVersion，也不使内容未变的 Semantic Cache 失效。详见 [CONVERSATIONAL_UNDO](docs/current/agent/CONVERSATIONAL_UNDO.md)、[审计](artifacts/reports/conversational-undo-audit.md) 和 [阶段报告](artifacts/reports/conversational-undo.md)。
+- PHASE L 验证：后端全量 176 passed / 2 warnings；前端 4 files / 34 passed，typecheck 与 production build 均 exit 0；20 文件真实临时目录完成 Round 1、局部 Round 2、5 文件 Undo 和继续 Round 4。Playwright 真实页面已保存 request/preview/conflict/confirming/complete/history 截图到 `artifacts/reports/ui/conversational-undo/`，runtime OpenAPI contract 已重新导出。当前限制为不支持 Redo、级联撤销、跨轮次 partial batch，也没有通用 Agent Tool Registry。
 
-- PHASE K Session Recovery 已完成：schema v9 / Alembic 0009 新增持久化 AgentTurn 与 workspace reconciliation ledger，并为 PlanVersion 增加 `basis_file_state_revision`。启动时会把未结束 turn 标记为 INTERRUPTED，把仍有未完成 operation 的执行轮次标为 RECOVERY_REQUIRED；打开/执行前按 stable `files.id`、fingerprint 和授权 scope 核对外部移动、重命名、修改、缺失、冲突、新文件与 scope 不可用。相关方案会在受影响文件变化时要求重新校验，不自动重放模型、批准或执行；既有 OperationJournal/RecoveryService、Semantic Cache、PlanApproval 和 FileOperationEngine 继续复用。新增 recovery-status、reconcile、revalidate、resume/retry、external-changes、scope relink API 与最小 UI 提示。详见 [SESSION_RECOVERY](docs/SESSION_RECOVERY.md)、[session-recovery-audit](artifacts/reports/session-recovery-audit.md) 与 [session-recovery](artifacts/reports/session-recovery.md)。
+- PHASE K Session Recovery 已完成：schema v9 / Alembic 0009 新增持久化 AgentTurn 与 workspace reconciliation ledger，并为 PlanVersion 增加 `basis_file_state_revision`。启动时会把未结束 turn 标记为 INTERRUPTED，把仍有未完成 operation 的执行轮次标为 RECOVERY_REQUIRED；打开/执行前按 stable `files.id`、fingerprint 和授权 scope 核对外部移动、重命名、修改、缺失、冲突、新文件与 scope 不可用。相关方案会在受影响文件变化时要求重新校验，不自动重放模型、批准或执行；既有 OperationJournal/RecoveryService、Semantic Cache、PlanApproval 和 FileOperationEngine 继续复用。新增 recovery-status、reconcile、revalidate、resume/retry、external-changes、scope relink API 与最小 UI 提示。详见 [SESSION_RECOVERY](docs/current/architecture/SESSION_RECOVERY.md)、[session-recovery-audit](artifacts/reports/session-recovery-audit.md) 与 [session-recovery](artifacts/reports/session-recovery.md)。
 - PHASE K 验证：后端 169 passed / 2 warnings；前端 4 files / 31 passed，typecheck/build 均 exit 0；runtime OpenAPI contract 已重新导出。剩余边界为后续 Agent worker、Chat UI、Tool Calling、Watch Folder、Conversational Undo 与新的桌面人工截图验收。
 
-- PHASE J Semantic Cache 已完成：新增 schema v8 `file_evidence` canonical ledger 与 Alembic 0008；按 stable file ID + SHA-256 fingerprint 复用 parser/OCR/visual/document/media evidence，记录 producer/model/prompt/schema provenance，支持 content-change invalidation、force refresh、cleanup/clear、统计与单进程 single-flight。AI Planner/Classifier 和 Post-execution refinement 已接入统一服务；taxonomy/requirements 改变只重新分类，不重复读取有效证据。详见 [SEMANTIC_CACHE](docs/SEMANTIC_CACHE.md)、[semantic-cache-audit](artifacts/reports/semantic-cache-audit.md) 与 [semantic-cache](artifacts/reports/semantic-cache.md)。
+- PHASE J Semantic Cache 已完成：新增 schema v8 `file_evidence` canonical ledger 与 Alembic 0008；按 stable file ID + SHA-256 fingerprint 复用 parser/OCR/visual/document/media evidence，记录 producer/model/prompt/schema provenance，支持 content-change invalidation、force refresh、cleanup/clear、统计与单进程 single-flight。AI Planner/Classifier 和 Post-execution refinement 已接入统一服务；taxonomy/requirements 改变只重新分类，不重复读取有效证据。详见 [SEMANTIC_CACHE](docs/current/architecture/SEMANTIC_CACHE.md)、[semantic-cache-audit](artifacts/reports/semantic-cache-audit.md) 与 [semantic-cache](artifacts/reports/semantic-cache.md)。
 - PHASE J 限制：L3 分类 decision cache、向量/RAG、Watch Folder、跨 Task canonical file identity、多进程锁和真实 DeepSeek smoke 仍待后续/外部授权；本阶段没有删除旧 `file_profiles`，没有修改 FileOperationEngine 或真实磁盘文件。
 
-- PHASE I File References 已完成：schema v7 新增 MessageFileReference 关系表与 path snapshot，`ReferenceResolver` 可确定性解析 UI selection、focus、exact filename、最近消息集合、当前 Plan changes、最近成功 Execution 的实际 affected files 与明确 category-all。所有结果使用当前 Conversation 的 stable `file_id` 并执行 scope/missing/changed 校验；显式引用严格限制 AffectedScope/Delta Plan，不绕过 Plan、Approval、FileOperationEngine 或 Undo。前端已加入多选引用、Composer chips、消息 badge、点击联动、发送/切换清空和窄窗口布局修复。详见 [FILE_REFERENCES](docs/FILE_REFERENCES.md)、[审计](artifacts/reports/file-reference-audit.md) 与 [阶段报告](artifacts/reports/file-references.md)。
-- PHASE I 验证：后端 159 passed / 2 warnings；数据库与桌面安全专项 10 passed；前端 4 files / 31 passed，typecheck/build 均 exit 0；500 文件批量引用通过。Playwright 本地 QA 完成 7 个指定场景并保存到 `artifacts/ui/file-references/`。当前限制为未实现 Shift 范围选择、active-category 浏览 UI、missing 部分继续快捷确认；仓库仍无通用 AgentOrchestrator/Tool Registry，本阶段只接入现有 Message 与 Post-Execution refinement。
+- PHASE I File References 已完成：schema v7 新增 MessageFileReference 关系表与 path snapshot，`ReferenceResolver` 可确定性解析 UI selection、focus、exact filename、最近消息集合、当前 Plan changes、最近成功 Execution 的实际 affected files 与明确 category-all。所有结果使用当前 Conversation 的 stable `file_id` 并执行 scope/missing/changed 校验；显式引用严格限制 AffectedScope/Delta Plan，不绕过 Plan、Approval、FileOperationEngine 或 Undo。前端已加入多选引用、Composer chips、消息 badge、点击联动、发送/切换清空和窄窗口布局修复。详见 [FILE_REFERENCES](docs/current/agent/FILE_REFERENCES.md)、[审计](artifacts/reports/file-reference-audit.md) 与 [阶段报告](artifacts/reports/file-references.md)。
+- PHASE I 验证：后端 159 passed / 2 warnings；数据库与桌面安全专项 10 passed；前端 4 files / 31 passed，typecheck/build 均 exit 0；500 文件批量引用通过。Playwright 本地 QA 完成 7 个指定场景并保存到 `artifacts/reports/ui/file-references/`。当前限制为未实现 Shift 范围选择、active-category 浏览 UI、missing 部分继续快捷确认；仓库仍无通用 AgentOrchestrator/Tool Registry，本阶段只接入现有 Message 与 Post-Execution refinement。
 
-- PHASE H Post-Execution Conversation 已完成：执行后 Conversation 保持 ACTIVE；新增 CurrentWorkspaceState、LOCAL/PARTIAL/GLOBAL 影响范围、Evidence reuse/refresh、基于明确 baseline ExecutionRound 的 FULL/DELTA PlanVersion、approval-gated 第二/第三轮执行、外部移动/内容变化/缺失/冲突保护。Conversation Workspace 支持完成后继续输入、全局确认、DELTA 摘要和第二轮执行结果；未实现高级文件指代、Conversational Undo、记忆、Watch Folder 或任意文件工具。详见 [POST_EXECUTION_CONVERSATION](docs/POST_EXECUTION_CONVERSATION.md) 与 [阶段报告](artifacts/reports/post-execution-conversation.md)。
+- PHASE H Post-Execution Conversation 已完成：执行后 Conversation 保持 ACTIVE；新增 CurrentWorkspaceState、LOCAL/PARTIAL/GLOBAL 影响范围、Evidence reuse/refresh、基于明确 baseline ExecutionRound 的 FULL/DELTA PlanVersion、approval-gated 第二/第三轮执行、外部移动/内容变化/缺失/冲突保护。Conversation Workspace 支持完成后继续输入、全局确认、DELTA 摘要和第二轮执行结果；未实现高级文件指代、Conversational Undo、记忆、Watch Folder 或任意文件工具。详见 [POST_EXECUTION_CONVERSATION](docs/current/agent/POST_EXECUTION_CONVERSATION.md) 与 [阶段报告](artifacts/reports/post-execution-conversation.md)。
 - PHASE H 验证：后端 153 passed / 2 warnings；专项真实临时目录测试 4 passed；前端 4 files / 28 passed，typecheck/build 均 exit 0。真实 `deepseek-flash` 隔离验收使用 20 个项目测试图片记录，只评估 10 个建筑候选、复用 10 份 evidence、生成 2 项 DELTA 并完成 Execution #2；模型调用一次，Conversation 保持 ACTIVE。按用户加速指令停止额外 UI 截图复验。
 
-- PHASE E Conversation UI Skeleton 已完成：主工作区切换为三栏 Conversation Workspace（会话导航 / 消息与输入 / 文件工作区），接入 Conversation、Message、ModelProfile、ConversationFile 的真实 API；支持新建/搜索/切换/重命名会话、消息持久化、文件选择、Current/Preview/History 三个右侧视图以及侧栏/文件区折叠。没有调用 LLM、没有伪造助手回复、没有实现 Chat Agent、Tool Calling 或新执行逻辑。前端报告见 [conversation-ui-skeleton](artifacts/reports/conversation-ui-skeleton.md)，视觉 QA 见项目根目录 [design-qa](design-qa.md)。
+- PHASE E Conversation UI Skeleton 已完成：主工作区切换为三栏 Conversation Workspace（会话导航 / 消息与输入 / 文件工作区），接入 Conversation、Message、ModelProfile、ConversationFile 的真实 API；支持新建/搜索/切换/重命名会话、消息持久化、文件选择、Current/Preview/History 三个右侧视图以及侧栏/文件区折叠。没有调用 LLM、没有伪造助手回复、没有实现 Chat Agent、Tool Calling 或新执行逻辑。前端报告见 [conversation-ui-skeleton](artifacts/reports/conversation-ui-skeleton.md)，视觉 QA 见项目根目录 [design-qa](docs/archive/historical-designs/design-qa.md)。
 - PHASE E 验证：`frontend` 的 `npm.cmd run test -- --run` 为 4 files / 24 passed，`npm.cmd run typecheck` exit 0，`npm.cmd run build` exit 0；IAB 在 1310×898 CSS viewport 验证真实会话、4 个临时文件、消息写入、文件选择、空方案/执行状态、文件区收起和侧栏收起。当前仍保持 0.1.0 dev，未进入 PHASE F。
-- PHASE G Plan Versioning 已完成：schema v5 新增 `conversation_plan_approvals`，并扩展 PlanVersion 的恢复来源、摘要计数和消息审计字段；新增集中式 PlanVersionService/PlanDiffService、线性 parent/current CAS、确定性 taxonomy/file diff、hash/context approval stale 保护、历史方案安全恢复 child，以及 approval-gated ExecutionRound API。旧 Plan、OperationJournal、Undo 和真实文件继续复用，不覆盖已执行版本，不执行 Agent/Tool Calling/增量重规划。详见 [plan-version-audit](artifacts/reports/plan-version-audit.md)、[PLAN_VERSIONING](docs/PLAN_VERSIONING.md) 与 [plan-versioning](artifacts/reports/plan-versioning.md)。
+- PHASE G Plan Versioning 已完成：schema v5 新增 `conversation_plan_approvals`，并扩展 PlanVersion 的恢复来源、摘要计数和消息审计字段；新增集中式 PlanVersionService/PlanDiffService、线性 parent/current CAS、确定性 taxonomy/file diff、hash/context approval stale 保护、历史方案安全恢复 child，以及 approval-gated ExecutionRound API。旧 Plan、OperationJournal、Undo 和真实文件继续复用，不覆盖已执行版本，不执行 Agent/Tool Calling/增量重规划。详见 [plan-version-audit](artifacts/reports/plan-version-audit.md)、[PLAN_VERSIONING](docs/current/architecture/PLAN_VERSIONING.md) 与 [plan-versioning](artifacts/reports/plan-versioning.md)。
 - PHASE G 验证：后端 `pytest backend/tests -q` 为 149 passed / 2 warnings；版本专项与会话专项 7 passed，数据库契约/Alembic 4 passed；前端 `npm.cmd run test -- --run` 为 4 files / 25 passed，`npm.cmd run typecheck` exit 0，`npm.cmd run build` exit 0；`scripts/export_runtime_contract.py` 与 `git diff --check` 均 exit 0。warning 仅为既有第三方/Windows pytest 临时 reparse 清理提示，不影响退出码。
-- PHASE D Conversation Data Model 已完成：schema v4 新增 `conversations`、`conversation_scopes`、`conversation_messages`、`conversation_contexts`、`conversation_plan_versions`、`conversation_execution_rounds`、`conversation_files`；Task 增加 nullable 会话映射。Context 使用 expected revision CAS，PlanVersion/ExecutionRound/Message 追加式保存，Conversation/File 引用与 soft delete 不操作真实磁盘、不删除既有 plan/journal/Undo。基础 repository/service/API 已加入，但本阶段没有 Chat UI、LLM 对话循环、Agent Orchestrator、Tool Calling 或新分类逻辑。审计见 [conversation-schema-audit](artifacts/reports/conversation-schema-audit.md)，模型文档见 [CONVERSATION_DATA_MODEL](docs/CONVERSATION_DATA_MODEL.md)，阶段报告见 [conversation-data-model](artifacts/reports/conversation-data-model.md)。
+- PHASE D Conversation Data Model 已完成：schema v4 新增 `conversations`、`conversation_scopes`、`conversation_messages`、`conversation_contexts`、`conversation_plan_versions`、`conversation_execution_rounds`、`conversation_files`；Task 增加 nullable 会话映射。Context 使用 expected revision CAS，PlanVersion/ExecutionRound/Message 追加式保存，Conversation/File 引用与 soft delete 不操作真实磁盘、不删除既有 plan/journal/Undo。基础 repository/service/API 已加入，但本阶段没有 Chat UI、LLM 对话循环、Agent Orchestrator、Tool Calling 或新分类逻辑。审计见 [conversation-schema-audit](artifacts/reports/conversation-schema-audit.md)，模型文档见 [CONVERSATION_DATA_MODEL](docs/current/architecture/CONVERSATION_DATA_MODEL.md)，阶段报告见 [conversation-data-model](artifacts/reports/conversation-data-model.md)。
 - PHASE D 定向验证：Conversation 数据模型集成 2 passed，数据库/Alembic v4 3 passed；全量回归中一次旧 schema v3 断言已同步到 v4 后重新运行。最终命令与退出结果记录在阶段报告。
 
 - PHASE C Legacy Product Cleanup 已完成：任务记录支持单删、批删、最近删除、恢复与受限永久删除；删除路径只修改应用数据库，运行中/待恢复任务被阻止，已有 plan/journal/Undo 安全依赖的任务不能永久删除。模板/自动规则页面、导航、API、服务与新任务写入已退出运行时，新建整理统一为 `auto_plan + user_instructions` 的一次性 AI 流程。旧模板表与 snapshot 字段仅作历史只读兼容，schema v3 升级前自动备份并补齐缺失模板快照。详见 [legacy-product-cleanup](artifacts/reports/legacy-product-cleanup.md)。
 - PHASE C 最终验证：`.\backend\.venv\Scripts\python.exe scripts\verify.py all` 退出 0；后端分组为 7、92、16、19、15、10 passed，前端 20 passed，typecheck/build 退出 0；`test_ai_only_end_to_end.py` 在临时目录完成 Planner → Classifier → review → compile → approve → execute。既有 Windows reparse 临时目录清理 warning 与第三方 deprecation/decompression warning 不影响结果。
 - PHASE A 稳定基线确认已完成：当前 AI-only 主链、DeepSeek Vision 证据、安全执行/恢复/undo、模板/任务/UI 现状与 Conversation Agent 最小切入点已记录在 [conversation-agent-baseline](artifacts/reports/conversation-agent-baseline.md)。
-- PHASE B GitHub 参考研究已完成：已按固定 commit 检查 `joshuasoup/file-organizer`、`Venere-Labs/ragfs`、`tursodatabase/agentfs`、`BorisBesky/file-organizer-desktop` 与 `run-llama/file-organizer` 的 Agent、tools、持久化、文件操作、undo、index/provider/UI、测试和实际许可证文件；只吸收工具边界、审计、状态持久化、UX 和语义缓存思想，未复制代码。详见 [GITHUB_REFERENCE_ANALYSIS](docs/GITHUB_REFERENCE_ANALYSIS.md)。
+- PHASE B GitHub 参考研究已完成：已按固定 commit 检查 `joshuasoup/file-organizer`、`Venere-Labs/ragfs`、`tursodatabase/agentfs`、`BorisBesky/file-organizer-desktop` 与 `run-llama/file-organizer` 的 Agent、tools、持久化、文件操作、undo、index/provider/UI、测试和实际许可证文件；只吸收工具边界、审计、状态持久化、UX 和语义缓存思想，未复制代码。详见 [GITHUB_REFERENCE_ANALYSIS](docs/archive/historical-designs/GITHUB_REFERENCE_ANALYSIS.md)。
 - 本轮基线验证：`.\backend\.venv\Scripts\python.exe scripts\verify.py all` 退出 0；后端所有分组通过，前端 16 passed，typecheck/build 退出 0。仅有既有第三方 warning 与 Windows reparse 临时目录清理 warning。
 - Git 恢复点：`main` / `01dc2f7b7179a5de189abc64c1794cf5126b7517`，但 AI-only/Vision 收口仍位于大量未提交改动中；该 commit 不能单独代表当前工作树基线。本轮没有提交、重置或覆盖既有改动。
 - 按用户要求，本阶段在 PHASE C 后停止；未实现 Conversation schema、Chat UI、Agent Orchestrator、Tool Calling 或对话记忆。下一阶段只能在收到新指令后开始。

@@ -70,11 +70,16 @@ class AITaxonomyPlanner:
                                 cached_visual_ids.add(file_id)
                 profiles.append((profile, outcome.cache_artifacts))
             representative = profiles[: self._sample_limit(task["settings"]["analysis_preset"])]
+            category_language = task["settings"].get("category_language", "zh")
+            if request.get("conversation_id"):
+                saved, _ = self.repository.database.get_json_setting("default_settings")
+                category_language = saved.get("category_language", "zh")
             payload = {
                 "classification_source": source,
                 "user_instructions": request.get("user_instructions", ""),
                 "template_guidance": guidance,
                 "organization_strategy": task["settings"]["organization_strategy"],
+                "category_language": category_language,
                 "constraints": {
                     "max_depth": task["settings"]["max_depth"],
                     "max_siblings": task["settings"]["max_siblings"],

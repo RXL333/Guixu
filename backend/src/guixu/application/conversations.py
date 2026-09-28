@@ -93,7 +93,8 @@ class ConversationService:
 
     def list_conversation_files(self, conversation_id: str, *, include_removed: bool = False) -> list[dict[str, Any]]:
         self.repository.get(conversation_id)
-        return self.repository.list_conversation_files(conversation_id, include_removed=include_removed)
+        return self.repository.list_conversation_files(conversation_id, include_removed=include_removed,
+                                                       unique_current=not include_removed)
 
     def verify_conversation_file(self, conversation_id: str, file_id: str) -> dict[str, Any]:
         return self.repository.verify_file(conversation_id, file_id)

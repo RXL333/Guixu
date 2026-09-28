@@ -1,11 +1,29 @@
 from __future__ import annotations
 
-from guixu.infrastructure.filesystem.grants import SourceRegistry
+import os
+import subprocess
+
+from guixu.application.conversations import ConversationService
+from guixu.infrastructure.filesystem.grants import SourceRegistry, canonicalize_directory
 
 
 class DesktopBridge:
-    def __init__(self, registry: SourceRegistry) -> None:
+    def __init__(self, registry: SourceRegistry, conversations: ConversationService) -> None:
         self.registry = registry
+        self.conversations = conversations
+
+    def open_conversation_directory(self, conversation_id: str) -> dict[str, object]:
+        conversation = self.conversations.get_conversation(conversation_id)
+        if conversation.get("deleted_at"):
+            raise ValueError("CONVERSATION_DELETED")
+        scopes = [scope for scope in conversation.get("scopes", []) if not scope.get("revoked_at")]
+        if not scopes:
+            raise ValueError("CONVERSATION_SCOPE_REQUIRED")
+        root = canonicalize_directory(scopes[0]["source_root"])
+        if os.name != "nt":
+            raise ValueError("DESKTOP_WINDOWS_REQUIRED")
+        subprocess.Popen(["explorer.exe", str(root)], close_fds=True)
+        return {"opened": True, "path": str(root)}
 
     def select_directory(self, purpose: str) -> dict[str, object]:
         import webview

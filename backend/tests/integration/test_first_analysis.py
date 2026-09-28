@@ -4,6 +4,7 @@ import hashlib
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from PIL import Image
@@ -15,6 +16,7 @@ from guixu.domain.profiles import Coverage, Evidence, EvidenceLocator, FileProfi
 from guixu.domain.settings import TaskSettings
 from guixu.application.models import unknown_capabilities
 from guixu.application.models import ModelError
+from guixu.application.first_analysis import FirstOrganizationAnalysisService
 from guixu.application.pre_execution_replan_guard import begin_pre_execution_replan
 from guixu.infrastructure.models.transport import ModelTransportError
 
@@ -42,6 +44,69 @@ class FakeAnalysisGateway:
             "visual_description": "照片中有街道、建筑和树木。" if profile.modality == "image" else None,
             "tags": [], "warnings": [],
         } for profile, _ in kwargs["items"]]
+
+
+def test_conversation_review_promotes_only_confirmed_suggestion(project_root: Path, tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    original = source / "network-notes.txt"
+    original.write_text("TCP 三次握手与 IP 路由课程笔记", encoding="utf-8")
+    app = create_app(project_root=project_root, data_dir=tmp_path / "data", session_token="review-test",
+                     allow_typed_grants=True)
+    model = _prepare_model(app)
+
+    class UncertainGateway(FakeAnalysisGateway):
+        def classify_batch(self, **kwargs):
+            results = super().classify_batch(**kwargs)
+            for result in results:
+                result["model_score"] = 0.7
+            return results
+
+    fake = UncertainGateway()
+    app.state.ai_planner.gateway = fake
+    app.state.ai_classifier.gateway = fake
+    headers = _headers("review-test")
+    with TestClient(app) as client:
+        grant = client.post("/api/v1/dev/grants", headers=headers, json={
+            "path": str(source), "purpose": "source",
+        }).json()["data"]["grant_id"]
+        conversation = client.post("/api/v1/conversations", headers=headers, json={
+            "title": "图片建议确认", "model_profile_id": model["id"], "scope_grant": grant,
+        }).json()["data"]
+        conversation_id = conversation["id"]
+        initial = client.post(f"/api/v1/conversations/{conversation_id}/turns", headers=headers, json={
+            "content": "请分类", "acknowledge_privacy": True,
+        })
+        assert initial.status_code == 200, initial.text
+        version = initial.json()["data"]["plan_version"]
+        preview = client.get(f"/api/v1/conversations/{conversation_id}/plan-versions/{version['id']}/preview",
+                             headers=headers)
+        assert preview.status_code == 200, preview.text
+        suggested = preview.json()["data"]["operations"][0]
+        assert suggested["action"] == "skip"
+        assert suggested["review_band"] == "medium"
+        assert suggested["suggested_category_path"] == ["网络资料"]
+        context = client.get(f"/api/v1/conversations/{conversation_id}/context", headers=headers).json()["data"]
+        url = f"/api/v1/conversations/{conversation_id}/plan-versions/{version['id']}/confirm-suggestions"
+        invalid = client.post(url, headers=headers, json={
+            "expected_context_revision": context["context_revision"], "file_ids": ["invalid-file"],
+        })
+        assert invalid.status_code == 422
+        reviewed = client.post(url, headers=headers, json={
+            "expected_context_revision": context["context_revision"], "file_ids": [suggested["file_id"]],
+        })
+        assert reviewed.status_code == 200, reviewed.text
+        next_version = reviewed.json()["data"]
+        assert next_version["version_number"] == version["version_number"] + 1
+        next_preview = client.get(f"/api/v1/conversations/{conversation_id}/plan-versions/{next_version['id']}/preview",
+                                  headers=headers).json()["data"]["operations"][0]
+        assert next_preview["action"] == "move"
+        assert "网络资料" in next_preview["target_path"]
+        assert original.is_file()
+        assert not (source / "网络资料").exists()
+        assert client.post(url, headers=headers, json={
+            "expected_context_revision": context["context_revision"], "file_ids": [suggested["file_id"]],
+        }).status_code == 409
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -78,7 +143,15 @@ def test_first_turn_scans_real_evidence_and_only_creates_full_preview(project_ro
     app.state.ai_planner.gateway = fake
     app.state.ai_classifier.gateway = fake
 
+    saved_settings, settings_revision = app.state.database.get_json_setting("default_settings")
+    app.state.database.update_json_setting("default_settings", {
+        **saved_settings, "classification_mode": "rules_first",
+    }, settings_revision)
+
     with TestClient(app) as client:
+        settings_response = client.get("/api/v1/settings", headers=_headers(token))
+        assert settings_response.status_code == 200
+        assert "classification_mode" not in settings_response.json()["data"]["values"]
         grant = client.post("/api/v1/dev/grants", headers=_headers(token), json={
             "path": str(source), "purpose": "source",
         }).json()["data"]["grant_id"]
@@ -87,10 +160,13 @@ def test_first_turn_scans_real_evidence_and_only_creates_full_preview(project_ro
         }).json()["data"]
         response = client.post(f"/api/v1/conversations/{conversation['id']}/turns",
                                headers=_headers(token), json={
-                                   "content": "帮我按照内容整理这些文件，不要分得太细。", "acknowledge_privacy": True,
+                                   "content": "开始整理",
+                                   "requirements_context": "帮我按照内容整理这些文件，不要分得太细。",
+                                   "acknowledge_privacy": True,
                                })
         assert response.status_code == 200, response.text
         result = response.json()["data"]
+        assert result["user_message"]["content"] == "开始整理"
         assert result["plan_version"]["version_number"] == 1
         assert result["plan_version"]["plan_kind"] == "FULL"
         assert result["plan_version"]["baseline_execution_round_id"] is None
@@ -123,6 +199,20 @@ def test_first_turn_scans_real_evidence_and_only_creates_full_preview(project_ro
         preserved_plan = client.get(f"/api/v1/tasks/{task_id}/plan?plan_id={result['plan_version']['plan_id']}", headers=_headers(token))
         assert preserved_plan.status_code == 200 and preserved_plan.json()["data"]["operations"]
         assert sample.exists() and hashlib.sha256(sample.read_bytes()).hexdigest() == before_hash
+
+
+def test_first_turn_attaches_files_beyond_first_page():
+    service = object.__new__(FirstOrganizationAnalysisService)
+    service.repository = Mock()
+    service.conversations = Mock()
+    items = [{"id": f"file-{index}"} for index in range(501)]
+    service.repository.list_files.side_effect = [(items[:500], 501), (items[500:], 501)]
+    assert service._attach_scanned_files("conversation", "task") == 501
+    assert [call.kwargs["offset"] for call in service.repository.list_files.call_args_list] == [0, 500]
+    attached = service.conversations.attach_files.call_args
+    assert attached.args[0] == "conversation"
+    assert attached.args[1] == [item["id"] for item in items]
+    assert attached.kwargs == {"use_scanned_identity": True}
 
 
 def test_first_plan_can_be_explicitly_approved_and_executed(project_root: Path, tmp_path: Path, monkeypatch):
@@ -608,13 +698,13 @@ def test_first_analysis_vision_crash_after_31_resumes_only_19_after_restart(
             ), {"task": task_id})
         }
     assert len(visual_file_ids_before) == 31
-    assert len(completed_before) == 28
+    assert len(completed_before) == 30
     all_file_ids = set(restarted.state.repository.eligible_file_ids(
         task_id, restarted.state.repository.list_scopes(task_id)[0]["id"]
     ))
     remaining_classification_ids = all_file_ids - completed_before
     remaining_vision_ids = all_file_ids - visual_file_ids_before
-    assert len(remaining_classification_ids) == 22
+    assert len(remaining_classification_ids) == 20
     assert len(remaining_vision_ids) == 19
 
     with TestClient(restarted) as client:
@@ -626,7 +716,7 @@ def test_first_analysis_vision_crash_after_31_resumes_only_19_after_restart(
     requested_ids = [file_id for batch in retry_gateway.classification_batches for file_id in batch]
     refreshed_vision_ids = set().union(*retry_gateway.vision_batches) if retry_gateway.vision_batches else set()
     assert set(requested_ids) == remaining_classification_ids
-    assert len(requested_ids) == 22
+    assert len(requested_ids) == 20
     assert refreshed_vision_ids == remaining_vision_ids
     assert refreshed_vision_ids.isdisjoint(visual_file_ids_before)
     recovered_plan = restarted.state.conversations.get_current_plan_version(conversation_id)

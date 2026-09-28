@@ -1,6 +1,6 @@
 # Guixu 1.0 Bug Registry
 
-更新时间：2026-09-24
+更新时间：2026-09-28
 Feature Freeze：ACTIVE
 
 ## 统计
@@ -8,11 +8,42 @@ Feature Freeze：ACTIVE
 | Severity | Open | Fixed | Accepted |
 |---|---:|---:|---:|
 | P0 | 0 | 1 | 0 |
-| P1 | 0 | 5 | 0 |
-| P2 | 0 | 2 | 0 |
-| P3 | 0 | 0 | 0 |
+| P1 | 1 | 5 | 0 |
+| P2 | 1 | 2 | 0 |
+| P3 | 1 | 0 | 0 |
 
 > “Open P0 = 0”只表示当前已登记缺陷；在安全和 crash matrix 完成前，不代表最终 P0 gate 已通过。
+
+## P1-005 — 本地千问图片整理无法生成预览
+
+- **Severity:** P1
+- **Area:** packaged app / local Qwen vision classification
+- **Reproduction:** 使用本机 `0.1.0` 冻结包、隔离数据目录，通过原生文件夹选择器新建三张合成 JPG 的会话；将 `qwen3-vl:4b-instruct` 连接配置为 `http://127.0.0.1:11434/v1`，能力测试中“文本/视觉”均已验证；输入“请按照图片内容分类，分类目录名称全部使用中文。”并点击“生成整理方案”。
+- **Actual:** UI 显示“AI 返回的整理结果未通过安全校验”。持久 `task_events` 有 `AI_CLASSIFY_BATCH_FAILED`、`code=VISION_DESCRIPTION_MISSING`、`file_count=3`；模型调用账本显示 planning/classification/repair 传输均为 `ok`，但视觉描述未满足分类契约。PlanVersion 和文件操作均为 0，安全拒绝生效。这个结果不证明是模型、提示词还是响应解析单独造成，需进一步检查脱敏响应结构。
+- **Expected:** 已标记视觉可用的本地模型能完成三图的规划/视觉证据/分类并生成可审查预览；若不满足完整契约，设置页应明确显示能力限制，失败页给出具体错误码及恢复指引。
+- **Fix proposal:** 为本地 Qwen 加三图真实契约验收，抓取仅含字段名/缺失状态的诊断；修复模型提示或有界修复流程，并让能力测试覆盖非空 `visual_description`。不得以文件名或臆测结果填充视觉证据。确认后重建同一便携包并复测。
+- **Evidence:** `artifacts/reports/release-audit-2026-09-28.md`；本轮隔离数据库 `artifacts/test-workspaces/release-qa-safe-2026-09-27/data/app.sqlite3`。
+- **Status:** FIXED_IN_SOURCE_AND_REBUILT_PACKAGE（2026-09-28）。本机真实 Qwen 三图首次预览、逐文件建议展示 API、人工确认后生成 v2 移动方案通过；后端全量 228 passed、前端 53 passed。先前打包版原生首次预览通过，新包已覆盖并完成冻结诊断。最终打包版原生“建议确认→批准执行”仍是独立的发行验收缺口，整体未达到上线条件。详见 `phase-n-local-qwen-vision-fix.md`。
+- **2026-09-28 修复进展:** 源码真实 Ollama 三张合成 JPG 首轮预览连续三次通过；针对重复类别 ID、层级限制、视觉描述缺失、单图冗余字段缺失和虚构证据引用加入约束及有界修复。后端 226 passed，前端 52 passed。同名便携包已重建并通过冻结诊断；原生打包版完整视觉整理尚未复测，故本项仍保持 OPEN。证据：`artifacts/reports/phase-n-local-qwen-vision-fix.md`。
+
+## P2-003 — 普通聊天模型调用未进入审计记录
+
+- **Severity:** P2
+- **Area:** Conversation chat / model call audit
+- **Reproduction:** 在 `0.1.0` 冻结包、隔离测试数据库中复用已验证 DeepSeek 档案，连续两轮普通聊天。AI 返回两条回复、会话保存 4 条消息；数据库 `model_calls=0`，PlanVersion、ExecutionRound、Operation 均为 0。
+- **Cause:** `/api/v1/conversations/{id}/chat` 直接调用 `DeepSeekAdapter.chat`；计划和分类走的 `ModelGateway._call` 才持久化 `model_calls`。当前 `model_calls.purpose` CHECK 也没有 `chat`，且聊天发生在 Task 创建前。
+- **Impact:** 普通聊天费用/用量、延迟、失败次数无法在模型调用审计中追踪。不能据此声称预算与调用日志已覆盖聊天。
+- **Fix proposal:** 为 Conversation 级聊天增加不保存提示词/图片内容的调用 ledger（或向 `model_calls` 增加 `chat` purpose 与可空 Conversation 关联），按成功/失败写入模型、token、时延、错误码，并加迁移、API/数据库回归和冻结包复测。
+- **Status:** OPEN（2026-09-26）。
+
+## P3-001 — AI 聊天回复直接显示 Markdown 标记
+
+- **Severity:** P3
+- **Area:** Conversation message rendering
+- **Evidence:** 本机冻结包真实 DeepSeek 回复中的 `**分类维度**`、列表标记按原样显示。`ConversationMessage.vue` 用 `<p>{{ message.content }}</p>` 将整段回复作为纯文本呈现。
+- **Impact:** 多段列表和强调文字难读；不会导致文件操作错误。
+- **Fix proposal:** 支持受限 Markdown 段落、列表、强调和代码，并对链接/HTML 严格清理，保留复制原文行为；加入恶意 HTML 不执行的前端测试。
+- **Status:** OPEN（2026-09-26）。
 
 ## P0-001 — Conversation 文件引用 API 未校验活动授权目录
 

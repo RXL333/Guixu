@@ -70,6 +70,7 @@ class ConversationMessageRequest(BaseModel):
 
 class ConversationTurnRequest(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
+    requirements_context: str | None = Field(default=None, max_length=12_000)
     selected_file_ids: list[str] = Field(default_factory=list, max_length=10_000)
     focused_file_id: str | None = None
     active_category_id: str | None = None
@@ -80,6 +81,8 @@ class ConversationTurnRequest(BaseModel):
 class ConversationChatRequest(BaseModel):
     content: str = Field(min_length=1, max_length=12000)
     selected_file_ids: list[str] = Field(default_factory=list, max_length=2000)
+    selected_source_paths: list[str] = Field(default_factory=list, max_length=3)
+    acknowledge_image_content: bool = False
 
 
 class ConversationContextUpdateRequest(BaseModel):
@@ -132,6 +135,12 @@ class ConversationRefinementRequest(BaseModel):
     confirmed_global: bool = False
     referenced_file_ids: list[str] = Field(default_factory=list, max_length=10_000)
     trigger_message_id: str | None = None
+
+
+class ConversationNamingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    instruction: str = Field(min_length=1, max_length=4000)
+    file_ids: list[str] = Field(default_factory=list, max_length=500)
 
 
 class ConversationRefinementExecuteRequest(BaseModel):

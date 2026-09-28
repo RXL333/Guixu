@@ -111,7 +111,7 @@ def run_desktop() -> int:
             instance.release()
             shutdown_finished.set()
 
-    bridge = DesktopBridge(app.state.registry)
+    bridge = DesktopBridge(app.state.registry, app.state.conversations)
     window = webview.create_window(
         "归序 Guixu",
         origin,

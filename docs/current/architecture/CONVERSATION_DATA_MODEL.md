@@ -53,7 +53,7 @@ scope 快照不是运行时授权本身。未来 Agent 工具必须重新通过�
 
 消息可以引用 `PlanVersion` 或 `ExecutionRound`，但聊天内容不是系统状态真相。用户要求、当前方案、授权和文件选择必须同步保存到 Context 或其他结构化表。
 
-PHASE I 新增 `conversation_message_file_references`，用复合主键 `(message_id, file_id)` 保存消息发送时实际引用的稳定文件、来源、角色和路径快照。读取消息时同时 JOIN `conversation_files` 返回当前路径与状态；后续 selection 或路径变化不会改写历史引用。详细解析和安全规则见 [FILE_REFERENCES](FILE_REFERENCES.md)。
+PHASE I 新增 `conversation_message_file_references`，用复合主键 `(message_id, file_id)` 保存消息发送时实际引用的稳定文件、来源、角色和路径快照。读取消息时同时 JOIN `conversation_files` 返回当前路径与状态；后续 selection 或路径变化不会改写历史引用。详细解析和安全规则见 [FILE_REFERENCES](../agent/FILE_REFERENCES.md)。
 
 系统 Prompt 不作为消息 role；模型运行时配置仍属于 ModelProfile/adapter。
 
@@ -164,7 +164,7 @@ v3→v4 迁移先使用现有 SQLite backup API，再创建新表和 `tasks` nul
 
 ## 19. PHASE H：执行后继续对话扩展
 
-schema v6 在既有关系上做非破坏性扩展：`conversation_plan_versions.baseline_execution_round_id` 固定后续方案的执行基线，`plan_kind` 区分 `FULL/DELTA`；`conversation_files.current_category_id` 保存执行后的当前分类投影。ExecutionRound 完成后同步 current path/fingerprint/category，并推进 Context revision/file revision，但 Conversation 保持 `ACTIVE`。完整行为、安全校验与 API 见 [POST_EXECUTION_CONVERSATION](POST_EXECUTION_CONVERSATION.md)。
+schema v6 在既有关系上做非破坏性扩展：`conversation_plan_versions.baseline_execution_round_id` 固定后续方案的执行基线，`plan_kind` 区分 `FULL/DELTA`；`conversation_files.current_category_id` 保存执行后的当前分类投影。ExecutionRound 完成后同步 current path/fingerprint/category，并推进 Context revision/file revision，但 Conversation 保持 `ACTIVE`。完整行为、安全校验与 API 见 [POST_EXECUTION_CONVERSATION](../agent/POST_EXECUTION_CONVERSATION.md)。
 
 ## 20. PHASE J：Semantic Cache 关系
 

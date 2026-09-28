@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { confirmAction, promptAction } from '../../../components/dialogState'
 import { computed, onMounted, ref } from 'vue'
-import { Archive, ChevronLeft, ChevronRight, Clock3, FileClock, MoreHorizontal, Plus, Search, Settings2, Trash2 } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, Clock3, FileClock, MoreHorizontal, Plus, Search, Settings2, Trash2 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { chooseSource } from '../../../services/api'
 import { useConversationStore } from '../store'
@@ -73,7 +73,7 @@ onMounted(async () => {
   <aside @keydown.esc="menuId = ''" class="conversation-sidebar" :class="{ 'is-collapsed': collapsed }" aria-label="对话导航">
     <div class="sidebar-brand-row">
       <RouterLink class="sidebar-brand" to="/" aria-label="归序工作台">
-        <span class="brand-symbol"><Archive :size="18" /></span>
+        <img class="brand-symbol" src="/app-icon.png" alt="" aria-hidden="true" width="31" height="31" />
         <span v-if="!collapsed"><strong>归序</strong><small>Guixu</small></span>
       </RouterLink>
       <button class="sidebar-collapse" type="button" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" @click="collapsed = !collapsed">

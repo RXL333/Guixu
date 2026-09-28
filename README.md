@@ -2,17 +2,17 @@
 
 归序是一个 local-first 的 Windows AI 文件整理器：只读扫描并提取内容证据，由 AI 生成受限的“类别 ID + 证据”，经人工审阅和计划 hash 批准后，才由安全执行器复制或移动。目标冲突永不覆盖，操作持久记录并可在磁盘事实允许时撤销。
 
-当前版本：`0.1.0 dev`。源码闭环和 Windows onedir 构建已实现；1.0 最终验收仍为 **NOT RELEASE READY**，以 [当前验收矩阵](docs/RELEASE_ACCEPTANCE.md) 和 [阶段报告](artifacts/reports/guixu-1.0-final-acceptance.md) 为准。请勿因生成了 EXE 就直接对唯一副本或个人根目录试用。
+当前版本：`0.1.0 dev`。源码闭环和 Windows onedir 构建已实现；1.0 最终验收仍为 **NOT RELEASE READY**，以 [当前验收矩阵](docs/current/deployment/RELEASE_ACCEPTANCE.md) 和 [阶段报告](artifacts/reports/guixu-1.0-final-acceptance.md) 为准。请勿因生成了 EXE 就直接对唯一副本或个人根目录试用。
 
 ## 快速入口
 
-- 用户操作：[docs/USER_GUIDE.md](docs/USER_GUIDE.md)
-- 开发、测试与打包：[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
-- 架构与安全：[docs/02_ARCHITECTURE.md](docs/02_ARCHITECTURE.md)、[docs/08_SAFETY.md](docs/08_SAFETY.md)
-- 实现架构快照：[docs/IMPLEMENTATION_ARCHITECTURE.md](docs/IMPLEMENTATION_ARCHITECTURE.md)
-- 接口与契约：[docs/07_API.md](docs/07_API.md)、[contracts/openapi.json](contracts/openapi.json)
+- 文档目录：[docs/README.md](docs/README.md)
+- 用户操作：[docs/product/workflows.md](docs/product/workflows.md)
+- 开发、测试与打包：[docs/development/getting-started.md](docs/development/getting-started.md)
+- 当前实现架构：[docs/current/architecture/IMPLEMENTATION_ARCHITECTURE.md](docs/current/architecture/IMPLEMENTATION_ARCHITECTURE.md)
+- 接口契约：[contracts/openapi.json](contracts/openapi.json)
 - 逐阶段真实结果：[PROJECT_STATUS.md](PROJECT_STATUS.md)、[artifacts/reports](artifacts/reports)
-- 已知限制：[KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)
+- 已知限制：[docs/product/limitations.md](docs/product/limitations.md)
 
 ## 开发启动
 

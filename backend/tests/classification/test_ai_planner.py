@@ -86,6 +86,20 @@ def test_auto_plan_uses_semantic_profiles_and_records_events(project_root: Path,
     db.close()
 
 
+def test_conversation_replan_uses_current_category_language(project_root: Path, tmp_path: Path):
+    db, repo, parsing, taxonomies, task = setup(project_root, tmp_path)
+    db.seed_json("default_settings", {"category_language": "en"})
+    with db.begin() as connection:
+        connection.exec_driver_sql(
+            "UPDATE tasks SET classification_request_json=? WHERE id=?",
+            (json.dumps({"conversation_id": "conversation-1", "user_instructions": "按内容分类"}), task["id"]),
+        )
+    gateway = FakePlannerGateway(categories())
+    AITaxonomyPlanner(repo, parsing, taxonomies, gateway).plan_task(task["id"])
+    assert gateway.calls[0]["request"]["category_language"] == "en"
+    db.close()
+
+
 def test_template_guidance_and_user_instructions_reach_planner(project_root: Path, tmp_path: Path):
     request = {"template_key":"document.academic", "user_instructions":"按照课程分类"}
     db, repo, parsing, taxonomies, task = setup(project_root, tmp_path, source="template", request=request)

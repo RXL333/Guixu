@@ -4,7 +4,7 @@
 
 ## 目标与读取范围
 
-实现 Windows 桌面文件整理器，Python 后端，Vue 3 UI，pywebview 外壳，DeepSeek 与本地 Qwen 双适配。先读 docs/00_BLUEPRINT.md 和 PROJECT_STATUS.md，再读取当前阶段相关文件。不要每轮重读全仓、重做需求访谈或扩大第一版范围。
+实现 Windows 桌面文件整理器，Python 后端，Vue 3 UI，pywebview 外壳，DeepSeek 与本地 Qwen 双适配。先读 docs/README.md 和 PROJECT_STATUS.md，再读取当前阶段相关文件。历史蓝图位于 docs/archive/historical-designs/blueprint/00_BLUEPRINT.md，不作为当前实现依据。不要每轮重读全仓、重做需求访谈或扩大第一版范围。
 
 ## 硬边界
 
@@ -16,7 +16,7 @@
 
 ## 实现方式
 
-按 docs/11_DELIVERY_PLAN.md 的阶段推进。先交付端到端的安全小闭环，再增强解析、模型、界面与打包。固定边界不能删掉；普通实现细节由你自主完成，必要取舍记入 docs/DECISION_LOG.md，避免无谓确认。
+以 PROJECT_STATUS.md 的当前阶段和 docs/current/ 下的实现文档为准；历史交付计划保存在 docs/archive/historical-designs/blueprint/11_DELIVERY_PLAN.md。固定边界不能删掉；普通实现细节由你自主完成，必要取舍记入 docs/current/architecture/DECISION_LOG.md，避免无谓确认。
 
 计划包中的参考契约不是已经实现的代码。创建实现时保持字段一致，变化同步到模型、迁移、API、前端与测试。增加依赖前核对官方文档，锁定实际安装成功的版本；不猜测库方法。
 

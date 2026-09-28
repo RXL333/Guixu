@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { RefreshCw, Trash2 } from 'lucide-vue-next'
 import { api, type ModelProfile } from '../services/api'
 
 const items = ref<ModelProfile[]>([])
@@ -66,8 +67,8 @@ onMounted(load)
       </div>
       <details><summary>连接诊断详情</summary><div class="cap-grid"><span v-for="(cap,key) in item.capabilities" :key="key" :data-state="cap.status"><b>{{ key }}</b>{{ cap.status }}<small>{{ cap.message }}</small></span></div></details>
       <div class="model-actions">
-        <button :disabled="!!busy" @click="probe(item)">测试连接与能力</button>
-        <button class="danger-button" :disabled="!!busy" @click="pendingDelete=item.id">删除连接</button>
+        <button class="model-action-button" :disabled="!!busy" @click="probe(item)"><RefreshCw :size="16" aria-hidden="true" />测试连接与能力</button>
+        <button class="model-action-button danger-button" :disabled="!!busy" @click="pendingDelete=item.id"><Trash2 :size="16" aria-hidden="true" />删除连接</button>
       </div>
       <div v-if="pendingDelete===item.id" class="delete-confirm" role="alert">
         <p>删除后此连接不再出现在可用模型中；既有任务的审计引用仍会保留。</p>
@@ -79,4 +80,8 @@ onMounted(load)
 
 <style scoped>
 .model-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.model-form label{display:grid;gap:7px;font-size:13px}.model-form input,.model-form select{min-height:42px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;background:#fff;color:var(--text-primary)}.segmented,.privacy-note,.model-form button{grid-column:1/-1}.segmented button{min-height:36px;margin-right:8px;padding:0 14px;border:1px solid var(--border-strong);border-radius:7px;background:var(--bg-subtle);color:var(--text-primary)}.segmented .active{background:var(--primary);color:white;border-color:var(--primary)}.model-form .primary{min-height:42px;border:0;border-radius:8px;background:var(--primary);color:white;font-weight:600}.model-card{margin-top:16px;border:0;border-bottom:1px solid var(--border-default);border-radius:0;padding:20px 0}.model-form{background:var(--bg-subtle);margin:24px 0}.model-form .primary{justify-self:start;padding:0 20px}.model-card header{display:flex;justify-content:space-between;gap:20px}.model-card p{margin:4px 0}.verification-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0;padding:12px;border-radius:8px;background:var(--bg-subtle)}.verification-summary p{padding:4px 0}.verification-summary p[data-state="supported"]{color:var(--primary)}.verification-summary p[data-state="unsupported"],.verification-summary p[data-state="error"],.probe-error{color:var(--danger)}.verification-summary .probe-error{grid-column:1/-1;overflow-wrap:anywhere}.cap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}.cap-grid span{display:grid;padding:10px;border:1px solid var(--border-default);border-radius:8px;font-size:12px}.cap-grid span[data-state="supported"]{border-color:#4f8b6d}.cap-grid small{color:var(--text-secondary);margin-top:4px}.privacy-note{color:var(--text-secondary)}.model-actions{display:flex;gap:10px;flex-wrap:wrap}.danger-button{border-color:#b34d45!important;color:var(--danger)!important;background:var(--danger-soft)!important}.delete-confirm{margin-top:12px;padding:12px;border:1px solid #d79a93;border-radius:8px;background:var(--danger-soft)}.error{color:#a33}@media(max-width:900px){.model-form,.cap-grid,.verification-summary{grid-template-columns:1fr}.verification-summary .probe-error{grid-column:1}}
+.model-action-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:0 13px;border:1px solid var(--border-strong);border-radius:8px;color:var(--accent-primary);background:var(--bg-surface);font-size:13px;font-weight:600}
+.model-action-button:hover:not(:disabled){border-color:var(--accent-primary);background:var(--accent-soft)}
+.model-action-button.danger-button{border-color:#e3c7c7!important;color:var(--danger)!important;background:var(--bg-surface)!important}
+.model-action-button.danger-button:hover:not(:disabled){background:var(--danger-soft)!important}
 </style>

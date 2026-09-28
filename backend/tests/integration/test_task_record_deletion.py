@@ -158,6 +158,39 @@ def test_batch_permanent_delete_is_atomic_and_never_touches_disk(project_root: P
         assert snapshot(source) == before
 
 
+def test_clear_trash_removes_safe_records_and_hides_safety_history(project_root: Path, tmp_path: Path):
+    source = tmp_path / "source"; source.mkdir(); (source / "kept.txt").write_text("preserved", "utf-8")
+    before = snapshot(source)
+    app = create_app(project_root=project_root, data_dir=tmp_path / "data", session_token=TOKEN,
+                     allow_typed_grants=True)
+    with TestClient(app) as client:
+        safe = create_task(app, client, source, "可清理")
+        protected = create_task(app, client, source, "保留日志")
+        conversation = app.state.conversations.create_conversation(title="已删除对话")
+        app.state.conversations.soft_delete_conversation(conversation["id"])
+        with app.state.database.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO plans(id,task_id,version,plan_hash,status,operation_mode,settings_hash,
+                  taxonomy_hashes_json,source_snapshot_hash,summary_json,created_at,plan_basis_revision)
+                SELECT :plan,id,1,:hash,'finished','report_only',settings_hash,'[]',:source,'{}',:now,revision
+                FROM tasks WHERE id=:id
+            """), {"plan":str(uuid.uuid4()),"hash":"a"*64,"source":"b"*64,"now":utc_now(),"id":protected["id"]})
+        app.state.repository.soft_delete([safe["id"], protected["id"]])
+        cleared = client.post("/api/v1/trash/clear", headers=headers("clear-trash"))
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["data"] == {"permanently_deleted_tasks": 1, "retained_safety_records": 1,
+                                          "permanently_deleted_conversations": 1, "disk_files_changed": False}
+        assert client.get("/api/v1/tasks?view=deleted", headers=headers()).json()["data"]["items"] == []
+        assert client.get("/api/v1/conversations?view=deleted", headers=headers()).json()["data"] == []
+        assert client.get(f"/api/v1/tasks/{safe['id']}", headers=headers()).status_code == 404
+        retained = client.get(f"/api/v1/tasks/{protected['id']}", headers=headers()).json()["data"]
+        assert retained["deletion_source"] == "trash_cleared"
+        with app.state.database.engine.connect() as connection:
+            assert connection.execute(text("SELECT COUNT(*) FROM plans WHERE task_id=:id"), {"id":protected["id"]}).scalar_one() == 1
+        assert client.post("/api/v1/trash/clear", headers=headers("clear-again")).json()["data"]["retained_safety_records"] == 0
+        assert snapshot(source) == before
+
+
 def test_new_task_rejects_legacy_modes_and_does_not_seed_templates(project_root: Path, tmp_path: Path):
     source = tmp_path / "source"; source.mkdir()
     app = create_app(project_root=project_root, data_dir=tmp_path / "data", session_token=TOKEN,

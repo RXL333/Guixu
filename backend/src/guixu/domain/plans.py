@@ -29,6 +29,7 @@ class PlanCandidate:
     modality: str
     eligible: bool = True
     companion_group_id: str | None = None
+    proposed_stem: str | None = None
 
 
 @dataclass(frozen=True)

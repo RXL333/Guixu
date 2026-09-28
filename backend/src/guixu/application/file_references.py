@@ -107,15 +107,11 @@ class ReferenceResolver:
                 "requires_confirmation": bool(missing or changed), "reason": reason}
 
     def _exact_filename(self, conversation_id: str, message: str) -> list[str]:
-        with self.database.engine.connect() as connection:
-            rows = list(connection.execute(text("""
-                SELECT cf.file_id,f.basename FROM conversation_files cf JOIN files f ON f.id=cf.file_id
-                WHERE cf.conversation_id=:conversation AND cf.removed_from_scope_at IS NULL
-            """), {"conversation": conversation_id}).mappings())
+        rows = self.conversations.list_conversation_files(conversation_id, unique_current=True)
         matches: dict[str, list[str]] = {}
         folded = message.casefold()
         for row in rows:
-            name = str(row["basename"])
+            name = Path(str(row["current_known_path"])).name
             if name.casefold() in folded:
                 matches.setdefault(name.casefold(), []).append(str(row["file_id"]))
         if not matches:
@@ -164,9 +160,6 @@ class ReferenceResolver:
             """), {"plan": plan_id})]
 
     def _category_files(self, conversation_id: str, category_id: str) -> list[str]:
-        with self.database.engine.connect() as connection:
-            return [str(row[0]) for row in connection.execute(text("""
-                SELECT file_id FROM conversation_files
-                WHERE conversation_id=:conversation AND current_category_id=:category AND removed_from_scope_at IS NULL
-                ORDER BY added_at
-            """), {"conversation": conversation_id, "category": category_id})]
+        return [str(row["file_id"]) for row in self.conversations.list_conversation_files(
+            conversation_id, unique_current=True,
+        ) if row["current_category_id"] == category_id]

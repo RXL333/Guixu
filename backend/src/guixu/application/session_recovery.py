@@ -68,6 +68,7 @@ class WorkspaceReconciliationService:
                        "current_path": row["current_known_path"]} for row in known]
         else:
             with self.database.begin() as connection:
+                projection_updates: list[dict[str, Any]] = []
                 for row in known:
                     file_id = str(row["file_id"])
                     last_path = Path(str(row["current_known_path"]))
@@ -128,16 +129,28 @@ class WorkspaceReconciliationService:
                         "PATH_CONFLICT": "MISSING",
                     }.get(event_state, "ACTIVE")
                     persisted_path = str(observed_path) if observed_path is not None else str(last_path)
+                    if (event_state != "UNCHANGED" or persisted_path != str(last_path) or
+                            new_fingerprint != row["current_fingerprint"] or
+                            new_size != row["current_size_bytes"] or new_mtime != row["current_mtime_ns"]):
+                        projection_updates.append({"path": persisted_path, "fingerprint": new_fingerprint,
+                                                   "size": new_size, "mtime": new_mtime, "now": now,
+                                                   "state": state, "conversation": conversation_id, "file": file_id})
+                    events.append({"file_id": file_id, "state": event_state, "current_path": persisted_path})
+                # Every inspected active row gets the same verification time.
+                # A single update avoids thousands of SQLite round trips for
+                # directories whose files have not changed.
+                connection.execute(text("""
+                    UPDATE conversation_files SET last_verified_at=:now,state='ACTIVE'
+                    WHERE conversation_id=:conversation AND removed_from_scope_at IS NULL
+                """), {"now": now, "conversation": conversation_id})
+                if projection_updates:
                     connection.execute(text("""
                         UPDATE conversation_files
                         SET current_known_path=:path,current_fingerprint=:fingerprint,
                             current_size_bytes=:size,current_mtime_ns=:mtime,
                             last_verified_at=:now,state=:state
                         WHERE conversation_id=:conversation AND file_id=:file
-                    """), {"path": persisted_path, "fingerprint": new_fingerprint, "size": new_size,
-                            "mtime": new_mtime, "now": now, "state": state,
-                            "conversation": conversation_id, "file": file_id})
-                    events.append({"file_id": file_id, "state": event_state, "current_path": persisted_path})
+                    """), projection_updates)
 
         # Evidence writes use their own short transaction and therefore must not
         # run while the ConversationFile projection transaction is open.

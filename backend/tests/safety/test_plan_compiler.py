@@ -83,6 +83,35 @@ def test_plan_hash_detects_any_approved_target_change(tmp_path: Path):
     assert not verify_plan_hash(tampered)
 
 
+def test_explicit_naming_preserves_extension_and_never_overwrites(tmp_path: Path):
+    source = tmp_path / "DSC001.jpg"
+    source.write_bytes(b"photo")
+    existing = tmp_path / "海边日落.jpg"
+    existing.write_bytes(b"existing")
+    item = replace(candidate(source, tmp_path), proposed_stem="海边日落")
+    with pytest.raises(ValueError, match="FILE_RENAME_DISABLED"):
+        compile_plan([item], mode="preview_move")
+    plan = PlanCompiler().compile(task_id=str(uuid.uuid4()), version=1,
+        operation_mode="preview_move", settings_hash="a" * 64, taxonomy_hashes=(),
+        candidates=[item], max_depth=1, allow_file_rename=True)
+    assert plan.operations[0].action == "move"
+    assert Path(plan.operations[0].target_path or "").name == "海边日落 (2).jpg"
+    assert existing.read_bytes() == b"existing"
+    assert verify_plan_hash(plan)
+
+
+@pytest.mark.parametrize("stem", ["../outside", "CON", "bad:name", "trailing."])
+def test_naming_rejects_unsafe_stems(tmp_path: Path, stem: str):
+    source = tmp_path / "DSC001.jpg"
+    source.write_bytes(b"photo")
+    item = replace(candidate(source, tmp_path), proposed_stem=stem)
+    with pytest.raises(PathPolicyError):
+        PlanCompiler().compile(task_id=str(uuid.uuid4()), version=1,
+            operation_mode="preview_move", settings_hash="a" * 64,
+            taxonomy_hashes=(), candidates=[item], max_depth=1,
+            allow_file_rename=True)
+
+
 def test_hardlink_is_blocked_when_supported(tmp_path: Path):
     source = tmp_path / "a.txt"; alias = tmp_path / "alias.txt"; destination = tmp_path / "out"
     destination.mkdir(); source.write_text("data")

@@ -10,7 +10,9 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -26,6 +28,7 @@ from guixu.api.schemas import (ApprovePlanRequest, ApproveTaxonomyRequest, BulkR
                                ConversationPlanVersionApproveRequest, ConversationPlanVersionExecutionRequest,
                                ConversationPlanVersionRequest, ConversationPlanVersionRestoreRequest,
                                ConversationRefinementExecuteRequest, ConversationRefinementRequest,
+                               ConversationNamingRequest,
                                ConversationTaskLinkRequest, ConversationRecoveryRequest,
                                ConversationRelinkScopeRequest, ConversationUndoRequest,
                                ConversationUndoApprovalRequest, ConversationUndoExecuteRequest,
@@ -44,12 +47,25 @@ from guixu.application.model_gateway import BudgetError, ModelGateway
 from guixu.application.privacy import PrivacyService
 from guixu.application.reporting import ReportService
 from guixu.application.previews import PreviewTicketService
+from guixu.application.chat_images import image_part
 from guixu.application.parsing import ParsingService
 from guixu.application.semantic_cache import EvidenceCacheService
 from guixu.application.tasks import TaskService
 from guixu.application.taxonomies import TaxonomyService
 from guixu.domain.classification import ClassificationError
-from guixu.domain.settings import load_default_settings
+from guixu.domain.settings import TaskSettings, load_default_settings, validate_stored_settings
+
+
+class CategoryLanguageUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(ge=1)
+    category_language: Literal["zh", "en"]
+
+
+class ConversationSuggestionReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_context_revision: int = Field(ge=1)
+    file_ids: list[str] = Field(min_length=1, max_length=500)
 from guixu.infrastructure.db.database import Database
 from guixu.infrastructure.db.repository import TaskRepository
 from guixu.infrastructure.db.conversation_repository import ConversationRepository
@@ -140,6 +156,7 @@ def create_app(
         database=database, conversations=conversation_repository, tasks=repository,
         journal=journal, coordinator=coordinator, parsing=parsing,
         evaluator=model_gateway.evaluate_refinement, evidence_cache=evidence_cache,
+        namer=model_gateway.suggest_filenames,
     )
     session_recovery = SessionRecoveryService(database, conversation_repository, journal, evidence_cache)
     session_recovery_startup = session_recovery.audit_startup()
@@ -192,7 +209,8 @@ def create_app(
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
         ticket_stream = request.method == "GET" and request.url.path.startswith("/api/v1/previews/")
-        if request.url.path != "/api/v1/health" and not request.url.path.startswith("/assets/") and request.url.path != "/" and not ticket_stream:
+        public_asset = request.method == "GET" and request.url.path in {"/app-icon.png", "/favicon.png"}
+        if request.url.path != "/api/v1/health" and not request.url.path.startswith("/assets/") and request.url.path != "/" and not ticket_stream and not public_asset:
             host = request.headers.get("host", "")
             expected_hosts = {origin.split("//", 1)[-1] for origin in app.state.allowed_origins}
             if app.state.allow_typed_grants:
@@ -305,7 +323,18 @@ def create_app(
 
     @app.get("/api/v1/settings")
     def get_settings(request: Request):
-        return envelope({"revision": 1, "values": defaults.model_dump(mode="json")}, request.state.request_id)
+        values, revision = database.get_json_setting("default_settings")
+        return envelope({"revision": revision, "values": validate_stored_settings(values).model_dump(mode="json")}, request.state.request_id)
+
+    @app.patch("/api/v1/settings/category-language")
+    def update_category_language(payload: CategoryLanguageUpdate, request: Request):
+        values, _ = database.get_json_setting("default_settings")
+        updated = validate_stored_settings({**values, "category_language": payload.category_language})
+        try:
+            revision = database.update_json_setting("default_settings", updated.model_dump(mode="json"), payload.expected_revision)
+        except ValueError:
+            return error_response(409, "SETTINGS_REVISION_CONFLICT", "设置已在别处修改，请刷新后重试。", request.state.request_id)
+        return envelope({"revision": revision, "values": updated.model_dump(mode="json")}, request.state.request_id)
 
     @app.get("/api/v1/components")
     def get_components(request: Request):
@@ -591,7 +620,7 @@ def create_app(
 
     @app.post("/api/v1/conversations/{conversation_id}/chat")
     def chat_conversation(conversation_id: str, payload: ConversationChatRequest, request: Request):
-        """Text-only discussion. This endpoint never scans, plans or executes files."""
+        """Discussion; selected inventory images are read only after explicit consent."""
         try:
             conversation = conversations.get_conversation(conversation_id)
             profile_id = conversation.get("model_profile_id")
@@ -609,7 +638,26 @@ def create_app(
             if resolved.get("missing") or resolved.get("changed"):
                 return error_response(409, "REFERENCE_STALE", "选中的文件已经变化，请刷新后重试。", request.state.request_id)
             selected_names = [Path(item["current_known_path"]).name for item in conversation_repository.list_conversation_files(conversation_id)
-                              if item["file_id"] in selected][:20] if selected else []
+                               if item["file_id"] in selected][:20] if selected else []
+            image_paths: list[Path] = []
+            if payload.selected_source_paths:
+                if not payload.acknowledge_image_content:
+                    return error_response(409, "CHAT_IMAGE_CONSENT_REQUIRED", "请先确认读取所选图片并发送给当前模型。", request.state.request_id)
+                if profile["capabilities"].get("vision", {}).get("status") != "supported":
+                    return error_response(409, "AI_VISION_UNAVAILABLE", "当前模型尚未验证图片理解能力。", request.state.request_id)
+                roots = [Path(str(scope["source_root"])).resolve(strict=True)
+                         for scope in conversation.get("scopes", []) if not scope.get("revoked_at")]
+                for raw in dict.fromkeys(payload.selected_source_paths):
+                    candidate = Path(raw)
+                    # Do not follow symlinks/reparse points from the granted tree.
+                    if not candidate.is_file() or candidate.is_symlink():
+                        raise ValueError("CHAT_IMAGE_INVALID")
+                    path = candidate.resolve(strict=True)
+                    if not any(path.is_relative_to(root) for root in roots):
+                        raise ValueError("CHAT_IMAGE_OUTSIDE_SCOPE")
+                    if path.stat().st_size > 40 * 1024 * 1024:
+                        raise ValueError("CHAT_IMAGE_TOO_LARGE")
+                    image_paths.append(path)
             plan_versions = conversations.list_plan_versions(conversation_id)
             execution_rounds = conversations.list_execution_rounds(conversation_id)
             latest_plan = plan_versions[-1] if plan_versions else None
@@ -620,20 +668,29 @@ def create_app(
                            if latest_round else "尚未执行文件操作。")
             messages = [{"role": "system", "content": (
                 "你是归序的文件整理需求顾问。自然回答用户的问题，帮助澄清分类规则、目录命名、保留原则与例外。"
-                "此轮仅讨论；你没有扫描目录或读取文件内容，不能声称已经分析、分类或移动文件。"
-                "只有用户点击生成整理方案后，应用才会分析文件并生成待确认方案；执行仍须用户再次确认。"
+                 "此轮仅讨论；你没有扫描整个目录，也没有分类或移动文件。只有当前用户明确选中的图片才作为视觉输入；不要声称看过其他文件。"
+                "用户可以先讨论整理或命名要求；点击生成整理方案或生成命名方案后，应用才会分析文件并生成待确认方案；执行仍须用户再次确认。"
                 "不要编造具体文件内容。用简洁中文回答。" + state_hint)}]
             messages.extend({"role": "user" if item["role"] == "USER" else "assistant", "content": item["content"][:4000]}
                             for item in history[-16:])
             model_input = payload.content.strip()
             if selected:
                 model_input += f"\n[用户选中了 {len(selected)} 个文件；前 20 个文件名：{', '.join(selected_names)}。尚未提供文件内容。]"
-            messages.append({"role": "user", "content": model_input})
+            if image_paths:
+                model_input += "\n[以下是用户本轮明确选中的图片；只根据这些图片回答，不要推测目录中其他图片。]"
+                parts: list[dict[str, Any]] = [{"type": "text", "text": model_input}]
+                for path in image_paths:
+                    parts.append({"type": "text", "text": f"图片文件名：{path.name}"})
+                    parts.append(image_part(path))
+                messages.append({"role": "user", "content": parts})
+            else:
+                messages.append({"role": "user", "content": model_input})
             adapter = DeepSeekAdapter(models.transport) if profile["provider"] == "deepseek" else QwenLocalAdapter(models.transport)
             result = adapter.chat(profile, messages, models.secrets.get(profile_id), max_attempts=1)
             if not result.content.strip():
                 raise ModelTransportError("MODEL_EMPTY_RESPONSE")
             user_message = conversations.append_message(conversation_id, "USER", payload.content.strip(),
+                                                        metadata={"inspected_image_names": [path.name for path in image_paths]} if image_paths else None,
                                                         referenced_file_ids=selected,
                                                         reference_source="UI_SELECTION" if selected else None)
             assistant_message = conversations.append_message(conversation_id, "ASSISTANT", result.content.strip())
@@ -646,9 +703,14 @@ def create_app(
             return error_response(409, exc.code, reference_error_message(exc.code), request.state.request_id, exc.details)
         except ValueError as exc:
             return error_response(409, str(exc), "当前会话无法聊天。", request.state.request_id)
+        except OSError:
+            return error_response(409, "CHAT_IMAGE_UNAVAILABLE", "所选图片已不可读取，请刷新文件列表。", request.state.request_id)
 
     @app.get("/api/v1/conversations/{conversation_id}/source-files")
-    def list_source_files(conversation_id: str, request: Request):
+    def list_source_files(conversation_id: str, request: Request,
+                          limit: int = Query(default=500, ge=1, le=2000),
+                          offset: int = Query(default=0, ge=0),
+                          q: str = Query(default="", max_length=200)):
         """Read-only directory inventory before the first analysis creates core file rows."""
         try:
             conversation = conversations.get_conversation(conversation_id)
@@ -663,14 +725,20 @@ def create_app(
             except OSError:
                 return True
 
-        for root in roots:
+        matched = 0
+        done = False
+        needle = q.strip().casefold()
+        for root in sorted(roots, key=lambda item: str(item).casefold()):
             if blocked_link(root) or not root.is_dir():
                 continue
             for directory, child_dirs, filenames in os.walk(root, followlinks=False):
                 child_dirs[:] = [name for name in child_dirs if not blocked_link(Path(directory) / name)]
-                for name in filenames:
+                child_dirs.sort(key=str.casefold)
+                for name in sorted(filenames, key=str.casefold):
                     path = Path(directory) / name
                     if blocked_link(path):
+                        continue
+                    if needle and needle not in str(path).casefold():
                         continue
                     try:
                         stat = path.stat()
@@ -678,15 +746,18 @@ def create_app(
                         continue
                     if not path.is_file():
                         continue
-                    items.append({"path": str(path), "size_bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns})
-                    if len(items) >= 2000:
+                    matched += 1
+                    if matched <= offset:
+                        continue
+                    if len(items) >= limit:
+                        done = True
                         break
-                if len(items) >= 2000:
+                    items.append({"path": str(path), "size_bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+                if done:
                     break
-            if len(items) >= 2000:
+            if done:
                 break
-        items.sort(key=lambda item: item["path"].casefold())
-        return envelope({"files": items, "truncated": len(items) >= 2000}, request.state.request_id)
+        return envelope({"files": items, "truncated": done}, request.state.request_id)
 
     @app.post("/api/v1/conversations/{conversation_id}/messages", status_code=201)
     def append_conversation_message(conversation_id: str, payload: ConversationMessageRequest, request: Request,
@@ -765,7 +836,7 @@ def create_app(
             progress: list[dict[str, Any]] = []
             result = first_analysis.run(
                 conversation_id,
-                user_message=payload.content.strip(),
+                user_message=(payload.requirements_context or payload.content).strip(),
                 message_id=user_message["id"],
                 acknowledge_privacy=True,
                 progress=progress.append,
@@ -881,11 +952,92 @@ def create_app(
             plan = journal.load_plan(plan_id)
         except KeyError:
             return error_response(404, "PLAN_VERSION_NOT_FOUND", "整理方案不存在。", request.state.request_id)
+        with database.engine.connect() as connection:
+            rows = connection.execute(text("""
+                SELECT f.id AS file_id, c.category_id, c.review_band, c.abstain, c.reason,
+                       cat.path_segments_json
+                FROM files f
+                LEFT JOIN classifications c ON c.id=(
+                    SELECT id FROM classifications WHERE file_id=f.id AND taxonomy_id=:taxonomy
+                    ORDER BY attempt DESC LIMIT 1)
+                LEFT JOIN categories cat ON cat.taxonomy_id=:taxonomy AND cat.category_id=c.category_id
+                WHERE f.task_id=:task
+            """), {"taxonomy": version.get("taxonomy_id"), "task": plan.task_id}).mappings().all()
+        suggestions = {row["file_id"]: dict(row) for row in rows}
         return envelope({"plan_hash": version.get("plan_hash"), "operations": [
             {"file_id": item.file_id, "action": item.action, "source_path": item.source_path,
-             "target_path": item.target_path, "reason": item.reason}
+             "target_path": item.target_path, "reason": item.reason,
+             "suggested_category_id": suggestions.get(item.file_id, {}).get("category_id"),
+             "suggested_category_path": json.loads(suggestions[item.file_id]["path_segments_json"])
+                 if suggestions.get(item.file_id, {}).get("path_segments_json") else None,
+             "review_band": suggestions.get(item.file_id, {}).get("review_band"),
+             "classification_reason": suggestions.get(item.file_id, {}).get("reason"),
+             "abstain": bool(suggestions.get(item.file_id, {}).get("abstain", True))}
             for item in plan.operations
         ]}, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/confirm-suggestions")
+    def confirm_conversation_suggestions(conversation_id: str, version_id: str,
+                                         payload: ConversationSuggestionReviewRequest, request: Request):
+        try:
+            version = plan_versions.get(version_id)
+            context = conversations.get_context(conversation_id)
+            if version["conversation_id"] != conversation_id or not version.get("plan_id"):
+                raise KeyError(version_id)
+            if version["status"] != "PROPOSED" or context["current_plan_version_id"] != version_id:
+                return error_response(409, "PLAN_VERSION_STALE", "当前方案已变化，请刷新后重试。", request.state.request_id)
+            if context["context_revision"] != payload.expected_context_revision:
+                return error_response(409, "CONTEXT_REVISION_CONFLICT", "当前会话已变化，请刷新后重试。", request.state.request_id)
+            if len(set(payload.file_ids)) != len(payload.file_ids):
+                return error_response(422, "REVIEW_DUPLICATE_FILE", "文件不能重复选择。", request.state.request_id)
+            old_plan = journal.load_plan(version["plan_id"])
+            task = repository.get(old_plan.task_id)
+            if task["conversation_id"] != conversation_id:
+                return error_response(409, "SCOPE_CONFLICT", "方案与当前会话不匹配。", request.state.request_id)
+            old_operations = {item.file_id: item for item in old_plan.operations}
+            reviews = []
+            with database.engine.connect() as connection:
+                for file_id in payload.file_ids:
+                    operation = old_operations.get(file_id)
+                    if operation is None or operation.action not in {"skip", "noop"}:
+                        return error_response(422, "REVIEW_FILE_INVALID", "所选文件没有待确认的分类建议。", request.state.request_id)
+                    row = connection.execute(text("""
+                        SELECT c.category_id,c.abstain,cat.selectable
+                        FROM classifications c
+                        JOIN categories cat ON cat.taxonomy_id=c.taxonomy_id AND cat.category_id=c.category_id
+                        WHERE c.file_id=:file AND c.task_id=:task AND c.taxonomy_id=:taxonomy
+                        ORDER BY c.attempt DESC LIMIT 1
+                    """), {"file": file_id, "task": task["id"], "taxonomy": version["taxonomy_id"]}).mappings().first()
+                    if row is None or row["abstain"] or row["selectable"] != 1:
+                        return error_response(422, "REVIEW_SUGGESTION_INVALID", "所选文件没有可确认的分类。", request.state.request_id)
+                    reviews.append({"file_id": file_id, "taxonomy_id": version["taxonomy_id"],
+                                    "category_id": row["category_id"], "decision": "accept", "note": "conversation_suggestion_confirmed"})
+            classifications.review_bulk(task["id"], reviews, task["revision"])
+            repository.refresh_counters(task["id"])
+            plan = operations.compile(task["id"])
+            affected = sum(item.action in {"move", "copy"} for item in plan.operations)
+            snapshot = version.get("taxonomy_snapshot") or {}
+            next_version = conversations.create_plan_version(
+                conversation_id, expected_context_revision=payload.expected_context_revision,
+                parent_plan_version_id=version_id, source="USER_REQUEST", plan_kind="FULL", status="PROPOSED",
+                taxonomy_id=version["taxonomy_id"], taxonomy_snapshot=snapshot,
+                plan_id=plan.plan_id, plan_hash=plan.plan_hash,
+                summary=f"人工确认 {len(reviews)} 个图片分类建议",
+                change_summary={"metrics": {"reviewed_files": len(reviews), "affected_files": affected,
+                                            "kept_files": len(plan.operations) - affected, "plan_kind": "FULL"}},
+                affected_file_count=affected, kept_file_count=len(plan.operations) - affected,
+                conflict_count=sum(bool(item.reason) and item.reason not in {"REPORT_ONLY", "SOURCE_EQUALS_TARGET"}
+                                   for item in plan.operations),
+            )
+            conversations.link_task(conversation_id, task["id"], next_version["id"])
+            conversations.append_message(conversation_id, "ASSISTANT",
+                f"已记录你对 {len(reviews)} 个图片分类建议的确认，生成整理方案 v{next_version['version_number']}。请核对逐文件去向，文件尚未移动。",
+                message_type="PLAN_PROPOSAL", referenced_plan_version_id=next_version["id"])
+            return envelope(next_version, request.state.request_id)
+        except KeyError:
+            return error_response(404, "PLAN_VERSION_NOT_FOUND", "整理方案不存在。", request.state.request_id)
+        except (ClassificationError, ValueError) as exc:
+            return error_response(409, str(exc), "分类确认失败，请刷新后重试。", request.state.request_id)
 
     @app.get("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/diff")
     def diff_conversation_plan_version(conversation_id: str, version_id: str, request: Request,
@@ -967,6 +1119,22 @@ def create_app(
             return error_response(409, exc.code, str(exc), request.state.request_id, exc.details)
         except ValueError as exc:
             return error_response(409, str(exc), "无法准备本轮整理调整。", request.state.request_id)
+        return envelope(result, request.state.request_id)
+
+    @app.post("/api/v1/conversations/{conversation_id}/naming/prepare")
+    def prepare_conversation_naming(conversation_id: str, payload: ConversationNamingRequest,
+                                    request: Request, idempotency_key: str = Header(default="conversation-naming")):
+        del idempotency_key
+        try:
+            result = post_execution.prepare_naming(
+                conversation_id, instruction=payload.instruction.strip(), file_ids=payload.file_ids,
+            )
+        except KeyError:
+            return error_response(404, "CONVERSATION_NOT_FOUND", "会话不存在。", request.state.request_id)
+        except (BudgetError, ModelError, ModelTransportError, PrivacyError) as exc:
+            return error_response(409, getattr(exc, "code", str(exc)), "文件命名分析未完成，请检查模型和内容授权。", request.state.request_id)
+        except ValueError as exc:
+            return error_response(409, str(exc), "无法生成安全的文件命名预览。", request.state.request_id)
         return envelope(result, request.state.request_id)
 
     @app.post("/api/v1/conversations/{conversation_id}/plan-versions/{version_id}/execute")
@@ -1189,6 +1357,16 @@ def create_app(
                 request.state.request_id,
             )
         return envelope({"permanently_deleted": len(set(payload.task_ids)), "disk_files_changed": False}, request.state.request_id)
+
+    @app.post("/api/v1/trash/clear")
+    def clear_trash(request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+        del idempotency_key
+        deleted_conversations = conversation_repository.list("deleted")
+        for conversation in deleted_conversations:
+            conversation_repository.permanently_delete(conversation["id"])
+        counts = repository.clear_deleted()
+        return envelope({**counts, "permanently_deleted_conversations": len(deleted_conversations),
+                         "disk_files_changed": False}, request.state.request_id)
 
     @app.post("/api/v1/tasks", status_code=201)
     def create_task(payload: CreateTaskRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):

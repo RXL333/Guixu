@@ -83,7 +83,7 @@ function statusText() {
   if (store.refinementBusy) return `正在检查${store.affectedScope?.affected_category_ids?.length ? '本轮影响范围' : '当前文件状态'}…`
   if (store.notice) return store.notice
   if (store.loading) return '正在读取会话状态…'
-  if (store.currentConversation && !store.messages.length) return '可以先和 AI 讨论需求；说“开始整理”后再生成方案。'
+  if (store.currentConversation && !store.messages.length) return '可以先和 AI 讨论需求，再生成整理或命名方案。'
   return '消息、方案和执行记录都会保存在当前会话中。'
 }
 function statusTone(): 'idle' | 'loading' | 'success' | 'error' {
@@ -128,7 +128,7 @@ watch(() => route.params.id, loadForRoute)
           <div v-if="!store.messages.length" class="conversation-empty-state">
             <div class="empty-state-icon"><Bot :size="22" /></div>
             <h2>先和归序聊聊你希望怎样整理。</h2>
-            <p>它会回答问题并记住讨论。你说“开始整理”后生成方案；文件移动前还需你确认。</p>
+            <p>它会回答问题并记住讨论。准备好后可生成整理或命名方案；改动文件前还需你确认。</p>
           </div>
           <div v-else class="message-list" aria-live="polite">
             <div class="message-date-label">当前会话</div>
@@ -139,7 +139,7 @@ watch(() => route.params.id, loadForRoute)
               <p>当前范围 {{ store.refinementMetrics?.total_scope_files || store.files.length }} 个文件；已有内容分析会优先复用。是否继续？</p>
               <div><button type="button" :disabled="store.refinementBusy" @click="store.confirmGlobalRefinement">继续重新规划</button><button type="button" @click="store.cancelGlobalRefinement">取消</button></div>
             </div>
-            <PlanPreviewCard v-for="plan in store.planVersions" :key="`plan-${plan.id}`" :plan="plan" :current="plan.id === store.currentPlanVersion?.id" :execution-busy="store.executionBusy" @view-history="showPlan" @approve="store.approveAndExecute" />
+            <PlanPreviewCard v-for="plan in store.planVersions" :key="`plan-${plan.id}`" :plan="plan" :current="plan.id === store.currentPlanVersion?.id" :execution-busy="store.executionBusy || store.refinementBusy || store.analysisBusy" @view-history="showPlan" @approve="store.approveAndExecute" />
             <UndoPreviewCard v-if="store.pendingUndoPlan" :plan="store.pendingUndoPlan" :busy="store.undoBusy" @confirm="store.confirmUndo" @cancel="store.cancelUndo" />
             <ExecutionResultCard v-for="round in store.executionRounds" :key="`round-${round.id}`" :round="round" :undo-busy="store.undoBusy" @undo="store.requestUndo" @view-history="showHistory" />
           </div>

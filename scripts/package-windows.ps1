@@ -105,7 +105,7 @@ if (-not $SkipInstaller) {
 
 Push-Location $backendRoot
 try {
-    uv run python (Join-Path $projectRoot 'scripts\generate_release_metadata.py')
+    uv run python (Join-Path $projectRoot 'scripts\generate_release_metadata.py') --release-directory $releaseRoot
     if ($LASTEXITCODE -ne 0) { throw "release metadata generation failed with exit code $LASTEXITCODE" }
 } finally {
     Pop-Location

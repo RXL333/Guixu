@@ -12,6 +12,7 @@ const deletedConversations=ref<Conversation[]>([])
 const selected=ref(new Set<string>())
 const query=ref('')
 const error=ref('')
+const notice=ref('')
 const busy=ref(false)
 const menu=ref('')
 const deletedView=computed(()=>route.path==='/trash')
@@ -34,6 +35,15 @@ async function purgeConversation(id:string,title:string){
   if(!await confirmAction(`永久删除“${title}”这条对话及其消息和整理方案？磁盘文件不会改变，已执行的文件操作日志仍保留。`))return
   busy.value=true;error.value=''
   try{await api.permanentlyDeleteConversation(id);await load()}catch(cause){error.value=String(cause)}finally{busy.value=false}
+}
+async function clearTrash(){
+  if(!await confirmAction('清空最近删除？可安全删除的任务记录和已删除对话会永久删除；仍关联整理方案或执行记录的任务会从列表移出，保留安全日志。磁盘文件不会改变。'))return
+  busy.value=true;error.value='';notice.value=''
+  try{
+    const result=await api.clearTrash()
+    await load()
+    notice.value=`已清空最近删除：永久删除 ${result.permanently_deleted_tasks} 条任务、${result.permanently_deleted_conversations} 条对话；${result.retained_safety_records} 条安全记录已从列表移出并保留日志。`
+  }catch(cause){error.value=String(cause)}finally{busy.value=false}
 }
 function toggle(id:string){const next=new Set(selected.value);next.has(id)?next.delete(id):next.add(id);selected.value=next}
 function toggleAll(){selected.value=allSelected.value?new Set():new Set(visible.value.filter(item=>deletedView.value||!blocked(item)).map(item=>item.id))}
@@ -59,7 +69,8 @@ onMounted(()=>load().catch(cause=>{error.value=String(cause)}))
 <template><section class="page history-page" @keydown.esc="menu = ''"><h1>{{deletedView?'最近删除':'整理记录'}}</h1>
   <p class="lead">{{deletedView?'这里只删除应用内任务记录；磁盘文件、操作日志和 Undo 安全边界不会被静默处理。':'整理记录用于查看过去的 AI 分析与文件操作；它不是新的整理入口。'}}</p>
   <p v-if="error" class="notice danger-notice">{{error}}</p>
-  <div class="history-toolbar"><input v-model="query" aria-label="筛选任务" placeholder="筛选名称、目录或状态"/><button class="secondary-button" @click="toggleAll">{{allSelected?'取消选择':'选择全部当前筛选结果'}}</button><span>已选 {{selected.size}}</span><button v-if="!deletedView" class="danger-button" :disabled="!selected.size||busy" @click="remove(items.filter(item=>selected.has(item.id)))">批量删除</button><template v-else><button class="secondary-button" :disabled="!selected.size||busy" @click="restore(items.filter(item=>selected.has(item.id)))">批量恢复</button><button class="danger-button" :disabled="!selected.size||busy" @click="purge(items.filter(item=>selected.has(item.id)))">批量永久删除</button></template></div>
+  <p v-if="notice" class="notice">{{notice}}</p>
+  <div class="history-toolbar"><input v-model="query" aria-label="筛选任务" placeholder="筛选名称、目录或状态"/><button class="secondary-button" @click="toggleAll">{{allSelected?'取消选择':'选择全部当前筛选结果'}}</button><span>已选 {{selected.size}}</span><button v-if="!deletedView" class="danger-button" :disabled="!selected.size||busy" @click="remove(items.filter(item=>selected.has(item.id)))">批量删除</button><template v-else><button class="secondary-button" :disabled="!selected.size||busy" @click="restore(items.filter(item=>selected.has(item.id)))">批量恢复</button><button class="danger-button" :disabled="!selected.size||busy" @click="purge(items.filter(item=>selected.has(item.id)))">批量永久删除</button><button class="danger-button" :disabled="busy||(!items.length&&!deletedConversations.length)" @click="clearTrash">清空最近删除</button></template></div>
   <section v-if="deletedView && deletedConversations.length" class="deleted-conversations" aria-label="已删除的对话">
     <h2>已删除的对话</h2>
     <article v-for="conversation in deletedConversations" :key="conversation.id" class="deleted-conversation-row">

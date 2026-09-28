@@ -3,6 +3,7 @@
   "operation_mode": "preview_move",
   "organization_strategy": "hybrid",
   "classification_source": "auto_plan",
+  "category_language": "zh",
   "max_depth": 2,
   "max_siblings": 12,
   "max_nodes_per_scope": 80,

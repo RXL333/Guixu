@@ -42,4 +42,4 @@ Phase M · 2026-09-22。适用于现有 Conversation 工作区，不改变文件
 
 `/__ui-review` 仅在 Vite DEV 中注册，明确显示“界面验收样例”，不执行真实模型或文件动作，离开时恢复 store。它不是产品演示成功证据，生产构建不得包含该模块。
 
-验收证据保存在 `artifacts/ui/final-polish`。浏览器视口截图不等同于 Windows DPI 或原生窗口验收；原生部分必须另行实测。
+验收证据保存在 `artifacts/reports/ui/final-polish`。浏览器视口截图不等同于 Windows DPI 或原生窗口验收；原生部分必须另行实测。

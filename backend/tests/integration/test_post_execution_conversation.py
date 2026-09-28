@@ -9,13 +9,17 @@ from sqlalchemy import text
 
 from guixu.application.coordinator import TaskCoordinator
 from guixu.application.operations import OperationService
+from guixu.application.model_gateway import ModelGateway
 from guixu.application.post_execution import (
     AffectedScopeResolver,
     PostExecutionConversationService,
     WorkspaceStateService,
 )
+from guixu.application.session_recovery import SessionRecoveryService
 from guixu.domain.settings import TaskSettings
 from guixu.domain.profiles import ParseOutcome
+from guixu.domain.profiles import FileProfile
+from guixu.infrastructure.models.transport import ModelTransportError
 from guixu.infrastructure.db.conversation_repository import ConversationRepository
 from guixu.infrastructure.db.database import Database, utc_now
 from guixu.infrastructure.db.operation_journal import SqliteOperationJournal
@@ -244,6 +248,83 @@ def test_post_execution_local_delta_and_three_rounds(project_root: Path, tmp_pat
     assert versions[0]["id"] == v1["id"] and rounds[0]["id"] == round1["id"]
     assert repository.get_context(conversation_id)["current_execution_round_id"] == rounds[-1]["id"]
     assert len(calls) == 2
+    database.close()
+
+
+def test_content_naming_preview_requires_approval_and_preserves_bytes(project_root: Path, tmp_path: Path):
+    database, repository, service, conversation_id, _, _, file_ids, root, _ = make_service(
+        project_root, tmp_path, building_count=1, other_count=0,
+    )
+    file_id = file_ids["building-0.jpg"]
+    source = root / "建筑" / "building-0.jpg"
+    original = source.read_bytes()
+    service.namer = lambda **kwargs: [{"file_id": kwargs["profiles"][0].file_id,
+                                      "stem": "夜晚城市建筑", "evidence_ids": [f"ev-{file_id}"],
+                                      "reason": "夜晚城市建筑与灯光"}]
+    prepared = service.prepare_naming(conversation_id, instruction="按照片内容用中文命名", file_ids=[file_id])
+    version = prepared["plan_version"]
+    assert version["change_summary"]["kind"] == "FILE_NAMING"
+    assert source.read_bytes() == original
+    assert SessionRecoveryService(database, repository, service.journal).revalidate_plan(
+        conversation_id, version["id"],
+    )["valid"]
+    with database.engine.connect() as connection:
+        target = connection.execute(text("SELECT target_path FROM operations WHERE plan_id=:plan"),
+                                    {"plan": version["plan_id"]}).scalar_one()
+    assert Path(target).name == "夜晚城市建筑.jpg"
+    context = repository.get_context(conversation_id)
+    service.approve(conversation_id, version["id"], expected_context_revision=context["context_revision"],
+                    plan_hash=version["plan_hash"], authorization={"kind": "interactive"})
+    assert source.read_bytes() == original
+    result = service.execute(conversation_id, version["id"],
+                             expected_context_revision=context["context_revision"], plan_hash=version["plan_hash"])
+    assert result["execution_round"]["status"] == "COMPLETED"
+    assert not source.exists()
+    assert Path(target).read_bytes() == original
+    assert Path(repository.get_conversation_file(conversation_id, file_id)["current_known_path"]) == Path(target)
+    database.close()
+
+
+def test_naming_model_output_requires_known_file_and_content_evidence(tmp_path: Path):
+    item = FileProfile.model_validate(profile("file-1", tmp_path / "DSC001.jpg", "海边日落与两个人"))
+    good = {"results": [{"file_id": "file-1", "stem": "海边日落", "evidence_ids": ["ev-file-1"], "reason": "照片内容"}]}
+    assert ModelGateway._normalize_filename_suggestions(json.dumps(good, ensure_ascii=False), [item])[0]["stem"] == "海边日落"
+    for changed in (
+        {"file_id": "unknown", "stem": "海边日落", "evidence_ids": ["ev-file-1"]},
+        {"file_id": "file-1", "stem": "海边日落", "evidence_ids": ["invented"]},
+        {"file_id": "file-1", "stem": "../outside", "evidence_ids": ["ev-file-1"]},
+        {"file_id": "file-1", "stem": "海边日落.jpg", "evidence_ids": ["ev-file-1"]},
+    ):
+        with pytest.raises(ModelTransportError):
+            ModelGateway._normalize_filename_suggestions(json.dumps({"results": [changed]}, ensure_ascii=False), [item])
+
+
+def test_naming_can_replace_unexecuted_first_plan(project_root: Path, tmp_path: Path):
+    database, repository, service, conversation_id, first, round1, file_ids, root, _ = make_service(
+        project_root, tmp_path, building_count=1, other_count=0,
+    )
+    with database.begin() as connection:
+        connection.execute(text("UPDATE conversation_contexts SET current_execution_round_id=NULL WHERE conversation_id=:id"),
+                           {"id": conversation_id})
+        connection.execute(text("DELETE FROM conversation_execution_rounds WHERE id=:id"), {"id": round1["id"]})
+        connection.execute(text("UPDATE conversation_plan_versions SET status='PROPOSED',executed_at=NULL WHERE id=:id"),
+                           {"id": first["id"]})
+    file_id = file_ids["building-0.jpg"]
+    service.namer = lambda **kwargs: [{"file_id": file_id, "stem": "夜景建筑", "evidence_ids": [f"ev-{file_id}"]}]
+    prepared = service.prepare_naming(conversation_id, instruction="按内容命名", file_ids=[file_id])
+    version = prepared["plan_version"]
+    assert version["plan_kind"] == "FULL"
+    assert version["baseline_execution_round_id"] is None
+    assert SessionRecoveryService(database, repository, service.journal).revalidate_plan(
+        conversation_id, version["id"],
+    )["valid"]
+    context = repository.get_context(conversation_id)
+    service.approve(conversation_id, version["id"], expected_context_revision=context["context_revision"],
+                    plan_hash=version["plan_hash"], authorization={"kind": "interactive"})
+    result = service.execute(conversation_id, version["id"],
+                             expected_context_revision=context["context_revision"], plan_hash=version["plan_hash"])
+    assert result["execution_round"]["status"] == "COMPLETED"
+    assert (root / "建筑" / "夜景建筑.jpg").is_file()
     database.close()
 
 

@@ -1,0 +1,62 @@
+{
+  "status": "PASSED",
+  "test_type": "REAL_LOCAL_QWEN_FIRST_PREVIEW",
+  "model_id": "qwen3-vl:4b-instruct",
+  "input_file_count": 3,
+  "plan_status": "PROPOSED",
+  "plan_count": 2,
+  "planned_operation_count": 6,
+  "executed_operation_count": 0,
+  "actions": [
+    {
+      "action": "move",
+      "count": 1
+    },
+    {
+      "action": "skip",
+      "count": 5
+    }
+  ],
+  "categories": [
+    {
+      "category_id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "图形设计元素"
+    }
+  ],
+  "review_bands": [
+    {
+      "review_band": "low",
+      "count": 2
+    },
+    {
+      "review_band": "medium",
+      "count": 1
+    }
+  ],
+  "reviewed_version_number": 2,
+  "reviewed_action": "move",
+  "reviewed_target_path": "C:\\Users\\renxiaolin\\AppData\\Local\\Temp\\guixu-local-qwen-preview-t3lhgkpy\\source\\图形设计元素\\image-001-人物.jpg",
+  "source_unchanged": true,
+  "model_calls": [
+    {
+      "purpose": "planning",
+      "response_status": "ok",
+      "error_code": null
+    },
+    {
+      "purpose": "classification",
+      "response_status": "ok",
+      "error_code": null
+    },
+    {
+      "purpose": "classification",
+      "response_status": "ok",
+      "error_code": null
+    },
+    {
+      "purpose": "classification",
+      "response_status": "ok",
+      "error_code": null
+    }
+  ]
+}

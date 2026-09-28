@@ -21,6 +21,38 @@ def model(app):
         "options":{"thinking_mode":"disabled","timeout_seconds":5,"max_concurrency":1,"batch_size":20},"enabled":True})
 
 
+def test_public_brand_assets_do_not_require_api_session(project_root: Path, tmp_path: Path):
+    app = create_app(project_root=project_root, data_dir=tmp_path / "data", session_token="private",
+                     allow_typed_grants=True)
+    with TestClient(app) as client:
+        for path in ("/app-icon.png", "/favicon.png"):
+            response = client.get(path)
+            assert response.status_code == (200 if (project_root / "frontend" / "dist" / path.lstrip("/")).exists() else 404)
+        assert client.get("/api/v1/settings").status_code == 401
+        assert client.get("/private.png").status_code == 401
+
+
+def test_category_language_setting_persists_and_checks_revision(project_root: Path, tmp_path: Path):
+    token = "test-session"
+    data_dir = tmp_path / "data"
+    app = create_app(project_root=project_root, data_dir=data_dir, session_token=token,
+                     allow_typed_grants=True)
+    with TestClient(app) as client:
+        original = client.get("/api/v1/settings", headers=headers(token)).json()["data"]
+        assert original["values"]["category_language"] == "zh"
+        changed = client.patch("/api/v1/settings/category-language", headers=headers(token),
+                               json={"expected_revision": original["revision"], "category_language": "en"})
+        assert changed.status_code == 200
+        assert changed.json()["data"]["values"]["category_language"] == "en"
+        stale = client.patch("/api/v1/settings/category-language", headers=headers(token),
+                             json={"expected_revision": original["revision"], "category_language": "zh"})
+        assert stale.status_code == 409
+    reopened = create_app(project_root=project_root, data_dir=data_dir, session_token=token,
+                          allow_typed_grants=True)
+    with TestClient(reopened) as client:
+        assert client.get("/api/v1/settings", headers=headers(token)).json()["data"]["values"]["category_language"] == "en"
+
+
 def test_authenticated_ai_only_read_scan_and_parse(project_root: Path, tmp_path: Path):
     source = tmp_path / "source"; source.mkdir()
     sample = source / "说明.txt"; sample.write_text("计算机网络 TCP 笔记", encoding="utf-8")

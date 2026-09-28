@@ -90,8 +90,11 @@ def test_recent_message_exact_duplicate_ambiguity_and_priority(project_root: Pat
     assert exact["source"] == "EXPLICIT_FILENAME" and exact["file_ids"] == [file_ids["building-2.jpg"]]
 
     with database.begin() as connection:
-        connection.execute(text("UPDATE files SET basename='same.jpg' WHERE id IN (:a,:b)"),
-                           {"a": file_ids["building-0.jpg"], "b": file_ids["landscape-0.jpg"]})
+        for file_id in (file_ids["building-0.jpg"], file_ids["landscape-0.jpg"]):
+            current = connection.execute(text("SELECT current_known_path FROM conversation_files WHERE file_id=:id"),
+                                         {"id": file_id}).scalar_one()
+            connection.execute(text("UPDATE conversation_files SET current_known_path=:path WHERE file_id=:id"),
+                               {"path": str(Path(current).with_name("same.jpg")), "id": file_id})
     with pytest.raises(ReferenceResolutionError, match="REFERENCE_DUPLICATE_FILENAME"):
         resolver.resolve(conversation_id, "same.jpg 放到风景")
     with database.begin() as connection:
@@ -137,6 +140,40 @@ def test_bulk_file_attachment_is_atomic_and_rejects_out_of_scope_ids(project_roo
     attached = repository.attach_files(conversation_id, [file_ids["building-0.jpg"], file_ids["building-0.jpg"]])
     assert len(attached) == 1 and attached[0]["file_id"] == file_ids["building-0.jpg"]
     assert outside_file.read_text(encoding="utf-8") == "not authorized by this conversation"
+    database.close()
+
+
+def test_rescan_keeps_history_but_counts_each_current_path_once(project_root: Path, tmp_path: Path):
+    database, repository, _, conversation_id, _, _, file_ids, _, _ = fixture_service(project_root, tmp_path)
+    originals = [file_ids["building-0.jpg"], file_ids["building-1.jpg"]]
+    with database.begin() as connection:
+        for index, file_id in enumerate(originals):
+            old = connection.execute(text("SELECT * FROM files WHERE id=:id"), {"id": file_id}).mappings().one()
+            new_id = f"rescan-{index}"
+            values = dict(old)
+            values["id"] = new_id
+            values["path_key"] = f"rescan-{index}"
+            columns = ",".join(values)
+            params = ",".join(f":{key}" for key in values)
+            connection.execute(text(f"INSERT INTO files({columns}) VALUES({params})"), values)
+            connection.execute(text("""
+                INSERT INTO conversation_files(id,conversation_id,file_id,first_seen_path,current_known_path,
+                  first_seen_fingerprint,current_fingerprint,first_seen_size_bytes,current_size_bytes,
+                  first_seen_mtime_ns,current_mtime_ns,added_at,state)
+                VALUES(:id,:conversation,:file,:path,:path,:sha,:sha,:size,:size,:mtime,:mtime,
+                  '9999-01-01T00:00:00+00:00','ACTIVE')
+            """), {"id": f"cf-{new_id}", "conversation": conversation_id, "file": new_id,
+                    "path": old["current_path"], "sha": old["sha256"], "size": old["size_bytes"],
+                    "mtime": old["mtime_ns"]})
+    assert len(repository.list_conversation_files(conversation_id, include_removed=True)) == 8
+    visible = repository.list_conversation_files(conversation_id, unique_current=True)
+    assert len(visible) == 6
+    assert {item["file_id"] for item in visible}.isdisjoint(originals)
+    state = WorkspaceStateService(database, repository).current_state(conversation_id)
+    assert state["total_scope_files"] == 6
+    assert ReferenceResolver(database, repository).resolve(
+        conversation_id, "building-0.jpg 放到风景"
+    )["file_ids"] == ["rescan-0"]
     database.close()
 
 

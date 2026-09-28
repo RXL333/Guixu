@@ -197,7 +197,7 @@ class WorkspaceStateService:
                 params[key] = file_id
                 names.append(f":{key}")
             clause = f" AND cf.file_id IN ({','.join(names)})"
-        return list(connection.execute(text(f"""
+        rows = list(connection.execute(text(f"""
             SELECT cf.*,f.task_id,f.current_path AS core_current_path,f.sha256 AS core_sha256,
                    f.size_bytes AS core_size_bytes,f.mtime_ns AS core_mtime_ns,f.modality,
                    fp.profile_json,
@@ -213,6 +213,7 @@ class WorkspaceStateService:
             WHERE cf.conversation_id=:conversation AND cf.removed_from_scope_at IS NULL{clause}
             ORDER BY cf.added_at,cf.id
         """), params).mappings())
+        return rows if file_ids else ConversationRepository.unique_current_paths(rows)
 
     @staticmethod
     def _file_payload(row: Any) -> dict[str, Any]:
@@ -325,6 +326,7 @@ class PostExecutionConversationService:
                  tasks: TaskRepository, journal: SqliteOperationJournal,
                  coordinator: TaskCoordinator, parsing: ParsingService,
                  evaluator: Callable[..., list[dict[str, Any]]],
+                 namer: Callable[..., list[dict[str, Any]]] | None = None,
                  evidence_cache: EvidenceCacheService | None = None) -> None:
         self.database = database
         self.conversations = conversations
@@ -333,9 +335,108 @@ class PostExecutionConversationService:
         self.coordinator = coordinator
         self.parsing = parsing
         self.evaluator = evaluator
+        self.namer = namer
         self.workspace = WorkspaceStateService(database, conversations)
         self.scope_resolver = AffectedScopeResolver()
         self.evidence = EvidenceReuseService(evidence_cache)
+
+    def prepare_naming(self, conversation_id: str, *, instruction: str,
+                       file_ids: list[str] | None = None) -> dict[str, Any]:
+        if self.namer is None:
+            raise ValueError("FILE_NAMING_UNAVAILABLE")
+        initial = self.workspace.current_state(conversation_id)
+        current = self.conversations.get_current_plan_version(conversation_id)
+        if not current or not current.get("plan_id"):
+            raise ValueError("NAME_ANALYSIS_REQUIRED")
+        known = {item["file_id"] for item in initial["current_files"]}
+        selected = list(dict.fromkeys(file_ids or sorted(known)))
+        if not selected or len(selected) > 500 or set(selected) - known:
+            raise ValueError("AFFECTED_SCOPE_INVALID")
+        synced = self.workspace.sync_workspace_state(conversation_id, file_ids=selected)
+        blocking = next((event for event in synced["sync_events"] if event["state"] != "UNCHANGED"), None)
+        if blocking:
+            raise ValueError(blocking["state"])
+        files = {item["file_id"]: item for item in synced["current_files"]}
+        task_ids = {files[file_id]["task_id"] for file_id in selected}
+        if len(task_ids) != 1:
+            raise ValueError("NAMING_MIXED_TASK_SCOPE")
+        task = self.tasks.get(next(iter(task_ids)))
+        profile_id = task.get("model_profile_id")
+        if not profile_id:
+            raise ValueError("MODEL_UNAVAILABLE")
+        roots = [Path(str(scope["source_root"])) for scope in synced["authorized_scope"]]
+        prepared: list[FileProfile] = []
+        for file_id in selected:
+            item = files[file_id]
+            source = Path(str(item["core_current_path"]))
+            if not source.is_file() or not any(source.is_relative_to(root) for root in roots):
+                raise ValueError("SCOPE_VIOLATION")
+            raw = item.get("profile")
+            if not raw:
+                continue
+            profile = FileProfile.model_validate(raw)
+            if self.evidence.decide(item) == "REUSE" and any(
+                entry.kind in {"extracted_text", "ocr", "visual_caption", "visual_description", "transcript", "subtitle"}
+                and len(entry.text.strip()) >= 4
+                for entry in profile.evidence
+            ):
+                prepared.append(profile)
+        decisions: list[dict[str, Any]] = []
+        for offset in range(0, len(prepared), 4):
+            decisions.extend(self.namer(task_id=task["id"], profile_id=profile_id,
+                                        profiles=prepared[offset:offset + 4], instruction=instruction))
+        candidates: list[PlanCandidate] = []
+        for item in decisions:
+            stem = item.get("stem")
+            if not stem:
+                continue
+            file = files[item["file_id"]]
+            source = Path(str(file["core_current_path"]))
+            root = next((root for root in roots if source.is_relative_to(root)), None)
+            if root is None:
+                raise ValueError("SCOPE_VIOLATION")
+            candidates.append(PlanCandidate(
+                file_id=item["file_id"], source_path=source, source_root=root,
+                destination_root=root, category_id=file.get("category_id"),
+                category_segments=(), modality=file["modality"], proposed_stem=stem,
+            ))
+        plan = PlanCompiler().compile(
+            task_id=task["id"], version=self.tasks.next_plan_version(task["id"]),
+            operation_mode="preview_move", settings_hash=task["settings_hash"],
+            taxonomy_hashes=tuple(), candidates=candidates, max_depth=1,
+            collision_policy=task["settings"]["collision_policy"], allow_file_rename=True,
+        )
+        moves = [item for item in plan.operations if item.action == "move"]
+        if not moves:
+            raise ValueError("NAME_PLAN_EMPTY")
+        self.journal.persist_plan(plan, task["revision"])
+        context = self.conversations.get_context(conversation_id)
+        baseline = synced.get("latest_execution_round_id")
+        summary = {"kind": "FILE_NAMING", "instruction": instruction[:4000],
+                   "moves": [{"file_id": item.file_id, "source_path": item.source_path,
+                              "target_path": item.target_path} for item in moves],
+                   "metrics": {"file_count": len(selected), "affected_files": len(moves),
+                               "kept_files": len(selected) - len(moves)}}
+        version = self.conversations.create_plan_version(
+            conversation_id, expected_context_revision=context["context_revision"],
+            basis_file_state_revision=context["file_state_revision"],
+            parent_plan_version_id=current["id"], baseline_execution_round_id=baseline,
+            source="USER_REQUEST", plan_kind="DELTA" if baseline else "FULL",
+            status="PROPOSED", taxonomy_id=synced["current_taxonomy"].get("taxonomy_id"),
+            taxonomy_snapshot=synced["current_taxonomy"], plan_id=plan.plan_id,
+            plan_hash=plan.plan_hash, summary=f"文件命名建议 · {len(moves)} 个文件",
+            change_summary=summary, affected_file_count=len(moves),
+            kept_file_count=len(selected) - len(moves), conflict_count=0,
+        )
+        assistant = self.conversations.append_message(
+            conversation_id, "ASSISTANT",
+            f"我根据已有内容证据，为 {len(moves)} 个文件拟了新名称。请在整理预览逐一核对；确认前不会改名。",
+            message_type="PLAN_PROPOSAL", referenced_plan_version_id=version["id"],
+            referenced_file_ids=[item.file_id for item in moves],
+            reference_source="LATEST_PLAN_AFFECTED", reference_role="RESULT",
+        )
+        return {"plan_version": version, "assistant_message": assistant,
+                "metrics": summary["metrics"]}
 
     def prepare_refinement(self, conversation_id: str, *, user_message: str,
                            confirmed_global: bool = False, explicit_file_ids: list[str] | None = None,
@@ -475,6 +576,7 @@ class PostExecutionConversationService:
             raise ValueError("DELTA_PLAN_STALE")
         change_summary = version.get("change_summary") or {}
         affected_ids = [str(item.get("file_id")) for item in change_summary.get("moves", []) if isinstance(item, dict) and item.get("file_id")]
+        naming = change_summary.get("kind") == "FILE_NAMING"
         if affected_ids:
             synced = self.workspace.sync_workspace_state(conversation_id, file_ids=affected_ids)
             stale_event = next((event for event in synced.get("sync_events", []) if event["state"] != "UNCHANGED"), None)
@@ -491,13 +593,15 @@ class PostExecutionConversationService:
             """), {"plan": version["plan_id"]}).mappings().one()
         try:
             self.coordinator.execute(core["task_id"], version["plan_id"], core["plan_hash"], int(core["revision"]))
+            result_text = (f"本轮命名完成，重命名 {version['affected_file_count']} 个文件。" if naming
+                           else f"本轮调整完成，移动 {version['affected_file_count']} 个文件，其他文件没有变化。")
             completed = self.conversations.complete_execution_round(
-                round_row["id"], summary={"description": f"本轮调整完成，移动 {version['affected_file_count']} 个文件，其他文件没有变化。",
+                round_row["id"], summary={"description": result_text,
                                           "plan_kind": version["plan_kind"]},
             )
             self.conversations.append_message(
                 conversation_id, "ASSISTANT",
-                f"本轮调整完成。移动 {version['affected_file_count']} 个文件，其他文件没有变化。",
+                result_text,
                 message_type="EXECUTION_RESULT", referenced_plan_version_id=plan_version_id,
                 referenced_execution_round_id=completed["id"],
                 referenced_file_ids=affected_ids,

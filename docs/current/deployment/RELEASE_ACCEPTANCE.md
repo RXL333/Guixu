@@ -1,9 +1,15 @@
 # Guixu 1.0 Release Acceptance
 
+2026-09-28 本地千问阻断修复补充：`qwen3-vl:4b-instruct` 经本机 Ollama 对三张隔离合成 JPG 完成首次预览；人工确认一项 AI 建议后生成 v2 `move` 方案，源图不变、执行操作为 0。后端 228 passed、前端 53 passed，同名便携包覆盖重建并通过冻结诊断。最终打包版原生确认建议与批准执行尚未复测；整体 **NOT RELEASE READY**。见 `artifacts/reports/phase-n-local-qwen-vision-fix.md`。
+
 版本目标：`1.0.0`
 候选阶段：Feature Freeze / pre-RC1
 基线 commit：`b6ef4ed7dba24519bd7d4f03c4e042dc1f499eea`
 最后更新：2026-09-24
+
+2026-09-28 追加复核：当前工作树后端完整 222 passed、前端 52 passed，生产构建、便携包已知密钥签名扫描、437/437 哈希和 ZIP 完整性通过。真实 DeepSeek 源码集成首次整理与执行后 DELTA 隔离 smoke 均 exit 0；本机打包版新建会话、三图列表/预览、本地千问两轮聊天及重启恢复通过。但本地千问三张合成 JPG 的真实整理因 `VISION_DESCRIPTION_MISSING` 停止，登记 open P1-005；没有生成 Plan 或文件操作。5,001 项 attach 测得 12.424 s 和 3.922 s，波动尚无 p95。发行态完整链、干净 Windows、安装器、多 DPI、签名/许可证仍缺验收。**NOT RELEASE READY**。详见 `artifacts/reports/release-audit-2026-09-28.md`。
+
+2026-09-26 复核补充：当前工作树后端全量 218 passed、前端 47 passed/typecheck/build 通过；真实 DeepSeek 5 张合成 JPG v1→v2→审批→执行→重启读取再次通过；本机 `0.1.0` 冻结包新建会话、文件列表、图片预览及重启读取通过。冻结包真实 DeepSeek 普通聊天两轮成功，且未自动生成方案或操作文件；同时发现聊天调用未写入 `model_calls`（P2-003）。已知签名扫描和 437 项 SHA-256 清单通过。安装器、干净 Windows、发行包真实模型整理全链及下表部分矩阵仍缺证据，结论保持 **NOT RELEASE READY**。逐项命令、退出结果和限制见 `artifacts/reports/release-audit-2026-09-26.md`。
 
 ## 状态定义
 

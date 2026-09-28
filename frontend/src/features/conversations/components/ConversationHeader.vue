@@ -15,6 +15,11 @@ const title = computed(() => props.conversation?.title || '新的整理会话')
 const scopeName = computed(() => props.conversation?.scopes?.[0]?.display_name || '尚未绑定文件夹')
 const modelBusy = ref(false)
 
+async function toggleModelMenu() {
+  modelOpen.value = !modelOpen.value
+  if (modelOpen.value) await store.loadModels()
+}
+
 async function rename() {
   menuOpen.value = false
   const next = (await promptAction('重命名对话', title.value))?.trim()
@@ -47,7 +52,7 @@ async function selectModel(modelId: string) {
     </div>
     <div class="conversation-header-actions">
       <div class="model-selector" :class="{ open: modelOpen }">
-        <button class="model-selector-trigger" type="button" :aria-expanded="modelOpen" @click="modelOpen = !modelOpen">
+        <button class="model-selector-trigger" type="button" :aria-expanded="modelOpen" @click="toggleModelMenu">
           <Sparkles :size="16" /><span>{{ store.activeModel?.name || '选择模型' }}</span><ChevronDown :size="15" />
         </button>
         <div v-if="modelOpen" class="model-selector-menu">

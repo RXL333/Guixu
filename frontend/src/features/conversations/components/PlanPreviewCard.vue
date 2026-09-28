@@ -17,14 +17,14 @@ function lifecycleLabel() {
 
 <template>
   <article class="business-card plan-preview-card" :class="{ 'is-viewing': viewing }">
-    <header><span class="business-card-kicker"><ClipboardList :size="15" />{{ plan.plan_kind === 'DELTA' ? '局部调整' : '整理方案' }} · v{{ plan.version_number }}</span><span class="plan-status">{{ lifecycleLabel() }}</span></header>
+    <header><span class="business-card-kicker"><ClipboardList :size="15" />{{ plan.change_summary?.kind === 'FILE_NAMING' ? '文件命名' : plan.plan_kind === 'DELTA' ? '局部调整' : '整理方案' }} · v{{ plan.version_number }}</span><span class="plan-status">{{ lifecycleLabel() }}</span></header>
     <h3>{{ plan.summary || '未命名整理方案' }}</h3>
     <p v-if="plan.affected_file_count">影响 {{ plan.affected_file_count }} 个文件<span v-if="plan.kept_file_count">，其他 {{ plan.kept_file_count }} 个保持不变</span></p>
     <p v-else>没有需要调整的文件。</p>
     <div v-if="plan.plan_kind === 'DELTA' && metrics.affected_files" class="plan-scope-summary">
       <span>候选范围 {{ metrics.affected_files }} 个</span><span>沿用内容分析 {{ metrics.evidence_reused || 0 }} 个</span>
     </div>
-    <button v-if="current && plan.status === 'PROPOSED' && plan.plan_hash" class="plan-approve-button" type="button" :disabled="executionBusy" @click="emit('approve', plan)"><Check :size="16" />{{ executionBusy ? '正在整理…' : (plan.plan_kind === 'FULL' && !plan.baseline_execution_round_id ? '确认并开始整理' : '确认执行') }}</button>
+    <button v-if="current && plan.status === 'PROPOSED' && plan.plan_hash" class="plan-approve-button" type="button" :disabled="executionBusy" @click="emit('approve', plan)"><Check :size="16" />{{ executionBusy ? (plan.change_summary?.kind === 'FILE_NAMING' ? '正在命名…' : '正在整理…') : plan.change_summary?.kind === 'FILE_NAMING' ? '确认并开始命名' : (plan.plan_kind === 'FULL' && !plan.baseline_execution_round_id ? '确认并开始整理' : '确认执行') }}</button>
     <button class="business-card-link" type="button" @click="emit('viewHistory', plan.id)"><span>查看版本历史</span><ArrowUpRight :size="15" /></button>
   </article>
 </template>

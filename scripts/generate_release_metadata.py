@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import argparse
 import importlib.metadata
 import json
 import tomllib
@@ -9,7 +10,6 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE = ROOT / "artifacts" / "release"
 
 
 def digest(path: Path) -> str:
@@ -50,7 +50,13 @@ def node_packages() -> list[dict[str, object]]:
 
 
 def main() -> int:
-    RELEASE.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--release-directory", type=Path, default=ROOT / "artifacts" / "release")
+    args = parser.parse_args()
+    release = args.release_directory.resolve()
+    if not release.is_relative_to(ROOT / "artifacts"):
+        raise SystemExit("release directory must be inside artifacts")
+    release.mkdir(parents=True, exist_ok=True)
     sbom = {
         "format": "Guixu dependency inventory 1",
         "generated_at": datetime.now(UTC).isoformat(),
@@ -59,13 +65,13 @@ def main() -> int:
         "node_lock": node_packages(),
         "notes": ["License fields come from installed metadata or lock files and require human release review."],
     }
-    (RELEASE / "SBOM.json").write_text(json.dumps(sbom, ensure_ascii=False, indent=2), "utf-8")
-    candidates = [path for path in RELEASE.iterdir() if path.is_file() and path.name != "SHA256SUMS.txt"]
-    onedir = RELEASE / "Guixu-0.1.0"
+    (release / "SBOM.json").write_text(json.dumps(sbom, ensure_ascii=False, indent=2), "utf-8")
+    candidates = [path for path in release.iterdir() if path.is_file() and path.name != "SHA256SUMS.txt"]
+    onedir = release / "Guixu-0.1.0"
     if onedir.is_dir():
         candidates.extend(path for path in onedir.rglob("*") if path.is_file())
-    lines = [f"{digest(path)}  {path.relative_to(RELEASE).as_posix()}" for path in sorted(candidates)]
-    (RELEASE / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", "utf-8")
+    lines = [f"{digest(path)}  {path.relative_to(release).as_posix()}" for path in sorted(candidates)]
+    (release / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", "utf-8")
     return 0
 
 

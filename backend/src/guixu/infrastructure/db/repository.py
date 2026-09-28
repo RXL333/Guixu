@@ -70,7 +70,7 @@ class TaskRepository:
     def list(self, view: str = "active") -> list[dict[str, Any]]:
         if view not in {"active", "deleted", "all"}:
             raise ValueError("TASK_VIEW_INVALID")
-        where = {"active": "WHERE t.deleted_at IS NULL", "deleted": "WHERE t.deleted_at IS NOT NULL", "all": ""}[view]
+        where = {"active": "WHERE t.deleted_at IS NULL", "deleted": "WHERE t.deleted_at IS NOT NULL AND COALESCE(t.deletion_source,'') != 'trash_cleared'", "all": ""}[view]
         with self.database.engine.connect() as connection:
             rows = connection.execute(text(f"""
                 SELECT t.id,t.name,t.status,t.phase,t.revision,t.settings_json,t.counters_json,
@@ -197,6 +197,36 @@ class TaskRepository:
                 text("DELETE FROM tasks WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
                 {"ids": unique_ids},
             )
+
+    def clear_deleted(self) -> dict[str, int]:
+        """Clear the trash view, retaining tasks needed by plans or conversations."""
+        with self.database.begin() as connection:
+            ids = [row[0] for row in connection.execute(text("""
+                SELECT id FROM tasks
+                WHERE deleted_at IS NOT NULL AND COALESCE(deletion_source,'') != 'trash_cleared'
+            """))]
+            if not ids:
+                return {"permanently_deleted_tasks": 0, "retained_safety_records": 0}
+            protected = {
+                row[0] for row in connection.execute(text("""
+                    SELECT DISTINCT t.id FROM tasks t
+                    WHERE t.id IN :ids AND (
+                        EXISTS(SELECT 1 FROM plans p WHERE p.task_id=t.id)
+                        OR EXISTS(SELECT 1 FROM conversation_files cf JOIN files f ON f.id=cf.file_id WHERE f.task_id=t.id)
+                    )
+                """).bindparams(bindparam("ids", expanding=True)), {"ids": ids})
+            }
+            removable = [task_id for task_id in ids if task_id not in protected]
+            if removable:
+                connection.execute(text("DELETE FROM tasks WHERE id IN :ids").bindparams(
+                    bindparam("ids", expanding=True)), {"ids": removable})
+            if protected:
+                connection.execute(text("""
+                    UPDATE tasks SET deletion_source='trash_cleared',revision=revision+1,updated_at=:now
+                    WHERE id IN :ids
+                """).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": list(protected), "now": utc_now()})
+            return {"permanently_deleted_tasks": len(removable), "retained_safety_records": len(protected)}
 
     def begin_scan(self, task_id: str, expected_revision: int) -> int:
         now = utc_now()

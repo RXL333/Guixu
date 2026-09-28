@@ -66,7 +66,11 @@ class AIFileClassifier:
         # Each visual response must include an independent description and
         # evidence for every image. Keep the request bounded so a long batch
         # cannot invalidate the entire first analysis at once.
-        batch_size = min(configured_batch, 4) if has_images else configured_batch
+        # Small local vision models can return a category for a multi-image
+        # request while omitting the required description for one image. Keep
+        # each local image and its file ID in one request. Cloud models retain
+        # the bounded four-image batch for throughput.
+        batch_size = (1 if model.get("provider") == "qwen_local" else min(configured_batch, 4)) if has_images else configured_batch
         for batch_index, start in enumerate(range(0, len(prepared), batch_size), 1):
             batch = prepared[start:start + batch_size]
             event = {"model_profile_id": task["model_profile_id"], "taxonomy_id": taxonomy["taxonomy_id"],

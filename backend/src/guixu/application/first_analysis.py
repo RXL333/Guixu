@@ -21,7 +21,7 @@ from guixu.application.privacy import PrivacyService
 from guixu.application.tasks import TaskService
 from guixu.application.taxonomies import TaxonomyService
 from guixu.domain.privacy import PrivacyError, scope_hash
-from guixu.domain.settings import TaskSettings, load_default_settings
+from guixu.domain.settings import validate_stored_settings
 from guixu.infrastructure.db.conversation_repository import ConversationRepository
 from guixu.infrastructure.db.database import Database, utc_now
 from guixu.infrastructure.db.operation_journal import SqliteOperationJournal
@@ -70,6 +70,18 @@ class FirstOrganizationAnalysisService:
         self.operations = operations
         self.journal = journal
 
+    def _attach_scanned_files(self, conversation_id: str, task_id: str) -> int:
+        file_ids: list[str] = []
+        offset = 0
+        while True:
+            page, total = self.repository.list_files(task_id, limit=500, offset=offset)
+            file_ids.extend(str(item["id"]) for item in page)
+            offset += len(page)
+            if not page or offset >= total:
+                break
+        self.conversations.attach_files(conversation_id, file_ids, use_scanned_identity=True)
+        return total
+
     def run(
         self,
         conversation_id: str,
@@ -108,7 +120,8 @@ class FirstOrganizationAnalysisService:
         except GrantError as exc:
             raise FirstAnalysisError("SCOPE_AUTHORIZATION_REQUIRED", "当前目录授权已失效，请重新选择文件夹。") from exc
 
-        settings = load_default_settings(self.project_root).model_copy(update={
+        saved_settings, _ = self.database.get_json_setting("default_settings")
+        settings = validate_stored_settings(saved_settings).model_copy(update={
             "operation_mode": "preview_move",
             "classification_source": "auto_plan",
             "max_depth": int(context.get("max_directory_depth") or 2),
@@ -140,10 +153,7 @@ class FirstOrganizationAnalysisService:
         except Exception as exc:
             raise FirstAnalysisError("SCAN_FAILED", "授权目录扫描失败，请检查目录是否仍然可用。") from exc
 
-        files, total = self.repository.list_files(task["id"], limit=500, offset=0)
-        self.conversations.attach_files(
-            conversation_id, [str(item["id"]) for item in files], use_scanned_identity=True
-        )
+        total = self._attach_scanned_files(conversation_id, task["id"])
         eligible_modalities = self.repository.eligible_modalities(task["id"])
         if not eligible_modalities:
             raise FirstAnalysisError("NO_SUPPORTED_FILES", "授权目录中没有可分析的受支持文件。", {"file_count": total})
