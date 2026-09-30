@@ -178,3 +178,29 @@ def test_op14_mid_group_failure_is_reported_as_partial_not_atomic_success(tmp_pa
     FileOperationExecutor(journal).execute(plan, plan.plan_hash)
     assert [journal.state(item.operation_id) for item in plan.operations] == ["COMMITTED", "FAILED"]
     assert not first.exists() and second.exists()
+
+
+def test_forged_mtime_still_fails_the_pre_move_identity_check(tmp_path: Path):
+    """The executor re-hashes, so a forged mtime cannot smuggle a file past a move.
+
+    Reconciliation is allowed to trust an unchanged size and mtime, because it only
+    drives the on-screen state. This is the guarantee that makes that acceptable: the
+    content is verified again here, at the last possible moment, by file identity and
+    not by timestamp.
+    """
+    from guixu.infrastructure.filesystem.identity import identity_matches, read_identity
+
+    source_dir, target = tmp_path / "source", tmp_path / "target"
+    source_dir.mkdir(); target.mkdir()
+    path = source_dir / "clip.mp4"
+    path.write_text("original-bytes", encoding="utf-8")
+    expected = read_identity(path)
+
+    # Rewrite the content in place, then put size and mtime back exactly as they were.
+    path.write_text("modified-bytes", encoding="utf-8")
+    os.utime(path, ns=(expected.mtime_ns, expected.mtime_ns))
+    assert path.stat().st_size == expected.size_bytes
+    assert path.stat().st_mtime_ns == expected.mtime_ns
+
+    assert identity_matches(path, expected) is False
+    assert sha256_file(path) != expected.sha256

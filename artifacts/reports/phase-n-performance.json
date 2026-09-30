@@ -1,63 +1,226 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "test_type": "REAL_FILESYSTEM_PERFORMANCE",
   "environment": {
     "platform": "Windows",
     "logical_cpu_count": 32,
     "memory_total_bytes": 34024747008
   },
+  "method": {
+    "repeat": 5,
+    "cold_database_per_repeat": true,
+    "percentiles": "nearest-rank over the per-repeat samples",
+    "caveat": "p95 equals the maximum when fewer than 20 samples are taken; raise --repeat before quoting p95 as a service level."
+  },
   "results": [
     {
       "requested_files": 500,
       "observed_files": 501,
-      "scan_seconds": 0.09417699999175966,
-      "db_persist_seconds": 0.040918300044722855,
-      "conversation_attach_seconds": 0.13114790001418442,
-      "conversation_open_seconds": 0.0026582999853417277,
-      "workspace_projection_seconds": 0.031041799928061664,
-      "workspace_reconcile_seconds": 0.320104599930346,
-      "cache_lookup_total_seconds": 0.02906009997241199,
-      "cache_lookup_median_ms": 0.05609996151179075,
-      "rss_before_bytes": 87109632,
-      "rss_after_bytes": 99209216,
-      "rss_delta_bytes": 12099584,
-      "sqlite_integrity_check": "ok"
+      "repeat": 5,
+      "stages": {
+        "scan_seconds": {
+          "samples": 5,
+          "min": 0.0248,
+          "p50": 0.0253,
+          "p95": 0.0343,
+          "max": 0.0343
+        },
+        "db_persist_seconds": {
+          "samples": 5,
+          "min": 0.0394,
+          "p50": 0.0401,
+          "p95": 0.0439,
+          "max": 0.0439
+        },
+        "conversation_attach_seconds": {
+          "samples": 5,
+          "min": 0.2198,
+          "p50": 0.2256,
+          "p95": 0.6547,
+          "max": 0.6547
+        },
+        "conversation_open_seconds": {
+          "samples": 5,
+          "min": 0.0027,
+          "p50": 0.0027,
+          "p95": 0.003,
+          "max": 0.003
+        },
+        "workspace_projection_seconds": {
+          "samples": 5,
+          "min": 0.0088,
+          "p50": 0.0093,
+          "p95": 0.0348,
+          "max": 0.0348
+        },
+        "workspace_reconcile_seconds": {
+          "samples": 5,
+          "min": 0.0496,
+          "p50": 0.0523,
+          "p95": 0.0851,
+          "max": 0.0851
+        },
+        "cache_lookup_mean_ms": {
+          "samples": 5,
+          "min": 0.0578,
+          "p50": 0.06,
+          "p95": 0.0853,
+          "max": 0.0853
+        }
+      },
+      "slowest_stage": "conversation_attach_seconds",
+      "rss_delta_bytes_max": 13684736,
+      "reconciled_payload_bytes": 15928,
+      "mean_file_bytes": 31,
+      "sqlite_integrity_check": "ok",
+      "sample_data_dirs": [
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\500-r0-fed4fejx",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\500-r1-ewl30vcb",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\500-r2-n9tffjn1",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\500-r3-4ff6bfly",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\500-r4-ns0c7zko"
+      ]
     },
     {
       "requested_files": 1000,
       "observed_files": 1001,
-      "scan_seconds": 0.21685909992083907,
-      "db_persist_seconds": 0.07918050000444055,
-      "conversation_attach_seconds": 0.2559981000376865,
-      "conversation_open_seconds": 0.004855399951338768,
-      "workspace_projection_seconds": 0.061300600063987076,
-      "workspace_reconcile_seconds": 0.6443242999957874,
-      "cache_lookup_total_seconds": 0.05742630024906248,
-      "cache_lookup_median_ms": 0.055699958465993404,
-      "rss_before_bytes": 100343808,
-      "rss_after_bytes": 108560384,
-      "rss_delta_bytes": 8216576,
-      "sqlite_integrity_check": "ok"
+      "repeat": 5,
+      "stages": {
+        "scan_seconds": {
+          "samples": 5,
+          "min": 0.0536,
+          "p50": 0.0673,
+          "p95": 0.0965,
+          "max": 0.0965
+        },
+        "db_persist_seconds": {
+          "samples": 5,
+          "min": 0.0851,
+          "p50": 0.0995,
+          "p95": 0.1273,
+          "max": 0.1273
+        },
+        "conversation_attach_seconds": {
+          "samples": 5,
+          "min": 0.5569,
+          "p50": 0.631,
+          "p95": 1.4443,
+          "max": 1.4443
+        },
+        "conversation_open_seconds": {
+          "samples": 5,
+          "min": 0.0051,
+          "p50": 0.0056,
+          "p95": 0.0079,
+          "max": 0.0079
+        },
+        "workspace_projection_seconds": {
+          "samples": 5,
+          "min": 0.0169,
+          "p50": 0.0184,
+          "p95": 0.0249,
+          "max": 0.0249
+        },
+        "workspace_reconcile_seconds": {
+          "samples": 5,
+          "min": 0.1057,
+          "p50": 0.1085,
+          "p95": 0.1414,
+          "max": 0.1414
+        },
+        "cache_lookup_mean_ms": {
+          "samples": 5,
+          "min": 0.0644,
+          "p50": 0.0686,
+          "p95": 0.0862,
+          "max": 0.0862
+        }
+      },
+      "slowest_stage": "conversation_attach_seconds",
+      "rss_delta_bytes_max": 9224192,
+      "reconciled_payload_bytes": 32929,
+      "mean_file_bytes": 32,
+      "sqlite_integrity_check": "ok",
+      "sample_data_dirs": [
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\1000-r0-1gr_rk4e",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\1000-r1-jbasnmk2",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\1000-r2-rhl5cdff",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\1000-r3-1mswtzh_",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\1000-r4-hhkq2fcm"
+      ]
     },
     {
       "requested_files": 5000,
       "observed_files": 5001,
-      "scan_seconds": 0.9329336999217048,
-      "db_persist_seconds": 0.41108340001665056,
-      "conversation_attach_seconds": 1.2980001999530941,
-      "conversation_open_seconds": 0.041638200054876506,
-      "workspace_projection_seconds": 0.31955299992114305,
-      "workspace_reconcile_seconds": 3.4093449999345466,
-      "cache_lookup_total_seconds": 0.283560200012289,
-      "cache_lookup_median_ms": 0.05549995694309473,
-      "rss_before_bytes": 106758144,
-      "rss_after_bytes": 150302720,
-      "rss_delta_bytes": 43544576,
-      "sqlite_integrity_check": "ok"
+      "repeat": 5,
+      "stages": {
+        "scan_seconds": {
+          "samples": 5,
+          "min": 0.2676,
+          "p50": 0.2962,
+          "p95": 0.3793,
+          "max": 0.3793
+        },
+        "db_persist_seconds": {
+          "samples": 5,
+          "min": 0.4812,
+          "p50": 0.5056,
+          "p95": 0.6459,
+          "max": 0.6459
+        },
+        "conversation_attach_seconds": {
+          "samples": 5,
+          "min": 2.8811,
+          "p50": 3.1326,
+          "p95": 7.1728,
+          "max": 7.1728
+        },
+        "conversation_open_seconds": {
+          "samples": 5,
+          "min": 0.0475,
+          "p50": 0.0654,
+          "p95": 0.0778,
+          "max": 0.0778
+        },
+        "workspace_projection_seconds": {
+          "samples": 5,
+          "min": 0.1035,
+          "p50": 0.1349,
+          "p95": 0.1536,
+          "max": 0.1536
+        },
+        "workspace_reconcile_seconds": {
+          "samples": 5,
+          "min": 0.7156,
+          "p50": 0.7341,
+          "p95": 0.8758,
+          "max": 0.8758
+        },
+        "cache_lookup_mean_ms": {
+          "samples": 5,
+          "min": 0.0667,
+          "p50": 0.0704,
+          "p95": 0.0823,
+          "max": 0.0823
+        }
+      },
+      "slowest_stage": "conversation_attach_seconds",
+      "rss_delta_bytes_max": 48721920,
+      "reconciled_payload_bytes": 168929,
+      "mean_file_bytes": 33,
+      "sqlite_integrity_check": "ok",
+      "sample_data_dirs": [
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\5000-r0-tnes2waq",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\5000-r1-o1jd_oif",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\5000-r2-vh0d47wb",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\5000-r3-9ekpy5of",
+        "D:\\Projects\\D_vibe_coding\\Guixu\\artifacts\\test-workspaces\\phase-n-performance\\5000-r4-eti2svf_"
+      ]
     }
   ],
   "limitations": [
     "Backend storage and reconciliation benchmark; desktop WebView render/FPS is not measured.",
-    "Generated small text fixtures do not represent large-media decode cost."
+    "Fixtures are small text files, so timings measure per-file overhead, not per-byte cost. `mean_file_bytes` is recorded per size so the gap is explicit; parsing and vision decode of real media are not represented at all.",
+    "Numbers are from one machine on one filesystem and are not a cross-platform guarantee."
   ]
 }

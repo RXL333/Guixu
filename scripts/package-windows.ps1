@@ -27,6 +27,21 @@ if (-not $runningOnWindows -or -not [Environment]::Is64BitOperatingSystem) {
 
 New-Item -ItemType Directory -Force -Path $releaseRoot, $workRoot | Out-Null
 
+# The release version has one source of truth: backend/pyproject.toml. It used
+# to be typed into this script and into packaging/Guixu.spec as well, and those
+# copies silently drifted - a 0.9.0 release produced Guixu-0.1.0 folders and
+# archives. The build still exited 0, so nothing flagged it. Fail loudly if the
+# declared version cannot be read rather than falling back to a guess.
+$versionFile = Join-Path $backendRoot 'pyproject.toml'
+if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
+    throw "Cannot read the release version: $versionFile is missing"
+}
+$declaredVersion = ([regex]::Match((Get-Content -Raw -LiteralPath $versionFile), '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
+if (-not $declaredVersion) {
+    throw "backend/pyproject.toml does not declare a version"
+}
+Write-Output "Release version: $declaredVersion"
+
 Push-Location $frontendRoot
 try {
     npm.cmd ci
@@ -53,7 +68,7 @@ try {
     Pop-Location
 }
 
-$appRoot = Join-Path $releaseRoot 'Guixu-0.1.0'
+$appRoot = Join-Path $releaseRoot "Guixu-$declaredVersion"
 $appExe = Join-Path $appRoot 'Guixu.exe'
 if (-not (Test-Path -LiteralPath $appExe -PathType Leaf)) {
     throw "PyInstaller did not produce $appExe"
@@ -83,7 +98,7 @@ if ($workerProcess.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $workerOutput
     throw 'Frozen worker entry failed.'
 }
 
-$portable = Join-Path $releaseRoot 'Guixu-portable-x64-0.1.0.zip'
+$portable = Join-Path $releaseRoot "Guixu-portable-x64-$declaredVersion.zip"
 Compress-Archive -Path $appRoot -DestinationPath $portable -CompressionLevel Optimal -Force
 
 if (-not $SkipInstaller) {

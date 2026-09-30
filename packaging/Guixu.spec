@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
@@ -5,6 +6,24 @@ from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(SPECPATH).parent.resolve()
 BACKEND = ROOT / "backend"
+
+
+def _version() -> str:
+    """The single source of truth is `backend/pyproject.toml`.
+
+    The version used to be typed into this file as well as the packaging
+    script, and the two drifted apart: a release tagged 0.9.0 shipped an
+    artifact whose folder and archive were both still called `Guixu-0.1.0`.
+    Nothing caught it, because the build genuinely succeeds - it just labels
+    the output with a stale number. Reading the one declared version removes
+    the second copy that can drift.
+    """
+    declared = (BACKEND / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', declared, re.MULTILINE)
+    if not match:
+        raise RuntimeError("backend/pyproject.toml does not declare a version")
+    return match.group(1)
+
 
 datas = [
     (str(ROOT / "contracts"), "contracts"),
@@ -63,5 +82,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="Guixu-0.1.0",
+    name=f"Guixu-{_version()}",
 )

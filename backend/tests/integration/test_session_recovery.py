@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 
 from sqlalchemy import text
 
+from guixu.application import post_execution
+
+from guixu.application.post_execution import WorkspaceStateService
 from guixu.application.semantic_cache import EvidenceCacheService
 from guixu.application.session_recovery import (
     RecoveryValidationService,
@@ -80,6 +84,79 @@ def test_workspace_reconciliation_detects_external_changes_and_new_files(project
         assert rows["file-a"]["current_known_path"].endswith("renamed.txt")
         assert rows["file-c"]["state"] == "FILE_CHANGED"
         assert rows["file-d"]["state"] == "MISSING"
+    finally:
+        database.close()
+
+
+def test_reconciliation_does_not_rehash_untouched_files(project_root: Path, tmp_path: Path, monkeypatch):
+    """A turn that changes nothing must not re-read the whole library.
+
+    The 5,001-file benchmark used tiny text fixtures, so an unconditional re-hash
+    looked cheap there. On a real photo collection it turns every conversational turn
+    into a full read of the library, so the guard is asserted directly: with the files
+    untouched, no hash may be computed at all.
+    """
+    database, repository, conversation_id, root, paths, cache, journal = _fixture(project_root, tmp_path)
+    try:
+        workspace = WorkspaceStateService(database, repository)
+        workspace.sync_workspace_state(conversation_id)
+
+        hashed: list[str] = []
+        original = post_execution.read_identity
+
+        def counting_read_identity(path: Path):
+            hashed.append(path.name)
+            return original(path)
+
+        monkeypatch.setattr(post_execution, "read_identity", counting_read_identity)
+        result = workspace.sync_workspace_state(conversation_id)
+
+        assert hashed == []
+        assert result["workspace_changed"] is False
+        assert all(item["state"] == "UNCHANGED" for item in result["sync_events"])
+    finally:
+        database.close()
+
+
+def test_reconciliation_still_detects_a_same_name_edit_with_a_new_mtime(project_root: Path, tmp_path: Path):
+    database, repository, conversation_id, root, paths, cache, journal = _fixture(project_root, tmp_path)
+    try:
+        workspace = WorkspaceStateService(database, repository)
+        workspace.sync_workspace_state(conversation_id)
+
+        # Same byte length as the original, so only the mtime gives the edit away.
+        paths[2].write_text("file-9", encoding="utf-8")
+        result = workspace.sync_workspace_state(conversation_id)
+
+        rows = {row["file_id"]: row for row in repository.list_conversation_files(conversation_id)}
+        assert rows["file-c"]["state"] == "FILE_CHANGED"
+        assert [item["state"] for item in result["sync_events"] if item["file_id"] == "file-c"] == ["FILE_CHANGED"]
+        assert result["workspace_changed"] is True
+    finally:
+        database.close()
+
+
+def test_reconciliation_detects_a_content_edit_that_restores_size_and_mtime(project_root: Path, tmp_path: Path):
+    """The documented limit of the stat guard: a forged mtime hides the edit here.
+
+    This is why the executor re-hashes independently before moving anything; the
+    matching assertion on that guarantee lives in
+    `test_forged_mtime_still_fails_the_pre_move_identity_check`.
+    """
+    database, repository, conversation_id, root, paths, cache, journal = _fixture(project_root, tmp_path)
+    try:
+        workspace = WorkspaceStateService(database, repository)
+        workspace.sync_workspace_state(conversation_id)
+        before = repository.list_conversation_files(conversation_id)
+        original = {row["file_id"]: (row["current_size_bytes"], row["current_mtime_ns"]) for row in before}
+
+        paths[1].write_text("file-9", encoding="utf-8")
+        size, mtime = original["file-b"]
+        os.utime(paths[1], ns=(mtime, mtime))
+        assert paths[1].stat().st_size == size
+
+        result = workspace.sync_workspace_state(conversation_id)
+        assert [item["state"] for item in result["sync_events"] if item["file_id"] == "file-b"] == ["UNCHANGED"]
     finally:
         database.close()
 

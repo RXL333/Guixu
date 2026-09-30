@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/vue'
+import { h } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const model = {
@@ -6,6 +7,11 @@ const model = {
   base_url: 'http://127.0.0.1:8000/v1', model_id: 'qwen-test', trust_scope: 'loopback',
   options: {}, enabled: true, revision: 3, has_secret: false, capabilities: {},
 }
+
+// The page links to the conversations route. Without a router installed, Vue logs a
+// "Failed to resolve component: RouterLink" warning on every render, which buries real
+// warnings in the test output; stub it so the suite stays quiet.
+const renderOptions = { global: { stubs: { RouterLink: () => h('a') } } }
 
 const mocks = vi.hoisted(() => ({
   models: vi.fn(),
@@ -25,7 +31,7 @@ describe('model connection deletion', () => {
   it('requires confirmation, sends the current revision, then removes the card', async () => {
     mocks.models.mockResolvedValueOnce([model]).mockResolvedValueOnce([])
     mocks.deleteModel.mockResolvedValue({ disabled: true })
-    const view = render(ModelsPage)
+    const view = render(ModelsPage, renderOptions)
     await view.findByText('本地测试连接')
 
     await fireEvent.click(view.getByRole('button', { name: '删除连接' }))
@@ -45,7 +51,7 @@ describe('model connection deletion', () => {
           verified: false, probe_error: 'MODEL_REQUEST_REJECTED: invalid_request_error: unsupported image' },
       },
     }])
-    const view = render(ModelsPage)
+    const view = render(ModelsPage, renderOptions)
     await view.findByText('文本：', { exact: false })
     expect(view.getByText((_, element) => element?.tagName === 'P' && element.textContent === '文本：已验证')).toBeTruthy()
     expect(view.getByText((_, element) => element?.tagName === 'P' && element.textContent === '视觉：失败')).toBeTruthy()
@@ -61,7 +67,7 @@ describe('model connection deletion', () => {
           vision: true, vision_verified: true, probe_status: 'success', probe_error: null },
       },
     }])
-    const view = render(ModelsPage)
+    const view = render(ModelsPage, renderOptions)
     expect(await view.findByText((_, element) => element?.tagName === 'P' && element.textContent === '视觉：已验证')).toBeTruthy()
     expect(view.queryByText('视觉失败原因：', { exact: false })).toBeNull()
   })

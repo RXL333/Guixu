@@ -108,8 +108,22 @@ class WorkspaceStateService:
                     persisted_state = "MISSING"
                     identity = None
                 elif observed_path.is_file():
-                    identity = read_identity(observed_path)
-                    if item.get("current_fingerprint") and identity.sha256 != item["current_fingerprint"]:
+                    # Same `quick_same` guard the startup reconciliation already uses: an
+                    # unchanged size and mtime is the filesystem's own statement that the
+                    # file was not rewritten, so the stored fingerprint stands in for a
+                    # re-read. Hashing unconditionally made every conversational turn cost
+                    # a full read of the library — invisible on the benchmark's tiny text
+                    # fixtures, but gigabytes per message on a real photo collection. The
+                    # executor still re-hashes the content before every move, so a forged
+                    # mtime still cannot reach a file operation.
+                    stat = observed_path.stat()
+                    quick_same = bool(item.get("current_fingerprint")) and (
+                        item.get("current_size_bytes") == stat.st_size
+                        and item.get("current_mtime_ns") == stat.st_mtime_ns
+                    )
+                    identity = None if quick_same else read_identity(observed_path)
+                    if identity is not None and item.get("current_fingerprint") \
+                            and identity.sha256 != item["current_fingerprint"]:
                         external_state = "FILE_CHANGED"
                         persisted_state = "FILE_CHANGED"
                     else:

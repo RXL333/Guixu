@@ -71,3 +71,26 @@
 - 问题：同一会话再次扫描时，新 Task 给同一物理路径分配新文件 ID，历史 Conversation 引用必须保留，但当前工作区不能重复计数。
 - 方案：数据库保留所有历史 ID 与计划日志；当前文件视图和全局工作区按规范化路径只选最近关联的记录。明确指定旧 ID 的历史引用仍可查。首次分析按 500 条分页完整关联，不截断当前文件集合。
 - 影响：新方案计数和文件名解析以当前唯一文件为准；旧版已经写入的历史方案摘要不篡改。跨任务的永久 canonical ID 仍是后续结构性工作。
+
+## 2026-09-29｜会话轮次的全库重哈希
+
+- 问题：`WorkspaceStateService.sync_workspace_state` 在每一轮对话都对会话内每个文件调用 `read_identity`，即完整重算 SHA-256。5,001 项基准用的是极小文本 fixture，测得 p95 3.667 s 看似可接受；真实照片库按每张 4 MB 计，每轮要重读约 20 GB，而该方法在用户每次发送消息时都会执行。
+- 证据：`backend/tests/integration/test_session_recovery.py::test_reconciliation_does_not_rehash_untouched_files` 断言未变动文件一次哈希都不发生；`::test_reconciliation_still_detects_a_same_name_edit_with_a_new_mtime` 断言同长度改写仍被识别为 `FILE_CHANGED`。
+- 方案：沿用 `session_recovery.WorkspaceReconciliationService` 已有的 `quick_same` 判据——size 与 mtime_ns 同时未变即视为未重写，复用已存指纹而不重读。执行器不受影响：移动前仍以 `identity_matches(..., require_hash=True)` 重新校验完整内容。
+- 放弃：不引入 mtime 阈值或周期性全量校验（前者对粗粒度时间戳文件系统不可靠，后者增加复杂度却不改变边界）；不放宽执行前的内容校验。
+- 影响：已知取舍——伪造 mtime 的等长改写不会被工作区核对标为 `FILE_CHANGED`，但仍会在执行前被哈希校验拦下，由 `backend/tests/safety/test_executor.py::test_forged_mtime_still_fails_the_pre_move_identity_check` 断言。`scripts/run_phase_n_performance.py` 增记 `mean_file_bytes`，使"fixture 不代表真实负载"成为报告里的数字而非口头说明。
+
+## 2026-09-30｜验收门禁的范围裁剪与「未经分布的计时不作为证据」
+
+- 问题：验收矩阵累计了大量 `NOT_TESTED`，且性能数字来自单次采样。两者叠加的结果是「测不完」被当成「不能发」，而已写入的数字又不可复现——矩阵里「5,000 项 attach 1.298 s」重测的真实 p50 是 3.13 s，高一倍以上。
+- 方案：在 `RELEASE_ACCEPTANCE.md` 增设「1.0 门禁范围」，显式区分**必须通过**（S/C/D/P/U/B 链与四类模态、干净 Windows）与**明确放弃**（真实供应商故障注入、P05–P07 滚动性能、U09/U10 全量可访问性、代码签名、非 Windows），放弃项连同理由与替代约束写入 `POST_1_0_BACKLOG.md`。裁剪不等于删除：矩阵保留原始状态行，也不得把放弃项写成 PASS。
+- 证据纪律：`scripts/run_phase_n_performance.py` 重写为多次重复 + nearest-rank 分布，`method.caveat` 写明「样本数低于 20 时 p95 退化为最大值」；脚本不再删除任何轮次目录（`shutil.rmtree` 会被安全分类器拦下，且基准证据本就不该可被抹除），每轮一个独立 `mkdtemp`。P01–P03 三行整体替换为 p50/p95。
+- 自我更正：初版把「PDF/Office 内容解析」列为放弃项，前提是"未实现"。该前提错误——`infrastructure/parsers/documents.py` 已实现 pypdf / python-docx / python-pptx / openpyxl 与本地 RapidOCR 且有回归覆盖。已实现且已有测试的功能不能靠"声明不支持"卸责，两项移回门禁，矩阵行由 `NOT_TESTED` 改为 `PARTIAL` 并写明真实缺口是**模型端到端**而非解析能力。已在两份文档加注日期更正。
+- 影响：判定规则由含糊的"关键项"改为四条可逐条核对的编号条件。裁剪只影响**门禁范围**，不影响 `AGENTS.md` 的硬边界——S 链不参与裁剪，PARTIAL 不算通过。
+
+## 2026-09-30｜CI 按 scope 拆分，verify.py 接受多个 scope
+
+- 问题：`.github/workflows/ci.yml` 的 backend job 执行 `python scripts/verify.py all`，而 `all` 包含 `ui` scope——后者会调用 npm。该 job 从不执行 `npm ci`，因此在 CI 上必然失败，同时又与独立的 frontend job 重复。
+- 方案：`verify.py` 的 `scope` 参数改为 `nargs="+"`，可一次运行多个 scope（单个 scope 与 `all` 的行为不变），backend job 只跑七个后端 scope，UI 归 frontend job。另加 `performance` job，用 `uv run --project backend --all-extras` 在仓库根目录执行基准并上传分布 JSON。
+- 取舍：perf job 只跑 500/1000 两个规模、只在 push 与手动触发时运行。GitHub runner 不是验收矩阵引用的那台机器，其数字只作为曲线形态的回归哨位，不作为 `RELEASE_ACCEPTANCE.md` 的数据来源——文档里已写明这一点。
+- 未纳入：Playwright UI 用例。仓库尚无 Playwright 依赖，引入它会下载浏览器并新增前端依赖，属于需要用户决定的事项，未擅自添加。

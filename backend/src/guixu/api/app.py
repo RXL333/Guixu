@@ -81,7 +81,6 @@ from guixu.infrastructure.filesystem.grants import GrantError, SourceRegistry
 from guixu.infrastructure.resources.components import ComponentError, ComponentManager, status_dict
 from guixu.infrastructure.models.credentials import CredentialError, WindowsCredentialStore
 from guixu.infrastructure.models.transport import ModelTransportError
-from guixu.infrastructure.models.transport import DeepSeekAdapter, QwenLocalAdapter
 from guixu.domain.privacy import PrivacyError
 
 
@@ -685,8 +684,7 @@ def create_app(
                 messages.append({"role": "user", "content": parts})
             else:
                 messages.append({"role": "user", "content": model_input})
-            adapter = DeepSeekAdapter(models.transport) if profile["provider"] == "deepseek" else QwenLocalAdapter(models.transport)
-            result = adapter.chat(profile, messages, models.secrets.get(profile_id), max_attempts=1)
+            result = model_gateway.conversation_chat(profile=profile, messages=messages, conversation_id=conversation_id)
             if not result.content.strip():
                 raise ModelTransportError("MODEL_EMPTY_RESPONSE")
             user_message = conversations.append_message(conversation_id, "USER", payload.content.strip(),

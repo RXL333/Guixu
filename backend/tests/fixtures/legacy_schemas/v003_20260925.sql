@@ -131,9 +131,8 @@ CREATE TABLE categories (
 CREATE TABLE model_calls (
  id TEXT PRIMARY KEY,
  task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
- conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
  provider_profile_id TEXT REFERENCES model_profiles(id) ON DELETE SET NULL,
- purpose TEXT NOT NULL CHECK(purpose IN ('probe','policy','caption','planning','classification','repair','chat')),
+ purpose TEXT NOT NULL CHECK(purpose IN ('probe','policy','caption','planning','classification','repair')),
  model_id TEXT NOT NULL, request_hash TEXT NOT NULL,
  response_status TEXT NOT NULL CHECK(response_status IN ('ok','error','cancelled')),
  input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
@@ -527,5 +526,4 @@ CREATE INDEX idx_files_sha256 ON files(sha256);
 CREATE INDEX idx_classifications_review ON classifications(task_id,review_band);
 CREATE INDEX idx_operations_state ON operations(plan_id,state,ordinal);
 CREATE INDEX idx_model_calls_task_created ON model_calls(task_id,created_at);
-CREATE INDEX idx_model_calls_conversation_created ON model_calls(conversation_id,created_at);
 COMMIT;

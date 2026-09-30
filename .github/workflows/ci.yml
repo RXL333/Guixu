@@ -1,0 +1,120 @@
+name: ci
+
+# Continuous verification for the 1.0 release gate.
+#
+# Every command below is delegated to `python scripts/verify.py`, which is the same
+# entry point used locally and recorded in the phase reports. Nothing here invents a
+# separate check, so a green run means the documented verification really passed.
+#
+# Windows is mandatory rather than a convenience: the suite exercises Win32 handles,
+# Credential Manager, reparse points, long paths and cross-volume cancellation, none
+# of which behave the same on a Linux runner.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend regression
+    runs-on: windows-latest
+    env:
+      # Resolve strictly from backend/uv.lock; never silently rewrite it in CI.
+      UV_FROZEN: "1"
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      # Only the backend scopes. `verify.py all` also runs the `ui` scope, which
+      # shells out to npm -- this job never runs `npm ci`, so including it here
+      # would fail on a missing frontend toolchain and duplicate the job below.
+      - name: Verify
+        run: python scripts/verify.py unit safety parsers classification models reliability quality
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-output
+          path: ${{ env.TEMP }}/guixu-ci-*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  frontend:
+    name: frontend tests and production build
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:run
+
+      - name: Production build
+        run: npm run build
+
+  performance:
+    name: performance distributions
+    runs-on: windows-latest
+    # The release gate requires p50/p95, which needs repeated samples. A GitHub
+    # runner is not the machine the acceptance matrix quotes, so this job is a
+    # regression tripwire on the shape of the curve, not the source of the numbers
+    # recorded in RELEASE_ACCEPTANCE.md. Pushing to main keeps the history; the
+    # 5,000-file size is skipped here because it dominates runner time.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    env:
+      UV_FROZEN: "1"
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Benchmark
+        # `--project backend` resolves the venv without moving off the repo root,
+        # which the script needs for its report path. The plain `python` used by the
+        # backend job works only because `verify.py` reaches the venv via `uv run`.
+        run: uv run --project backend --all-extras python scripts/run_phase_n_performance.py --sizes 500 1000 --repeat 5 --report artifacts/reports/phase-n-performance.json
+
+      - name: Upload the recorded distribution
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-distribution
+          path: artifacts/reports/phase-n-performance.json
+          if-no-files-found: error
+          retention-days: 30

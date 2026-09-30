@@ -20,3 +20,4 @@ artifacts/runtime-undo-ui/
 scripts/__pycache__/
 artifacts/runtime-phase*/
 artifacts/reports/*.log
+artifacts/*.log

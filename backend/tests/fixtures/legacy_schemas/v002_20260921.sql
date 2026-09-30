@@ -8,7 +8,7 @@ CREATE TABLE schema_metadata (
  version INTEGER NOT NULL CHECK(version>=1),
  updated_at TEXT NOT NULL
 );
-INSERT INTO schema_metadata(singleton,version,updated_at) VALUES(1,11,datetime('now'));
+INSERT INTO schema_metadata(singleton,version,updated_at) VALUES(1,6,datetime('now'));
 CREATE TABLE settings (
  key TEXT PRIMARY KEY,
  value_json TEXT NOT NULL CHECK(json_valid(value_json)),
@@ -131,9 +131,8 @@ CREATE TABLE categories (
 CREATE TABLE model_calls (
  id TEXT PRIMARY KEY,
  task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
- conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
  provider_profile_id TEXT REFERENCES model_profiles(id) ON DELETE SET NULL,
- purpose TEXT NOT NULL CHECK(purpose IN ('probe','policy','caption','planning','classification','repair','chat')),
+ purpose TEXT NOT NULL CHECK(purpose IN ('probe','policy','caption','planning','classification','repair')),
  model_id TEXT NOT NULL, request_hash TEXT NOT NULL,
  response_status TEXT NOT NULL CHECK(response_status IN ('ok','error','cancelled')),
  input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
@@ -208,7 +207,7 @@ CREATE TABLE operations (
  state TEXT NOT NULL CHECK(state IN ('PLANNED','PREPARED','COPYING','TEMP_WRITTEN','VERIFIED','PUBLISHED','SOURCE_REMOVED','COMMITTED','SKIPPED','FAILED','CONFLICT','UNDO_PREPARED','UNDONE','UNDO_CONFLICT')),
  reverses_operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,
  actual_target_path TEXT, result_sha256 TEXT CHECK(result_sha256 IS NULL OR length(result_sha256)=64),
- error_code TEXT, companion_group_id TEXT, reason TEXT, updated_at TEXT NOT NULL,
+ error_code TEXT, companion_group_id TEXT, updated_at TEXT NOT NULL,
  CHECK(action <> 'recycle_copy' OR (reverses_operation_id IS NOT NULL AND expected_sha256 IS NOT NULL)),
  CHECK(action NOT IN ('move','copy') OR (target_path IS NOT NULL AND target_key IS NOT NULL AND expected_sha256 IS NOT NULL)),
  UNIQUE(plan_id,file_id), UNIQUE(plan_id,target_key), UNIQUE(plan_id,ordinal)
@@ -294,7 +293,6 @@ CREATE TABLE conversation_plan_versions (
  parent_plan_version_id TEXT REFERENCES conversation_plan_versions(id) ON DELETE RESTRICT,
  baseline_execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE RESTRICT,
  basis_context_revision INTEGER NOT NULL CHECK(basis_context_revision >= 1),
- basis_file_state_revision INTEGER NOT NULL DEFAULT 1 CHECK(basis_file_state_revision >= 1),
  source TEXT NOT NULL CHECK(source IN ('USER_REQUEST','SYSTEM','LEGACY')),
  plan_kind TEXT NOT NULL DEFAULT 'FULL' CHECK(plan_kind IN ('FULL','DELTA')),
  status TEXT NOT NULL CHECK(status IN ('DRAFT','PROPOSED','APPROVED','EXECUTED','SUPERSEDED','CANCELLED')),
@@ -341,49 +339,10 @@ CREATE TABLE conversation_execution_rounds (
  started_at TEXT, completed_at TEXT,
  summary_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(summary_json)),
  affected_file_count INTEGER NOT NULL DEFAULT 0 CHECK(affected_file_count >= 0),
- round_kind TEXT NOT NULL DEFAULT 'FORWARD' CHECK(round_kind IN ('FORWARD','UNDO')),
- target_execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE RESTRICT,
- undo_state TEXT NOT NULL DEFAULT 'NOT_UNDONE' CHECK(undo_state IN ('NOT_UNDONE','PARTIALLY_UNDONE','FULLY_UNDONE','UNDO_BLOCKED','NOT_REVERSIBLE')),
- reversible_file_count INTEGER NOT NULL DEFAULT 0 CHECK(reversible_file_count >= 0),
- undone_file_count INTEGER NOT NULL DEFAULT 0 CHECK(undone_file_count >= 0),
  created_at TEXT NOT NULL,
  UNIQUE(conversation_id,round_number)
 );
 CREATE INDEX idx_conversation_execution_rounds_conversation ON conversation_execution_rounds(conversation_id,round_number);
-
-CREATE TABLE conversation_undo_plans (
- id TEXT PRIMARY KEY,
- conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
- target_execution_round_id TEXT NOT NULL REFERENCES conversation_execution_rounds(id) ON DELETE RESTRICT,
- core_plan_id TEXT REFERENCES plans(id) ON DELETE RESTRICT,
- status TEXT NOT NULL CHECK(status IN ('WAITING_FOR_APPROVAL','APPROVED','EXECUTING','COMPLETED','PARTIALLY_COMPLETED','BLOCKED','STALE','CANCELLED','RECOVERY_REQUIRED')),
- basis_file_state_revision INTEGER NOT NULL CHECK(basis_file_state_revision >= 1),
- plan_hash TEXT NOT NULL CHECK(length(plan_hash)=64),
- requested_file_ids_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(requested_file_ids_json)),
- summary_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(summary_json)),
- approval_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(approval_json)),
- execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE SET NULL,
- created_at TEXT NOT NULL, approved_at TEXT, completed_at TEXT, cancelled_at TEXT
-);
-CREATE INDEX idx_conversation_undo_plans_conversation ON conversation_undo_plans(conversation_id,created_at DESC);
-
-CREATE TABLE conversation_undo_plan_items (
- id TEXT PRIMARY KEY,
- undo_plan_id TEXT NOT NULL REFERENCES conversation_undo_plans(id) ON DELETE RESTRICT,
- file_id TEXT NOT NULL REFERENCES files(id) ON DELETE RESTRICT,
- original_operation_id TEXT NOT NULL REFERENCES operations(id) ON DELETE RESTRICT,
- undo_operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,
- operation_kind TEXT NOT NULL CHECK(operation_kind IN ('MOVE','COPY')),
- ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
- current_source TEXT NOT NULL,
- restore_target TEXT NOT NULL,
- expected_fingerprint TEXT NOT NULL,
- status TEXT NOT NULL CHECK(status IN ('READY','COMPLETED','ALREADY_REVERSED','BLOCKED_MISSING','BLOCKED_MODIFIED','BLOCKED_EXTERNAL_MOVE','BLOCKED_TARGET_CONFLICT','BLOCKED_DEPENDENCY','BLOCKED_SCOPE','FAILED')),
- block_reason TEXT,
- created_at TEXT NOT NULL,
- UNIQUE(undo_plan_id,original_operation_id)
-);
-CREATE INDEX idx_conversation_undo_plan_items_plan ON conversation_undo_plan_items(undo_plan_id,ordinal);
 
 CREATE TABLE conversation_contexts (
  id TEXT PRIMARY KEY,
@@ -437,89 +396,6 @@ CREATE TABLE conversation_messages (
  UNIQUE(conversation_id,sequence_number)
 );
 CREATE INDEX idx_conversation_messages_order ON conversation_messages(conversation_id,sequence_number);
-
-CREATE TABLE conversation_agent_turns (
- id TEXT PRIMARY KEY,
- conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
- task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
- plan_version_id TEXT REFERENCES conversation_plan_versions(id) ON DELETE SET NULL,
- execution_round_id TEXT REFERENCES conversation_execution_rounds(id) ON DELETE SET NULL,
- retry_of_turn_id TEXT REFERENCES conversation_agent_turns(id) ON DELETE SET NULL,
- turn_kind TEXT NOT NULL CHECK(turn_kind IN ('ANALYSIS','REPLANNING','EXECUTION','OTHER')),
- status TEXT NOT NULL CHECK(status IN ('QUEUED','RUNNING','WAITING_FOR_USER','WAITING_FOR_APPROVAL','COMPLETED','FAILED','CANCELLED','INTERRUPTED')),
- request_hash TEXT,
- checkpoint_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(checkpoint_json)),
- result_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(result_json)),
- interruption_code TEXT,
- created_at TEXT NOT NULL,
- started_at TEXT,
- completed_at TEXT,
- last_heartbeat_at TEXT
-);
-CREATE INDEX idx_conversation_agent_turns_conversation ON conversation_agent_turns(conversation_id,created_at DESC);
-CREATE INDEX idx_conversation_agent_turns_recovery ON conversation_agent_turns(status,created_at);
-
-CREATE TABLE conversation_reconciliations (
- id TEXT PRIMARY KEY,
- conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
- trigger TEXT NOT NULL CHECK(trigger IN ('STARTUP','OPEN','BEFORE_OPERATION','MANUAL')),
- scope_status TEXT NOT NULL CHECK(scope_status IN ('AVAILABLE','SCOPE_UNAVAILABLE','SCOPE_RELINK_REQUIRED')),
- file_state_revision INTEGER NOT NULL CHECK(file_state_revision >= 1),
- summary_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(summary_json)),
- requires_user_action INTEGER NOT NULL DEFAULT 0 CHECK(requires_user_action IN (0,1)),
- created_at TEXT NOT NULL
-);
-CREATE INDEX idx_conversation_reconciliations_conversation ON conversation_reconciliations(conversation_id,created_at DESC);
-
-CREATE TABLE conversation_message_file_references (
- message_id TEXT NOT NULL REFERENCES conversation_messages(id) ON DELETE RESTRICT,
- conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE RESTRICT,
- file_id TEXT NOT NULL REFERENCES files(id) ON DELETE RESTRICT,
- reference_source TEXT NOT NULL CHECK(reference_source IN (
-  'UI_SELECTION','FOCUSED_FILE','RECENT_MESSAGE_REFERENCE','LATEST_PLAN_AFFECTED',
-  'LATEST_EXECUTION_AFFECTED','ACTIVE_CATEGORY_ALL','EXPLICIT_FILENAME'
- )),
- reference_role TEXT NOT NULL DEFAULT 'SUBJECT' CHECK(reference_role IN ('SUBJECT','RESULT','CONTEXT')),
- path_snapshot TEXT,
- created_at TEXT NOT NULL,
- PRIMARY KEY(message_id,file_id)
-);
-CREATE INDEX idx_message_file_references_message ON conversation_message_file_references(message_id,created_at);
-CREATE INDEX idx_message_file_references_conversation_file ON conversation_message_file_references(conversation_id,file_id);
-
--- PHASE J: one local, provenance-aware evidence ledger. `file_profiles` remains
--- the complete parser snapshot; this table is the canonical reusable evidence
--- lookup keyed by stable file id and content fingerprint.
-CREATE TABLE file_evidence (
- id TEXT PRIMARY KEY,
- file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
- content_fingerprint TEXT NOT NULL CHECK(length(content_fingerprint)=64),
- evidence_kind TEXT NOT NULL CHECK(evidence_kind IN (
-  'METADATA','TEXT_EXTRACT','OCR_TEXT','VISUAL_DESCRIPTION','DOCUMENT_SUMMARY',
-  'AUDIO_TRANSCRIPT','AUDIO_SUMMARY','VIDEO_FRAME_DESCRIPTION','VIDEO_TRANSCRIPT',
-  'VIDEO_SUMMARY','COMBINED_CONTENT_SUMMARY','USER_CONTEXT'
- )),
- evidence_schema_version INTEGER NOT NULL DEFAULT 1 CHECK(evidence_schema_version >= 1),
- payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),
- normalized_content TEXT,
- state TEXT NOT NULL DEFAULT 'VALID' CHECK(state IN ('VALID','STALE','INVALID','REFRESHING','ERROR')),
- producer_type TEXT NOT NULL CHECK(producer_type IN ('LOCAL_PARSER','LOCAL_OCR','LOCAL_MEDIA','CLOUD_MODEL','LOCAL_MODEL','USER','LEGACY')),
- producer_name TEXT NOT NULL,
- producer_version TEXT NOT NULL DEFAULT 'unknown',
- model_profile_id TEXT REFERENCES model_profiles(id) ON DELETE SET NULL,
- model_id TEXT,
- prompt_version TEXT,
- quality TEXT CHECK(quality IS NULL OR quality IN ('high','medium','low')),
- completeness_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(completeness_json)),
- created_at TEXT NOT NULL,
- last_used_at TEXT,
- invalidated_at TEXT,
- invalidation_reason TEXT,
- error_code TEXT
-);
-CREATE INDEX idx_file_evidence_lookup ON file_evidence(file_id,content_fingerprint,evidence_kind,evidence_schema_version,state);
-CREATE INDEX idx_file_evidence_fingerprint ON file_evidence(content_fingerprint,evidence_kind,state);
-CREATE INDEX idx_file_evidence_cleanup ON file_evidence(state,invalidated_at);
 CREATE INDEX idx_tasks_status_updated ON tasks(status,updated_at);
 CREATE INDEX idx_files_task_modality ON files(task_id,modality);
 CREATE INDEX idx_files_task_status ON files(task_id,scan_status);
@@ -527,5 +403,4 @@ CREATE INDEX idx_files_sha256 ON files(sha256);
 CREATE INDEX idx_classifications_review ON classifications(task_id,review_band);
 CREATE INDEX idx_operations_state ON operations(plan_id,state,ordinal);
 CREATE INDEX idx_model_calls_task_created ON model_calls(task_id,created_at);
-CREATE INDEX idx_model_calls_conversation_created ON model_calls(conversation_id,created_at);
 COMMIT;

@@ -11,7 +11,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import Connection
 
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 
 def utc_now() -> str:
@@ -63,7 +63,7 @@ class Database:
             self._migrate(int(version))
 
     def _migrate(self, version: int) -> None:
-        if version not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}:
+        if version not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}:
             raise RuntimeError("DATABASE_MIGRATION_REQUIRED")
         self.backup_for_migration()
         with self.engine.begin() as connection:
@@ -136,6 +136,70 @@ class Database:
             if version <= 10:
                 self._ensure_operation_reason_schema(connection)
                 connection.exec_driver_sql("UPDATE schema_metadata SET version=11,updated_at=? WHERE singleton=1", (utc_now(),))
+        if version <= 11:
+            # `classifications.model_call_id` references this table and SQLite cannot
+            # alter a CHECK constraint in place, so the table has to be rebuilt. That
+            # rebuild runs on its own connection with foreign keys disabled: inside a
+            # transaction `PRAGMA foreign_keys` is a no-op, and DROP TABLE would then
+            # fire ON DELETE SET NULL against the classification audit trail.
+            self._rebuild_model_calls_for_chat_audit()
+            with self.engine.begin() as connection:
+                connection.exec_driver_sql("UPDATE schema_metadata SET version=12,updated_at=? WHERE singleton=1", (utc_now(),))
+
+    def _rebuild_model_calls_for_chat_audit(self) -> None:
+        """Add the `chat` purpose and a nullable `conversation_id` to `model_calls`.
+
+        Discussion runs before any Task exists, so chat rows keep `task_id` NULL and
+        are linked to the conversation instead. Per-Task budget accounting filters on
+        `task_id` and therefore stays unaffected.
+        """
+        raw = self.engine.raw_connection()
+        try:
+            cursor = raw.cursor()
+            table = cursor.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='model_calls'"
+            ).fetchone()
+            if table is None:
+                return
+            columns = {row[1] for row in cursor.execute("PRAGMA table_info(model_calls)")}
+            if "conversation_id" in columns and "'chat'" in table[0]:
+                return
+            cursor.execute("PRAGMA foreign_keys=OFF")
+            try:
+                cursor.execute("BEGIN")
+                cursor.execute("""CREATE TABLE model_calls_v12 (
+ id TEXT PRIMARY KEY,
+ task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+ conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+ provider_profile_id TEXT REFERENCES model_profiles(id) ON DELETE SET NULL,
+ purpose TEXT NOT NULL CHECK(purpose IN ('probe','policy','caption','planning','classification','repair','chat')),
+ model_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+ response_status TEXT NOT NULL CHECK(response_status IN ('ok','error','cancelled')),
+ input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
+ output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0),
+ estimated_cost_micros INTEGER CHECK(estimated_cost_micros IS NULL OR estimated_cost_micros >= 0),
+ currency TEXT, latency_ms INTEGER NOT NULL CHECK(latency_ms >= 0),
+ error_code TEXT, created_at TEXT NOT NULL
+)""")
+                cursor.execute("""INSERT INTO model_calls_v12(id,task_id,provider_profile_id,purpose,model_id,request_hash,response_status,
+                                 input_tokens,output_tokens,estimated_cost_micros,currency,latency_ms,error_code,created_at)
+                                 SELECT id,task_id,provider_profile_id,purpose,model_id,request_hash,response_status,
+                                 input_tokens,output_tokens,estimated_cost_micros,currency,latency_ms,error_code,created_at
+                                 FROM model_calls""")
+                cursor.execute("DROP TABLE model_calls")
+                cursor.execute("ALTER TABLE model_calls_v12 RENAME TO model_calls")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_calls_task_created ON model_calls(task_id,created_at)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_model_calls_conversation_created ON model_calls(conversation_id,created_at)")
+                cursor.execute("COMMIT")
+            except Exception:
+                cursor.execute("ROLLBACK")
+                raise
+            finally:
+                cursor.execute("PRAGMA foreign_keys=ON")
+            if cursor.execute("PRAGMA foreign_key_check").fetchall():
+                raise RuntimeError("DATABASE_MIGRATION_LEFT_FOREIGN_KEY_VIOLATION")
+        finally:
+            raw.close()
 
     @staticmethod
     def _ensure_operation_reason_schema(connection: Connection) -> None:

@@ -1,6 +1,6 @@
 [project]
 name = "guixu"
-version = "0.1.0"
+version = "0.9.0"
 description = "Guixu local-first Windows file organizer"
 requires-python = ">=3.12,<3.13"
 dependencies = [

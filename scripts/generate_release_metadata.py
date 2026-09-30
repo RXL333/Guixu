@@ -4,12 +4,27 @@ import hashlib
 import argparse
 import importlib.metadata
 import json
+import re
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def declared_version() -> str:
+    """The release version, read from the one place it is declared.
+
+    This used to be typed in as a literal here as well as in the packaging
+    script and the PyInstaller spec, and the copies drifted: a 0.9.0 build
+    wrote `"version": "0.1.0"` into the SBOM that ships inside the release.
+    """
+    declared = (ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', declared, re.MULTILINE)
+    if not match:
+        raise SystemExit("backend/pyproject.toml does not declare a version")
+    return match.group(1)
 
 
 def digest(path: Path) -> str:
@@ -57,19 +72,26 @@ def main() -> int:
     if not release.is_relative_to(ROOT / "artifacts"):
         raise SystemExit("release directory must be inside artifacts")
     release.mkdir(parents=True, exist_ok=True)
+    version = declared_version()
     sbom = {
         "format": "Guixu dependency inventory 1",
         "generated_at": datetime.now(UTC).isoformat(),
-        "application": {"name": "Guixu", "version": "0.1.0"},
+        "application": {"name": "Guixu", "version": version},
         "python_lock": python_packages(),
         "node_lock": node_packages(),
         "notes": ["License fields come from installed metadata or lock files and require human release review."],
     }
     (release / "SBOM.json").write_text(json.dumps(sbom, ensure_ascii=False, indent=2), "utf-8")
     candidates = [path for path in release.iterdir() if path.is_file() and path.name != "SHA256SUMS.txt"]
-    onedir = release / "Guixu-0.1.0"
-    if onedir.is_dir():
-        candidates.extend(path for path in onedir.rglob("*") if path.is_file())
+    onedir = release / f"Guixu-{version}"
+    # A missing application directory used to be skipped silently, which
+    # produced a SHA256SUMS.txt holding only the archive and the SBOM - a
+    # release that looked checksummed but verified nothing inside the app.
+    # There is no legitimate case for generating this file without the tree it
+    # is supposed to cover, so refuse instead.
+    if not onedir.is_dir():
+        raise SystemExit(f"application directory not found: {onedir}")
+    candidates.extend(path for path in onedir.rglob("*") if path.is_file())
     lines = [f"{digest(path)}  {path.relative_to(release).as_posix()}" for path in sorted(candidates)]
     (release / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", "utf-8")
     return 0

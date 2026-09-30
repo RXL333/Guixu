@@ -610,6 +610,40 @@ class ModelGateway:
         self._record_attempts(task_id, model, purpose, "ok", response, response.attempts, response.latency_ms, None)
         return response
 
+    def conversation_chat(self, *, profile: dict[str, Any], messages: list[dict[str, Any]],
+                          conversation_id: str | None = None, max_attempts: int = 1) -> ModelResponse:
+        """Run a discussion-only model call and record it in the shared audit ledger.
+
+        Chat is the one model path that runs before any Task exists, so the audit row
+        keeps `task_id` NULL and is linked to the conversation instead. Per-Task budget
+        enforcement filters on `task_id` and therefore does not cover chat; the row
+        exists so cost, latency and failures stay visible next to planning and
+        classification instead of disappearing from the audit entirely.
+        """
+        adapter = DeepSeekAdapter(self.profiles.transport) if profile["provider"] == "deepseek" else QwenLocalAdapter(self.profiles.transport)
+        secret = self.profiles.secrets.get(profile["id"])
+        try:
+            response = adapter.chat(profile, messages, secret, max_attempts=max_attempts)
+        except ModelTransportError as exc:
+            self._record_chat_attempts(profile, conversation_id, "error", None, exc.attempts, 0, exc.code); raise
+        self._record_chat_attempts(profile, conversation_id, "ok", response, response.attempts, response.latency_ms, None)
+        return response
+
+    def _record_chat_attempts(self, profile: dict[str, Any], conversation_id: str | None, status: str,
+                              response: ModelResponse | None, attempts: int, latency: int, error: str | None) -> None:
+        request_hash = response.request_hash if response else hashlib.sha256(f"chat:{conversation_id or ''}:{uuid.uuid4()}".encode()).hexdigest()
+        # A failed call still happened, so never let a zero-attempt transport error
+        # vanish from the ledger.
+        for index in range(max(1, attempts)):
+            final = index == attempts - 1
+            with self.database.begin() as connection:
+                connection.execute(text("""INSERT INTO model_calls(id,task_id,conversation_id,provider_profile_id,purpose,model_id,request_hash,response_status,input_tokens,output_tokens,estimated_cost_micros,currency,latency_ms,error_code,created_at)
+                  VALUES(:id,NULL,:conversation,:profile,'chat',:model,:hash,:status,:input,:output,NULL,NULL,:latency,:error,:now)"""),
+                  {"id":str(uuid.uuid4()),"conversation":conversation_id,"profile":profile["id"],"model":profile["model_id"],"hash":request_hash,
+                   "status":status if final else "error","input":response.input_tokens if final and response else None,
+                   "output":response.output_tokens if final and response else None,
+                   "latency":latency if final else 0,"error":error if final else "RETRY","now":utc_now()})
+
     def _record_attempts(self, task_id: str, model: dict[str, Any], purpose: str, status: str, response: ModelResponse | None, attempts: int, latency: int, error: str | None) -> None:
         request_hash = response.request_hash if response else hashlib.sha256(f"{task_id}:{purpose}:{uuid.uuid4()}".encode()).hexdigest()
         # `model_calls.purpose` is a deliberately small, legacy-compatible

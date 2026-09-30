@@ -35,7 +35,14 @@ def ensure_within(path: Path, root: Path) -> Path:
         raise PathPolicyError("PATH_OUTSIDE_GRANT") from exc
     if str(resolved).startswith("\\\\") or str(resolved).startswith("\\?\\"):
         raise PathPolicyError("NETWORK_OR_DEVICE_PATH_BLOCKED")
-    return resolved
+    # The containment check above must use the resolved form so a junction or a `..`
+    # segment cannot slip past it. The returned path must not: on Windows, resolving a
+    # leaf that does not exist yet rewrites it to the on-disk casing of a
+    # case-insensitively equal name. With `photo.jpg` already in the destination, a
+    # plan targeting `Photo.jpg` would silently republish the user's file under the
+    # occupant's casing. That is invisible on NTFS and a real rename on a
+    # case-preserving target — a network share, an exFAT card, a synced folder.
+    return Path(os.path.abspath(path))
 
 
 def target_key(path: Path) -> str:

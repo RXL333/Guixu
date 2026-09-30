@@ -1,18 +1,62 @@
 # Guixu 1.0 Bug Registry
 
-更新时间：2026-09-28
+更新时间：2026-09-30
 Feature Freeze：ACTIVE
 
 ## 统计
 
 | Severity | Open | Fixed | Accepted |
 |---|---:|---:|---:|
-| P0 | 0 | 1 | 0 |
-| P1 | 1 | 5 | 0 |
-| P2 | 1 | 2 | 0 |
-| P3 | 1 | 0 | 0 |
+| P0 | 0 | 2 | 0 |
+| P1 | 0 | 8 | 0 |
+| P2 | 0 | 4 | 0 |
+| P3 | 0 | 1 | 0 |
 
 > “Open P0 = 0”只表示当前已登记缺陷；在安全和 crash matrix 完成前，不代表最终 P0 gate 已通过。
+
+> **2026-09-30 更正。** 上表此前把 P1 记为 open 1、P2 记为 open 1、P3 记为 open 1，与正文各条目的 `Status` 字段不一致——P1-005 实为 FIXED，P2-003 与 P3-001 也已在本轮完成并有回归覆盖。统计表现已按各条 `Status` 重新汇总。P0 计数由 1 增至 2：新增的 P0-002 是本轮从真实历史 schema 升级测试中挖出的迁移缺陷，若未在公开前发现，**任何从 0.1.0 升级的用户都会在首次启动时直接失败**。P1 计数由 7 增至 8：新增 P1-007 发行版本号漂移。
+
+## P1-007 — 发行版本号在五处各写一份，改版本时漏改三处，产物名、SBOM 与校验清单全部错位
+
+- **Severity:** P1
+- **Area:** `scripts/package-windows.ps1` / `packaging/Guixu.spec` / `scripts/generate_release_metadata.py` / 版本管理
+- **Expected:** 发行产物的目录名、压缩包名、SBOM 里的版本字段与 `pyproject.toml` 声明的版本一致；`SHA256SUMS.txt` 覆盖整个应用文件树。升版本只改一处。
+- **Actual:** 版本字面量散落五处。本轮从 0.1.0 提到 0.9.0 时改了 `pyproject.toml`、`__init__.py`、`openapi-runtime.json`、`frontend/package.json`、`Guixu.iss`，**漏了三处**：
+  1. `package-windows.ps1:56,86` → 产物目录与压缩包仍叫 `Guixu-0.1.0`
+  2. `Guixu.spec:66` → PyInstaller COLLECT 名仍叫 `Guixu-0.1.0`
+  3. `generate_release_metadata.py:63,70` → **SBOM 写入 `"version": "0.1.0"`**（这个字段随发行包一起分发），且第 70 行去找 `Guixu-0.1.0` 目录
+- **第 3 处最严重，因为它静默降级。** 第 70 行原为 `if onedir.is_dir():`——目录名对不上时**不报错，直接跳过**，于是 `SHA256SUMS.txt` 只剩压缩包与 SBOM 两行。实测：修复前 2 行，修复后 437 行。一个看起来有校验清单、实际不校验 app 内任何文件的发行物，比没有清单更危险。
+- **为何没被发现：** **构建成功，exit 0。** 脚本只对「命令失败」设门禁，不校验「产物名字对不对」。这与 P1-002（打包脚本吞掉前端构建失败）是同一类缺陷的两面——那次是失败被吞掉，这次是成功但产物是错的，两者都不让 exit code 变红。
+- **Fix:** 五处字面量全部改为读 `backend/pyproject.toml`（唯一声明源）：`Guixu.spec` 新增 `_version()`；`package-windows.ps1` 读出 `$declaredVersion` 并在首行 `Write-Output "Release version: ..."`；`generate_release_metadata.py` 新增 `declared_version()`。三处读不到版本时**抛错，不回退默认值**。`generate_release_metadata.py` 的目录缺失由静默 `if` 改为无条件 `raise SystemExit`。
+- **为何定为 P1 而非 P2：** 用户从 GitHub 下载后看到的目录名、包内 SBOM 版本都不对，无法判断装的是哪个版本，事故排查会被版本错位带偏；且校验清单静默降级直接使 B07 门禁失效。
+- **Verification:** 重新打包 exit 0，日志首行 `Release version: 0.9.0`，产物 `Guixu-0.9.0/` 与 `Guixu-portable-x64-0.9.0.zip`；重跑元数据生成得 `SHA256SUMS.txt` 437 行、SBOM `version: 0.9.0`；清单中 zip 哈希 `42848920…` 与 `sha256sum` 实测一致；把 `--release-directory` 指向应用目录内部时脚本报 `application directory not found: …`，守卫确认生效。
+- **Status:** FIXED（2026-09-30）。
+- **教训一：** 同一事实的多个副本，只要有一处能独立改动而不触发任何检查，就迟早漂移。**升版本必须有一条「从产物名反查声明值」的断言。**
+- **教训二：** `if x.is_dir():` 包住一段**应当必须执行**的逻辑，是把缺失伪装成成功。缺失应当是硬错误。
+- **教训三（本轮自身失误）：** 一次「重建」其实没跑——`rm -rf` 因文件占用失败，而我用 `&&` 串联导致 PowerShell 被短路跳过；后台任务 wrapper 报的 exit 0 来自 wrapper 而非命令，我据此误判构建已完成并读到了旧产物。**判断后台任务是否真跑完，要看命令自己 echo 的退出码，不能信 wrapper 的。**
+
+## P1-006 — 目录授权接受任意系统路径，`C:\Windows` 可被授权为整理根
+
+- **Severity:** P1
+- **Area:** `infrastructure/filesystem/grants.py` / 授权边界
+- **Expected:** 按 `AGENTS.md`「不碰测试范围外的个人目录」，系统目录与整卷不得被授权为源或目标根；授权必须在**入口**拒绝，而不是等到第一次移动时。
+- **Actual:** `canonicalize_directory` 只检查路径存在、是目录、且根本身不是 symlink/reparse point，**没有任何系统位置检查**。实测 `C:\Windows`、`C:\Windows\System32`、`C:\Program Files`、`C:\Program Files (x86)`、`C:\ProgramData`、`C:\Users\Public` 以及任意盘符根 `C:\` `D:\` 全部被接受为 source 授权。桌面桥接的路径选择器会限制用户手点，但 typed-grant API 接受任意字符串——提示注入、缺陷前端或误输入都能拿到授权。文件整理器拿到根目录后终会把里面的东西移走。
+- **Fix:** 新增 `_protected_locations()`，分两类返回：系统目录（`SystemRoot`、`Program Files`、`Program Files (x86)`、`ProgramData`、`$Recycle.Bin`、`System Volume Information`、`Recovery`、`C:\Users\Public`）封禁**整棵子树**；盘符根、`C:\Users`、用户 profile 根**只封禁其本身**。这个区分是必要的——封禁 profile 子树会连带干掉 Documents、Downloads、Pictures 和所有项目目录，恰好废掉产品本身。`_is_protected` 用 `os.path.normcase` 比较以抵抗大小写（`C:/WINDOWS` 否则会绕过 `C:/Windows`），并显式要求分隔符以避免 `C:\WindowsOld` 被前缀误判。错误码 `PROTECTED_LOCATION_BLOCKED`，API 返回 422。
+- **为何此前未被发现：** S02 矩阵里「系统路径」这一项从未有过断言；已有的越权测试只覆盖了「另一个 Conversation 的文件 ID」。
+- **Regression Test:** 新增 `backend/tests/safety/test_protected_locations.py`（15 项）。修复**之前**直接探测过同一组路径，全部被接受（`接受 'C:\Windows' -> C:\Windows` 等），而测试断言它们必须被拒绝，因此测试在修复前必然失败。注：未采用「回退修复再跑测试」的方式验证，因为临时移除该防护被安全分类器拦截；此处证据是修复前的直接探测输出，不是推断。
+- **Status:** FIXED（2026-09-30）。后端全量 270 passed。
+
+## P0-002 — 从任何真实旧库升级都会失败（`cannot commit - no transaction is active`）
+
+- **Severity:** P0
+- **Area:** Alembic migration 0012 / 升级路径
+- **Expected:** 已安装 0.1.0 的用户升级到新版本后首次启动，数据库自动迁移到 head，会话、文件、方案、审计记录全部保留。
+- **Actual:** 迁移 `0012_chat_call_audit` 在关闭外键前执行了一条裸 `bind.exec_driver_sql("COMMIT")`。pysqlite 在**没有活动事务**时 `commit()` 抛 `OperationalError: cannot commit - no transaction is active`（而 `rollback()` 是无害的 no-op，两者不对称）。alembic 不保证此处有事务：前面几条都是 PRAGMA 和 SELECT，pysqlite 的 legacy autocommit 模式不为它们开事务。实测三个真实历史 schema（2026-09-14 / 09-21 / 09-25）升级**全部在 0012 失败**。
+- **为什么一直没被发现：** 新装机器走的是 0012 第 45 行的提前返回分支（`0001` 直接执行当前 `contracts/database.sql`，新库已带 `conversation_id` 与 `'chat'`），**永远走不到那行 COMMIT**。而此前所有迁移测试都从当前 schema 建库，同样从不进入旧库重建路径。只有真实升级才会执行它。
+- **Fix:** 抽出 `_commit(driver)`，仅在 `driver.in_transaction` 为真时提交；`try` 内的成功提交与 `finally` 里的收尾提交都走它。重建的外键挂起与 `PRAGMA foreign_key_check` 校验逻辑不变。
+- **Regression Test:** 新增 `backend/tests/contract/test_legacy_schema_upgrade.py`（6 项）。fixture 是从 git 历史取出的**逐字真实 schema**——`git show 4e2700b/4aeb7cd/8db48ab:contracts/database.sql`——不是测试内构造。测试断言升级到 head、种子数据逐字段留存、`classifications.model_call_id` 未被 `DROP TABLE` 的 `ON DELETE SET NULL` 清空、`'chat'` purpose 可用、`foreign_key_check` 为空，并能用应用自身的 `Database` 重新打开。**已验证测试有牙齿**：临时回退修复后 6 项全红，恢复后全绿。
+- **Status:** FIXED（2026-09-30）。后端全量 255 passed。
+- **教训：** 「从当前 schema 建库」的迁移测试结构性地覆盖不到旧库重建分支。升级测试的 fixture 必须来自真实历史产物。
 
 ## P1-005 — 本地千问图片整理无法生成预览
 
@@ -34,7 +78,7 @@ Feature Freeze：ACTIVE
 - **Cause:** `/api/v1/conversations/{id}/chat` 直接调用 `DeepSeekAdapter.chat`；计划和分类走的 `ModelGateway._call` 才持久化 `model_calls`。当前 `model_calls.purpose` CHECK 也没有 `chat`，且聊天发生在 Task 创建前。
 - **Impact:** 普通聊天费用/用量、延迟、失败次数无法在模型调用审计中追踪。不能据此声称预算与调用日志已覆盖聊天。
 - **Fix proposal:** 为 Conversation 级聊天增加不保存提示词/图片内容的调用 ledger（或向 `model_calls` 增加 `chat` purpose 与可空 Conversation 关联），按成功/失败写入模型、token、时延、错误码，并加迁移、API/数据库回归和冻结包复测。
-- **Status:** OPEN（2026-09-26）。
+- **Status:** FIXED（2026-09-30）。`ModelGateway.conversation_chat` 现通过 `_record_chat_attempts` 写入共享 ledger：成功与失败都记，含 `purpose='chat'`、可空 `task_id`、指向会话的 `conversation_id`、token、时延与错误码；重试按 attempt 逐条落账，失败不丢记录。迁移 `0012_chat_call_audit` 为 `model_calls` 增加 `chat` purpose 与可空 `conversation_id`（`ON DELETE SET NULL`）。回归 `test_discussion_calls_are_audited_and_stay_out_of_task_budget` 断言调用被记账且 `task_id IS NOT NULL` 的行数为 0——讨论发生在 Task 创建之前，不会污染按 Task 的预算口径。冻结包原生复测仍属独立的发行验收项。
 
 ## P3-001 — AI 聊天回复直接显示 Markdown 标记
 
@@ -42,8 +86,9 @@ Feature Freeze：ACTIVE
 - **Area:** Conversation message rendering
 - **Evidence:** 本机冻结包真实 DeepSeek 回复中的 `**分类维度**`、列表标记按原样显示。`ConversationMessage.vue` 用 `<p>{{ message.content }}</p>` 将整段回复作为纯文本呈现。
 - **Impact:** 多段列表和强调文字难读；不会导致文件操作错误。
-- **Fix proposal:** 支持受限 Markdown 段落、列表、强调和代码，并对链接/HTML 严格清理，保留复制原文行为；加入恶意 HTML 不执行的前端测试。
-- **Status:** OPEN（2026-09-26）。
+- **Fix:** 新增 `features/conversations/markdown.ts` 手写受限渲染（不引入第三方 Markdown 依赖），`ConversationMessage.vue` 改用 `MessageContent.vue` 渲染，复制按钮仍取原始文本。刻意不支持标题与内联 HTML；链接只允许 http/https，其余协议不产生 `<a>`。
+- **Regression Test:** `markdown.test.ts` 9 项 + `message-markdown.test.ts` 5 项，含「原始 HTML 保留为字面字符」「敌意回复不创建任何元素」「绝不产生 `javascript:` 或 `data:` 链接」「文件名中的下划线不被当成强调」；前端全量 67 passed。
+- **Status:** FIXED（2026-09-30）。打包版原生观感复测属独立的 UI 验收项（U01–U04）。
 
 ## P0-001 — Conversation 文件引用 API 未校验活动授权目录
 
@@ -86,6 +131,25 @@ Feature Freeze：ACTIVE
 - **Impact:** 后端 attach 瓶颈已修复；尚未测桌面 UI 帧率/列表渲染，不把后端结果外推为 UI 流畅度通过。
 - **Regression Test:** `scripts/run_phase_n_performance.py`；文件引用/API scope 定向集成共 `8 passed`。
 - **Status:** FIXED（2026-09-24；UI 规模性能仍是独立未测验收项）。
+
+> **2026-09-30 更正：本条证据中的数字撤回。** 上面引用的 attach/reconcile 耗时是**单次采样**，其中「5000 文件 attach 1.298 秒、reconcile 3.409 秒」**不可复现**。把基准脚本重写为多次重复 + nearest-rank 分布后实测：attach p50 **3.1326s** / p95 7.1728s，reconcile p50 **.7341s** / p95 .8758s。即 attach 的真实 p50 比原记录高出一倍以上——原数字是一次走运的采样。
+>
+> 「从 32.73 秒降至 1.298 秒」的**定性结论仍然成立**（数量级改善是真实的），但**具体数字不再作为证据引用**。修正后的措辞是：attach 由 32.73 秒降至 p50 3.13s。
+>
+> 同时，reconcile 在本轮被单独发现并修复了一个更严重的问题：每轮对话都会对整个文件库重新计算 SHA-256，成本是 O(字节) 而非 O(文件数)。在基准的小文本 fixture（每个 33 字节）上这几乎看不出来，但在真实照片库（约 4MB/张）上相当于每条消息重读约 20GB。现已改为 `quick_same`（size + mtime_ns 未变即视为未重写）快速路径，并加了三条回归测试；由于执行器在每次移动前仍会重新哈希，被伪造的 mtime 无法绕过文件操作校验——见 `test_forged_mtime_still_fails_the_pre_move_identity_check`。
+>
+> 教训：**未经分布的单次计时不应写进验收矩阵或缺陷登记。** 基准脚本的 `method.caveat` 现已写明样本数低于 20 时 p95 退化为最大值。
+
+## P2-004 — 目标路径被按盘上大小写静默改写，文件以占用者的大小写重新发布
+
+- **Severity:** P2
+- **Area:** Path policy / destination naming
+- **Expected:** 授权目录内已存在 `photo.jpg` 时，指向 `Photo.jpg` 的方案应生成 `Photo (2).jpg`，保留用户原本的拼写。
+- **Actual:** `path_policy.ensure_within` 对尚不存在的叶子调用 `Path.resolve()`。Windows 上该调用会按盘上大小写重写路径，于是 `Photo.jpg` 被折叠成 `photo.jpg`——与占用者同名，冲突检测随即认为目标已存在，用户文件最终以**占用者的大小写**发布。
+- **Impact:** NTFS 上大小写不敏感，该差异不可见，因此长期未被发现。但在**大小写保留**的目标卷（网络共享、exFAT 卡、同步目录）上这是一次真实的重命名：用户看到的文件名被改成了另一个文件的名字。属数据完整性问题，不是显示问题。
+- **Fix:** 包含性检查继续用解析后的形式（防止 junction 或 `..` 绕过授权边界），但**返回**词法绝对路径 `os.path.abspath(path)`，不做大小写规范化。`ensure_within` 之上仍有设备/UNC 前缀拒绝。
+- **Regression Test:** `test_s05_case_only_difference_target_is_never_clobbered`（仅大小写不同的目标生成 `Photo (2).jpg` 而非覆盖）、`test_s05_case_only_collision_appearing_after_approval_keeps_both_files`、`test_s05_batch_of_case_differing_names_allocates_distinct_targets`。
+- **Status:** FIXED（2026-09-30）。限制：本机只有 NTFS 卷，大小写保留卷上的端到端行为无法在此验证。
 
 ## P2-002 — 重启后视觉 evidence 重建导致分类缓存输入不匹配
 

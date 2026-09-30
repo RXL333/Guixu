@@ -1,5 +1,5 @@
 #define MyAppName "归序 Guixu"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.9.0"
 #define MyAppPublisher "Guixu Project"
 #define MyAppExeName "Guixu.exe"
 
@@ -30,7 +30,7 @@ Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "..\artifacts\release\Guixu-0.1.0\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\artifacts\release\Guixu-0.9.0\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
