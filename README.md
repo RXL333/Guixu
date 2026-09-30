@@ -12,7 +12,7 @@
 [![Python](https://img.shields.io/badge/Python-77.9%25-3776ab?style=flat-square)](#-技术栈)
 [![Vue](https://img.shields.io/badge/Vue-9.6%25-4FC08D?style=flat-square)](#-技术栈)
 [![TypeScript](https://img.shields.io/badge/TypeScript-8.7%25-3178C6?style=flat-square)](#-技术栈)
-[![Status](https://img.shields.io/badge/状态-0.1.0%20dev-orange?style=flat-square)](#-项目状态)
+[![Status](https://img.shields.io/badge/状态-0.9.0-blue?style=flat-square)](#-项目状态)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 ![Windows x64](https://img.shields.io/badge/Windows%20x64-✓-brightgreen)
@@ -100,16 +100,113 @@ cd Guixu
 
 浏览器自动打开 **http://localhost:5173**，后端运行在随机安全端口。
 
-### 便携包
+### 便携包（普通用户看这里）
 
-从 [Release 页面](../../releases) 下载：**Guixu-portable-x64-0.1.0.zip**  
-解压即用 — 无需安装。
+从 [Releases 页面](https://github.com/RXL333/Guixu/releases) 下载 **`Guixu-portable-x64-0.9.0.zip`**，
+解压到任意目录，双击 `Guixu.exe`。不需要装 Python，不需要装 Node.js，不需要管理员权限。
+
+> ⚠️ **Windows 会先拦住你，这是正常的。**
+> 本项目没有购买代码签名证书，所以 SmartScreen 会显示「Windows 已保护你的电脑」。
+> 确认发布者是你信任的来源后，点 **更多信息 → 仍要运行**。
+> 这是未签名开源软件的通例，不是本项目的异常行为。
+
+<details>
+<summary><b>验证下载完整性（推荐）</b></summary>
+
+每个 Release 都附 `SHA256SUMS.txt`，覆盖 app 内每一个文件。下载后在解压目录里核对：
+
+```powershell
+# 逐个文件比对；不匹配会打印出来
+Get-FileHash -Algorithm SHA256 .\Guixu-0.9.0\Guixu.exe
+```
+
+或在 Release 页面直接核对压缩包本身的哈希。
+</details>
+
+<details>
+<summary><b>关于杀毒软件误报</b></summary>
+
+PyInstaller 打包的 Python 程序偶尔被启发式引擎误判。**请先核验 SHA256 再决定是否放行**，
+不要直接加白名单。
+</details>
 
 ### 仅桌面模式
 
 ```powershell
 .\scripts\run-desktop.ps1
 ```
+
+## 🧭 第一次使用
+
+下载解压后第一次打开，按这个顺序走：
+
+### 1. 配置模型连接
+
+归序不内置任何模型，需要你自己接一个。二选一：
+
+| | 归序做什么 | 你要准备什么 |
+|---|---|---|
+| **DeepSeek**（云端） | 发文件名、扩展名和**你勾选同意发送的内容/图片**去分类 | [platform.deepseek.com](https://platform.deepseek.com) 的 API Key |
+| **本地 Qwen**（推荐，更私密） | 全部在本机推理，**文件不出你的电脑** | 先装 [Ollama](https://ollama.com)，再 `ollama pull qwen3-vl:4b-instruct` |
+
+设置页填入 Base URL 和 Key 后，点「测试连接」。
+**能力测试会如实显示文本/视觉是否可用**——不通就是不通，不会假装成功。
+
+> 🔑 **API Key 不会**被写进仓库、日志、浏览器存储或任何导出报告。
+> 也不要把你的 Key 填到 GitHub issue 里。
+
+### 2. 授权一个文件夹
+
+点「选择文件夹」，选你要整理的目录。
+
+出于安全考虑，**系统目录和整个磁盘不允许被授权**（`C:\Windows`、`C:\Program Files`、
+`C:\Users`、盘符根都会被拒绝）。你 profile 根目录本身也不允许，但
+`Documents`、`Downloads`、`Pictures` 和任何项目子目录都正常可用——这正是产品要做的事。
+
+### 3. 描述你要怎么分，然后**看预览**
+
+用自然语言说要求（「按内容分类，别分太细」「截图和文档分开」）。
+归序会给出**完整预览**：每个文件从哪来、到哪去、为什么。
+
+> ⚠️ **这一步不动你的磁盘。** 预览出来之前不会有任何文件被移动。
+
+### 4. 明确批准，才执行
+
+看完预览，点「确认并开始整理」。**只有这一步会移动文件。**
+
+对话里说「确认执行」「直接开始吧」这类话**不会**触发移动——
+执行只能由你看得见的批准动作发起。这一点有 12 项测试守着。
+
+### 数据存在哪
+
+```
+%LOCALAPPDATA%\Guixu\
+├── app.sqlite3      会话、文件记录、方案版本、模型调用记录
+├── backups\         自动备份
+├── cache\           解析结果缓存（可安全删除，会重建）
+└── diagnostics.json 诊断信息
+```
+
+**所有对话历史和审计记录都在这个数据库里。** 卸载便携包不会删它——
+想彻底清除，手动删除这个目录即可。
+
+## ⚠️ 已知限制
+
+诚实列出当前版本做不到的事：
+
+- **未做代码签名。** SmartScreen 会拦截，绕过步骤见上文。
+- **单文件路径超过 260 字符的操作会失败。** 取决于你的卷是否启用了
+  `LongPathsEnabled`（系统设置，需管理员 + 重启）。本项目的长路径用例在未启用的
+  卷上会被跳过，不是通过。
+- **同一 Windows 账户下无法构造「真实 ACL 拒绝」场景。** 你是文件的所有者，
+  所有者权限始终有效，所以这条测试路径在本项目里不可验证。
+- **Windows 凭据管理器未接入。** API Key 目前由应用自行管理存储，
+  相关日志审计尚未覆盖（见 `RELEASE_ACCEPTANCE.md` 的 S17）。
+- **只支持 Windows x64。** 没有 macOS/Linux 构建。
+- **打包版真实模型链路未做完整验收。** 源码路径与冻结诊断均通过，
+  但「打包版 → 建议确认 → 批准执行」的完整人工复测尚未覆盖。
+
+完整的门禁状态见 [`docs/current/deployment/RELEASE_ACCEPTANCE.md`](docs/current/deployment/RELEASE_ACCEPTANCE.md)。
 
 ## 📸 工作流程
 
@@ -240,7 +337,7 @@ AI 分析：
 
 ## 📊 项目状态
 
-**版本**：`0.1.0 dev`  
+**版本**：`0.9.0`  
 **阶段**：功能完整开发，验收测试进行中
 
 ### ✅ 已完成
@@ -383,7 +480,7 @@ A：文件整理风险很高。一个错误会丢失数据。我们测试每个�
 **替代方案**：从源码构建
 ```powershell
 .\scripts\package-windows.ps1
-# 创建：artifacts/release/Guixu-0.1.0/Guixu.exe
+# 创建：artifacts/release/Guixu-0.9.0/Guixu.exe
 ```
 
 ### 对于开发者
@@ -417,7 +514,7 @@ A：文件整理风险很高。一个错误会丢失数据。我们测试每个�
 [![Python](https://img.shields.io/badge/Python-77.9%25-3776ab?style=flat-square)](#-tech-stack)
 [![Vue](https://img.shields.io/badge/Vue-9.6%25-4FC08D?style=flat-square)](#-tech-stack)
 [![TypeScript](https://img.shields.io/badge/TypeScript-8.7%25-3178C6?style=flat-square)](#-tech-stack)
-[![Status](https://img.shields.io/badge/Status-0.1.0%20dev-orange?style=flat-square)](#-project-status)
+[![Status](https://img.shields.io/badge/Status-0.9.0-blue?style=flat-square)](#-project-status)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 ![Windows x64](https://img.shields.io/badge/Windows%20x64-✓-brightgreen)
@@ -507,8 +604,36 @@ Browser opens to **http://localhost:5173**, backend runs on a random secure port
 
 ### Portable Package
 
-Download from [Releases](../../releases): **Guixu-portable-x64-0.1.0.zip**  
-Unzip and run — no installation needed.
+Download from [Releases](https://github.com/RXL333/Guixu/releases): **Guixu-portable-x64-0.9.0.zip**  
+Unzip anywhere and run `Guixu.exe` — no Python, no Node.js, no administrator rights.
+
+> ⚠️ **Windows will block this at first, and that is expected.**
+> The project carries no code-signing certificate, so SmartScreen shows
+> "Windows protected your PC". After confirming you trust the source, click
+> **More info → Run anyway**. This is normal for unsigned open-source software.
+
+<details>
+<summary><b>Verify the download</b></summary>
+
+Every release ships a `SHA256SUMS.txt` covering every file in the app. Check it in the
+extracted directory, or compare the archive hash on the Releases page.
+</details>
+
+<details>
+<summary><b>First run</b></summary>
+
+1. **Connect a model** — either DeepSeek (cloud; send it your API key) or local Qwen
+   via Ollama (recommended; nothing leaves your machine). The capability test reports
+   text/vision honestly — it will not pretend to work.
+2. **Authorize a folder** — system directories and drive roots are refused by design;
+   your profile root too, but `Documents`, `Downloads` and any project folder work.
+3. **Describe what you want**, then read the preview. **Nothing moves yet.**
+4. **Approve explicitly to execute.** Saying "确认执行" in the chat does *not* move
+   files — 12 tests hold that line.
+
+Data lives in `%LOCALAPPDATA%\Guixu\` (`app.sqlite3`, `backups\`, `cache\`).
+Deleting that directory removes all history.
+</details>
 
 ### Desktop-Only Mode
 
@@ -645,7 +770,7 @@ Scans 434 files, 301MB bytes for API keys, hardcoded secrets, string injections.
 
 ## 📊 Current Status
 
-**Version**: `0.1.0 dev`  
+**Version**: `0.9.0`  
 **Stage**: Feature-complete development, acceptance testing in progress
 
 ### ✅ Completed
@@ -657,18 +782,28 @@ Scans 434 files, 301MB bytes for API keys, hardcoded secrets, string injections.
 - Safe execution with audit logging
 - Session recovery & undo support
 - Windows onedir + portable build
-- 198+ backend tests, 40+ frontend tests
+- 291 backend tests, 67 frontend tests
 - Full E2E flow: 5-image v1→v2→execute→recover
 
 ### ⚠️ Known Limitations
 
-- **No installer yet** (Inno Setup pending)
-- **Code signing required** for production
-- **Local Qwen Vision** — text-only verified, vision pipeline in progress
-- **High-DPI displays** — 4K scaling not fully tested
-- **Watch Folder** — auto-monitoring not implemented
-- **Optional: ffmpeg/ASR** — audio transcription needs external setup
+Stated plainly, because a release note that overstates readiness is worse than one
+that admits its edges:
 
+- **Unsigned.** SmartScreen intercepts the first launch; bypass steps are above.
+- **Paths over 260 characters fail** unless the volume has `LongPathsEnabled`
+  (a system setting needing admin rights and a reboot). The long-path test is
+  *skipped* on volumes without it — not passing.
+- **A real ACL-denial scenario is not constructible** under a single Windows
+  account: you own your files, so owner rights always apply.
+- **Windows Credential Manager is not integrated.** API key storage is
+  app-managed, and its log audit is not yet covered (S17 in the acceptance doc).
+- **Windows x64 only.** No macOS or Linux build.
+- **The packaged build's end-to-end model chain has not been fully re-verified
+  by hand.** Source paths and the frozen diagnostic pass; the complete
+  "packaged → confirm suggestion → approve → execute" run is still uncovered.
+
+Feature-level limitations (watch folder, audio transcription) are unchanged.
 **Full details**: [docs/product/limitations.md](docs/product/limitations.md)
 
 ## 💻 Development
@@ -677,8 +812,8 @@ Scans 434 files, 301MB bytes for API keys, hardcoded secrets, string injections.
 
 ```
 Guixu/
-├── backend/              # Python FastAPI, 198+ tests
-├── frontend/             # Vue 3 + TypeScript, 40+ tests
+├── backend/              # Python FastAPI, 291 tests
+├── frontend/             # Vue 3 + TypeScript, 67 tests
 ├── docs/
 │   ├── product/         # Features, workflows, privacy
 │   ├── current/         # Architecture, decisions, API
@@ -788,7 +923,7 @@ Unzip, run `Guixu.exe`, no dependencies needed.
 **Alternative**: Build from source
 ```powershell
 .\scripts\package-windows.ps1
-# Creates: artifacts/release/Guixu-0.1.0/Guixu.exe
+# Creates: artifacts/release/Guixu-0.9.0/Guixu.exe
 ```
 
 ### For Developers

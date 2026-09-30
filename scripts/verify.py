@@ -8,9 +8,16 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Every backend scope must pass `--all-extras`. `pytest` lives in the `dev`
+# extra, and a bare `uv run` re-syncs the environment to the default dependency
+# set - which uninstalls pytest, so the scope fails with "Failed to spawn:
+# pytest". That is what the first CI run did: `unit` and `safety` stripped the
+# venv, the later scopes reinstalled it, and the job failed on the first two
+# while the rest passed. The side effect is just as bad locally - running
+# `verify.py unit` quietly removes a developer's test dependencies.
 RANGES: dict[str, list[list[str]] | None] = {
-    "unit": [["uv", "run", "pytest", "tests/unit", "tests/contract"]],
-    "safety": [["uv", "run", "pytest", "tests/safety", "tests/integration"]],
+    "unit": [["uv", "run", "--all-extras", "pytest", "tests/unit", "tests/contract"]],
+    "safety": [["uv", "run", "--all-extras", "pytest", "tests/safety", "tests/integration"]],
     "parsers": [["uv", "run", "--all-extras", "pytest", "tests/parsers", "tests/integration/test_api.py"]],
     "classification": [["uv", "run", "--all-extras", "pytest", "tests/classification", "tests/integration/test_api.py"]],
     "models": [["uv", "run", "--all-extras", "pytest", "tests/models", "tests/integration/test_api.py"]],

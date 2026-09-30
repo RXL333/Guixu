@@ -104,6 +104,12 @@ jobs:
       - name: Install Python 3.12
         run: uv python install 3.12
 
+      - name: Build the benchmark datasets
+        # The datasets are generated, not committed - they are large binary
+        # fixtures and `artifacts/test-workspaces/` is gitignored. Without this
+        # step the benchmark exits with "phase N datasets are missing".
+        run: uv run --project backend --all-extras python scripts/create_phase_n_datasets.py
+
       - name: Benchmark
         # `--project backend` resolves the venv without moving off the repo root,
         # which the script needs for its report path. The plain `python` used by the
